@@ -11,11 +11,13 @@ element. So I decided to make it a plugin so others could use it.
 To use submenu.js, first link to Jquery, then to submenu.js, then
 do:
 
-```(function() {
+```
+(function() {
     $("#parent").submenu({
         sub: "#submenu"
     });
-});```
+});
+```
 
 The 'sub' option is to change the id or class name of the submenu div.
 
