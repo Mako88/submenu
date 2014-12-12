@@ -14,11 +14,12 @@ do:
 ```
 (function() {
     $("#parent").submenu({
-        sub: "#submenu"
+        sub: "#submenu",
+        link: "#parentlink"
     });
 });
 ```
 
-The 'sub' option is to change the id or class name of the submenu div.
+The 'sub' option is to change the id or class name of the submenu div. The 'link' option is the (optional) link on the main menu (this should be an a tag).
 
 If you need any help, let me know!
