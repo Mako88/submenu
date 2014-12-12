@@ -22,7 +22,8 @@
 		// Create the defaults once
 		var pluginName = "submenu",
 				defaults = {
-				sub: "#submenu"
+				sub: "#submenu",
+                link: "#parentlink"
 		};
 
 		// The actual plugin constructor
@@ -34,6 +35,7 @@
 				// future instances of the plugin
 				this.settings = $.extend({}, defaults, options);
                 this.settings.sub = $(this.settings.sub);
+                this.settings.link = $(this.settings.link);
 				this._defaults = defaults;
 				this._name = pluginName;
 				this.init();
@@ -47,40 +49,67 @@
 						// and this.settings
 						// you can add more functions like the one below and
 						// call them like so: this.yourOtherFunction(this.element, this.settings).
-                        var sub = this.settings.sub, parentmouse = false, submouse = false;
-						$(this.element).on("mouseenter", function () {
-                            sub.stop(true, true);
-                            if (parentmouse === false) {
-                                sub.css("z-index", "3");
-                                sub.fadeIn("normal");
-                            }
-                            parentmouse = true;
-                        });
-                        $(this.element).on("mouseleave", function () {
-                            setTimeout(function () {
-                                if (submouse === false) {
+                        var sub = this.settings.sub, link = this.settings.link, parentmouse = false, submouse = false, subactive = false;
+                        if('ontouchstart' in window || navigator.msMaxTouchPoints) {
+                            $(this.element).on("touchstart", function () {
+                                if (subactive == false) {
+                                    link.on("click", function (e) {
+                                        e.preventDefault();
+                                    });
+                                    sub.css("z-index", "3");
+                                    sub.fadeIn("normal");
+                                    subactive = true;
+                                }
+                                else {
+                                    window.location = link.attr('href');
+                                }
+                            });
+                            $("html").on("touchstart", function (e) {
+                                if($(e.target).closest(sub).length != 0) return true;
+                                if($(e.target).closest(link).length != 0) return true;
+                                if (subactive == true) {
                                     sub.fadeOut("normal", function () {
                                         sub.css("z-index", "-1");
                                     });
+                                    subactive = false;
                                 }
-                            }, 100);
-                            parentmouse = false;
-                        });
-                        sub.on("mouseenter", function () {
-                            submouse = true;
-                            sub.stop(true, true);
-                            sub.css({"z-index": "3", "display": "block"});
-                        });
-                        sub.on("mouseleave", function () {
-                            setTimeout(function () {
+                            });
+                        }
+                        else {
+                            $(this.element).on("mouseenter", function () {
+                                sub.stop(true, true);
                                 if (parentmouse === false) {
-                                    sub.fadeOut("normal", function () {
-                                        sub.css("z-index", "-1");
-                                    });
+                                    sub.css("z-index", "3");
+                                    sub.fadeIn("normal");
                                 }
-                            }, 100);
-                            submouse = false;
-                        });
+                                parentmouse = true;
+                            });
+                            $(this.element).on("mouseleave", function () {
+                                setTimeout(function () {
+                                    if (submouse === false) {
+                                        sub.fadeOut("normal", function () {
+                                            sub.css("z-index", "-1");
+                                        });
+                                    }
+                                }, 100);
+                                parentmouse = false;
+                            });
+                            sub.on("mouseenter", function () {
+                                submouse = true;
+                                sub.stop(true, true);
+                                sub.css({"z-index": "3", "display": "block"});
+                            });
+                            sub.on("mouseleave", function () {
+                                setTimeout(function () {
+                                    if (parentmouse === false) {
+                                        sub.fadeOut("normal", function () {
+                                            sub.css("z-index", "-1");
+                                        });
+                                    }
+                                }, 100);
+                                submouse = false;
+                            });
+                        }
 				},
 		};
 
