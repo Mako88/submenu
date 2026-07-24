@@ -125,6 +125,23 @@ Nothing here should be believed from fewer than ~20 paired seeds, which is why
 the sweep runs in CI — 20 seeds in parallel take about two minutes of wall
 clock, against roughly an hour of sequential local runs.
 
+**The obvious excuse does not survive either.** The natural reading of the
+result above is that 96 neurons leaves nothing to improve: a random column that
+size already makes the label 0.86 linearly decodable. Smaller columns mix less,
+and at 24 neurons the label is clearly present but *not* linearly accessible —
+linear 0.689 against MLP 0.881, a gap of +0.193 that is exactly what a learning
+rule is for. Sweep 002, 20 paired seeds at that size:
+
+| Condition | Accuracy |
+|---|---|
+| frozen | 0.592 ± 0.059 |
+| plastic | 0.602 ± 0.069 |
+
+**+0.011, better on 11/20 seeds, p = 0.45.** So the rule fails to help both
+where there is no room and where there is plenty. That rules out the task being
+too easy and points squarely at the rule itself — most likely the credit signal,
+which is derived from a readout that is itself weak and single-pass.
+
 What the fixes *did* achieve is moving plasticity from **actively harmful**
 (0.49–0.61 against 0.733 frozen) to **neutral**. The three changes that
 mattered were: matching the eligibility window to the readout's filter, so
@@ -284,11 +301,12 @@ barrier, emission-time addressing, latency tolerance through eligibility traces 
 are structural and hold regardless of whether the learning rule helps. What is
 refuted is that this particular rule is worth running on this task.
 
-The most likely reason is that the task leaves nothing to do: a *random* column
-already makes delayed XOR ~0.86 linearly decodable, so the rule is being asked
-to improve a representation that is already near the ceiling. `DelayedParity`
-(`n_cues=3`) is the intended follow-up — a frozen column gets ~0.57 there, so
-there is real headroom. First indications are that 3-cue parity is currently a
+That was first blamed on the task leaving nothing to do, since a *random* column
+already makes delayed XOR ~0.86 linearly decodable. Sweep 002 tested that
+directly at 24 neurons, where the label is present but tangled (linear 0.689,
+MLP 0.881), and the rule still gave +0.011 at p = 0.45. The excuse is spent:
+the rule fails both with and without headroom, so the problem is the rule or
+its credit signal, not the benchmark. First indications are that 3-cue parity is currently a
 *memory* wall rather than a mixing one: with 96 neurons both linear and MLP
 decoders sit at chance, and even at 192 neurons with shortened delays they
 reach only ~0.57. Holding three cues looks to be past what this column's

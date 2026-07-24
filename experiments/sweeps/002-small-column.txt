@@ -12,3 +12,9 @@ comparison with room for an effect to exist.
 
 Each file added under experiments/sweeps/ starts one run and records what it
 was asking. Sweep 001 lives in experiments/run-experiment.txt.
+
+RESULT -- 20 paired seeds: frozen 0.592 +/- 0.059, plastic 0.602 +/- 0.069,
+  mean paired difference +0.011, better on 11/20, permutation p = 0.45.
+  No effect, in the regime with the most headroom available. Taken with sweep
+  001 (no headroom, -0.003, p = 0.79), this rules out the benchmark being the
+  problem and points at the rule or the credit signal it is given.
