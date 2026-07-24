@@ -61,7 +61,7 @@ env:
   # 003 ran with PRETRAIN=0 and tested nothing. Sweep 004 established that
   # pretraining changes no outcome, so it is back off by default.
   PRETRAIN: ${{ github.event.inputs.pretrain || '0' }}
-  ELIG_MODE: ${{ github.event.inputs.elig_mode || 'magnitude' }}
+  ELIG_MODE: ${{ github.event.inputs.elig_mode || 'sign' }}
 
 jobs:
   seeds:

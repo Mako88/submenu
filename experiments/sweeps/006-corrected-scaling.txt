@@ -19,3 +19,9 @@ Prediction, recorded before the result: the gradient check is independent of
 this bug and still says the trace carries no magnitude information, so correct
 scaling alone should not rescue the rule. But a 5x drifting learning rate is
 enough to mask a small effect either way, and no previous number is clean.
+
+RESULT -- 20 paired seeds, ELIG_MODE=magnitude confirmed in the run env:
+  frozen 0.592 +/- 0.059, plastic 0.597 +/- 0.066, mean paired difference
+  +0.006, better on 8/20, permutation p = 0.66.
+  The prediction held: correct scaling alone does not rescue the rule. The
+  gradient check's verdict stands, and the baseline is now clean.

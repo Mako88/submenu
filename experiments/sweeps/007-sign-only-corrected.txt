@@ -1,0 +1,18 @@
+Sweep 007 -- sign-only eligibility with the scaling fixed. 24 neurons, 20 seeds.
+
+Sweep 005 tested sign-only but ran before the elig_rms bug was found, so its
+update sizes were mis-scaled like everything before it. Sweep 006 then
+re-established the magnitude baseline cleanly and came back null (+0.006,
+p = 0.66), which leaves this as the one untested idea derived from a
+measurement rather than a guess.
+
+The gradient check says the trace agrees with the true gradient in sign 0.64 of
+the time (58/90, p = 0.004) and in magnitude not at all (r = -0.045).
+elig_mode="sign" therefore keeps the direction, discards the size, and retains
+magnitude only as a participation gate at one RMS.
+
+Prediction, recorded before the result: this is the last cheap idea. If it is
+null too, the trace needs rebuilding rather than reinterpreting -- the surrogate
+h smooths the threshold so gradients keep flowing, but nothing makes it
+proportional to how sensitive a spike count actually is to a weight, and that
+is a design change rather than a parameter.
