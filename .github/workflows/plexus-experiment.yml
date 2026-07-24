@@ -28,6 +28,12 @@ on:
         description: 'Steps of modulator delay (tests latency tolerance)'
         required: false
         default: '0'
+      neurons:
+        description: 'Neurons in the column. Smaller columns mix less, so the
+          label is present but not linearly accessible -- the regime where a
+          learning rule actually has room to help.'
+        required: false
+        default: '24'
   # workflow_dispatch only works for workflows already on the default branch, so
   # until this is merged the sweep is triggered by touching a sentinel file.
   # Editing experiments/run-experiment.txt (which also records the settings)
@@ -43,6 +49,7 @@ env:
   PLASTIC_LR: ${{ github.event.inputs.plastic_lr || '0.005' }}
   TAU_ELIG: ${{ github.event.inputs.tau_elig || '70' }}
   MODULATOR_LAG: ${{ github.event.inputs.modulator_lag || '0' }}
+  NEURONS: ${{ github.event.inputs.neurons || '24' }}
 
 jobs:
   seeds:
@@ -74,7 +81,8 @@ jobs:
             --seed ${{ matrix.seed }} \
             --episodes $EPISODES \
             --tau-elig $TAU_ELIG \
-            --modulator-lag $MODULATOR_LAG
+            --modulator-lag $MODULATOR_LAG \
+            --neurons $NEURONS
 
       - name: Plastic condition
         if: steps.gate.outputs.run == 'yes'
@@ -84,7 +92,8 @@ jobs:
             --seed ${{ matrix.seed }} \
             --episodes $EPISODES \
             --tau-elig $TAU_ELIG \
-            --modulator-lag $MODULATOR_LAG
+            --modulator-lag $MODULATOR_LAG \
+            --neurons $NEURONS
 
       - name: Upload this seed's results
         if: steps.gate.outputs.run == 'yes'

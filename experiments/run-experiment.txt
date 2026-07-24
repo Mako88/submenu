@@ -14,3 +14,10 @@ run 1 -- 20 seeds, 400 episodes, plastic lr 5e-3, tau_elig 70, no modulator lag
 run 1 result -- 20 seeds: frozen 0.713 +/- 0.078, plastic 0.710 +/- 0.075,
   mean paired difference -0.003, better on 9/20, permutation p = 0.79.
   Settled: no effect. The +0.059 seen at three seeds was noise.
+
+run 2 -- 20 seeds, 400 episodes, 24 neurons, plastic lr 5e-3, tau_elig 70.
+  Question: run 1 found no effect at 96 neurons, but at that size a random
+  column already makes the label 0.86 linearly decodable -- there was nothing
+  left to improve. At 24 neurons the label is present but tangled: linear
+  0.689 against MLP 0.881, a gap of +0.193. That gap is exactly what a
+  learning rule is for, so this is the first test with real headroom in it.
