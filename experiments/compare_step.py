@@ -39,6 +39,8 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--no-stp", action="store_true")
     ap.add_argument("--elig-norm", default="column", choices=["column","neuron","none"])
+    ap.add_argument("--surrogate", default="graded", choices=["window","graded","hybrid"])
+    ap.add_argument("--tau-elig", type=float, default=70.0)
     ap.add_argument("--scaling-lr", type=float, default=ColumnConfig.scaling_lr)
     ap.add_argument("--pretrain", type=int, default=0,
                     help="episodes of readout-only training before column plasticity")
@@ -65,6 +67,7 @@ def main() -> None:
         task.n_classes,
         column=ColumnConfig(n_neurons=args.neurons, lr=args.lr, seed=args.seed,
                             stp=not args.no_stp, elig_norm=args.elig_norm,
+                            surrogate=args.surrogate, tau_eligibility=args.tau_elig,
                             scaling_lr=args.scaling_lr),
         seed=args.seed,
     )

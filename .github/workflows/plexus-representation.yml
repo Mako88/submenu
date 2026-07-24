@@ -1,0 +1,88 @@
+name: plexus representation
+
+# End-to-end accuracy runs through the online readout, which extracts ~0.59
+# where an offline decoder on the same states reaches ~0.69. Any improvement to
+# the column smaller than that gap is invisible to it. This sweep measures the
+# column's representation directly instead, which is the quantity the learning
+# rule is actually supposed to change.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'experiments/sweeps/**rep**'
+
+env:
+  NEURONS: '24'
+  EPISODES: '300'
+  COLLECT: '380'
+  PLASTIC_LR: '0.005'
+  SURROGATE: 'graded'
+
+jobs:
+  seeds:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install numpy
+
+      - name: Frozen control
+        run: |
+          python experiments/compare_step.py --tag frozen --lr 0 \
+            --seed ${{ matrix.seed }} --neurons $NEURONS \
+            --episodes $EPISODES --collect $COLLECT --surrogate $SURROGATE
+
+      - name: Plastic condition
+        run: |
+          python experiments/compare_step.py --tag plastic --lr $PLASTIC_LR \
+            --seed ${{ matrix.seed }} --neurons $NEURONS \
+            --episodes $EPISODES --collect $COLLECT --surrogate $SURROGATE
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rep-seed-${{ matrix.seed }}
+          path: experiments/compare_results.jsonl
+          retention-days: 14
+
+  aggregate:
+    needs: seeds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install numpy
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: rep-seed-*
+          path: collected
+
+      - name: Combine and run paired tests on both metrics
+        run: |
+          cat collected/*/compare_results.jsonl > experiments/compare_results.jsonl
+          python experiments/compare_step.py --report
+          echo "--- linear decodability ---"
+          python experiments/paired_test.py --file experiments/compare_results.jsonl --metric linear | tee rep.txt
+          echo "--- MLP decodability ---"
+          python experiments/paired_test.py --file experiments/compare_results.jsonl --metric mlp | tee -a rep.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rep-combined
+          path: |
+            experiments/compare_results.jsonl
+            rep.txt
+          retention-days: 30
+
+      - name: Put the summary in the run page
+        run: |
+          { echo '## plexus: representation quality, plastic vs frozen';
+            echo '```'; cat rep.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

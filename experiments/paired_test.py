@@ -19,7 +19,7 @@ from pathlib import Path
 
 import numpy as np
 
-RESULTS = Path(__file__).resolve().parent / "e2e_results.jsonl"
+DEFAULT = Path(__file__).resolve().parent / "e2e_results.jsonl"
 
 
 def permutation_p(diffs: np.ndarray) -> float:
@@ -39,9 +39,19 @@ def permutation_p(diffs: np.ndarray) -> float:
 
 
 def main() -> None:
-    if not RESULTS.exists():
-        sys.exit(f"no results at {RESULTS}")
-    rows = [json.loads(x) for x in RESULTS.read_text().splitlines() if x.strip()]
+    import argparse
+
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--file", default=str(DEFAULT))
+    ap.add_argument("--metric", default="acc",
+                    help="acc for end-to-end, linear/mlp for representation quality")
+    args = ap.parse_args()
+    results = Path(args.file)
+    if not results.exists():
+        sys.exit(f"no results at {results}")
+    rows = [json.loads(x) for x in results.read_text().splitlines() if x.strip()]
+    for r in rows:
+        r["acc"] = r[args.metric]
     frozen = {r["seed"]: r["acc"] for r in rows if r["tag"] == "frozen"}
     plastic = {r["seed"]: r["acc"] for r in rows if r["tag"] == "plastic"}
     seeds = sorted(set(frozen) & set(plastic))

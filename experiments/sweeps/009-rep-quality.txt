@@ -1,0 +1,28 @@
+Sweep 009 -- representation quality, plastic vs frozen. 24 neurons, 20 seeds,
+graded surrogate. Measures what the column represents, not what the readout
+manages to extract.
+
+Six end-to-end sweeps found nothing, including sweep 008 where fixing the
+eligibility trace's magnitude (correlation -0.045 -> +0.207) moved accuracy by
+-0.001. That result partly falsified its own diagnosis, which is the reason for
+this one.
+
+The suspicion is that end-to-end accuracy is the wrong instrument. The online
+readout extracts ~0.59 where an offline decoder on the same states reaches
+~0.69, and both arms re-fit it every episode, so any column improvement smaller
+than that ~0.10 gap cannot show up. Six sweeps may have been measuring through
+something too blunt to see the effect.
+
+experiments/compare_step.py decodes the column state offline and bypasses the
+readout entirely, which is the quantity the learning rule is supposed to change.
+It was built early and dropped once end-to-end accuracy started working -- in
+hindsight the wrong call.
+
+One local seed, which is a lead and not a result:
+    frozen   linear 0.675   MLP 0.833
+    plastic  linear 0.728   MLP 0.930
+
+Prediction, recorded before the sweep: an effect of roughly that size at
+20 seeds would be the first positive result for the learning rule in this
+project. Three times today a promising single seed has decayed to zero by
+twenty, so the honest prior is that this does the same.
