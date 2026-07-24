@@ -138,9 +138,40 @@ rule is for. Sweep 002, 20 paired seeds at that size:
 | plastic | 0.602 ± 0.069 |
 
 **+0.011, better on 11/20 seeds, p = 0.45.** So the rule fails to help both
-where there is no room and where there is plenty. That rules out the task being
-too easy and points squarely at the rule itself — most likely the credit signal,
-which is derived from a readout that is itself weak and single-pass.
+where there is no room and where there is plenty, which rules out the benchmark.
+
+**Nor is it the teacher.** The next suspect was the credit signal, since the
+column is told `readout.Wᵀ @ (−err)` and the readout is a single-pass decoder
+reaching only ~0.72 of the ~0.86 available. Sweep 004 trains the readout alone
+for 400 episodes with the column frozen, then switches plasticity on, with both
+arms getting the same 800 total episodes:
+
+| Condition | Accuracy |
+|---|---|
+| frozen | 0.601 ± 0.055 |
+| plastic | 0.598 ± 0.042 |
+
+**−0.003, 12/20 seeds, p = 0.87.** A converged teacher changes nothing.
+
+**What it actually is** (`experiments/gradcheck.py`). Everything rests on the
+claim that `elig[n,b,s]` tracks how much neuron *n*'s output would change if
+that synapse were strengthened, and nothing had tested it. A finite-difference
+check — nudge one weight, replay identical input, measure what moved — over 90
+sampled synapses with recurrence disabled:
+
+| | |
+|---|---|
+| sign agreement | **0.64** (58/90, one-sided p = 0.004) |
+| correlation | **−0.045** |
+| median ratio (numeric / analytic) | +0.0023 |
+
+The trace points the right way appreciably more often than chance, and its
+magnitudes carry **no** information. Since the update is `lr · signal · elig`,
+every step mixes real directional signal with magnitude noise of comparable
+size. That is precisely what a rule which neither helps nor destroys looks
+like, and it explains all three nulls without appealing to the task or the
+teacher. **Fixing the trace's magnitude is the next real piece of work**, and
+nothing else is worth tuning until it is done.
 
 What the fixes *did* achieve is moving plasticity from **actively harmful**
 (0.49–0.61 against 0.733 frozen) to **neutral**. The three changes that

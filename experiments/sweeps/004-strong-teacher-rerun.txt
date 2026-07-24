@@ -12,3 +12,10 @@ multiplied by a trace whose sizes are uninformative.
 Prediction, recorded before the result: given that finding, pretraining alone
 should NOT rescue the rule. If it comes back null, the fix is the trace, not
 the teacher.
+
+RESULT -- 20 paired seeds, PRETRAIN=400 confirmed in the run env:
+  frozen 0.601 +/- 0.055, plastic 0.598 +/- 0.042, mean paired difference
+  -0.003, better on 12/20, permutation p = 0.87.
+  The prediction held: a converged teacher does not rescue the rule. Three
+  independent nulls now, and the gradient check says why -- the eligibility
+  trace carries direction but not magnitude.

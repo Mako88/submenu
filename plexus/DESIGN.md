@@ -184,10 +184,26 @@ claims — no synchronisation barrier, emission-time addressing, latency
 tolerance via eligibility traces — are structural and hold regardless. What is
 unproven is that this particular learning rule is worth running.
 
-The obvious next experiments, in order: train the readout to convergence before
-enabling column plasticity, so the teacher is not noise; then test on a task
-where the frozen reservoir is *not* already linearly sufficient, since XOR
-decodability at 0.86 from a random column leaves the rule very little to do.
+Both of those experiments have since been run, and both came back null: a task
+with a +0.193 linear-to-MLP gap (+0.011, p = 0.45) and a readout pre-trained to
+convergence before plasticity switches on (-0.003, p = 0.87).
+
+A finite-difference check of the eligibility trace explains why. It carries
+direction -- sign agreement 0.64 over 90 sampled synapses, one-sided p = 0.004
+-- and no magnitude at all, correlation -0.045 against the measured change. The
+update is lr * signal * elig, so each step combines a genuine directional
+signal with magnitude noise of the same order. That is the shape of a rule that
+neither helps nor destroys, and it accounts for every null so far without
+blaming the benchmark or the teacher.
+
+The next real work is therefore on the trace itself, not on anything feeding
+it. The likely culprit is the surrogate `h`, which smooths the threshold to
+keep gradients flowing but has no reason to be proportional to the true
+sensitivity of a spike count to a weight. Candidates worth trying: scale the
+surrogate by the neuron's distance from threshold rather than a fixed width;
+accumulate sensitivity per emitted event instead of per timestep; or drop
+magnitude entirely and use a sign-only update, which the check says is the only
+part currently carrying information.
 
 ## Status
 
