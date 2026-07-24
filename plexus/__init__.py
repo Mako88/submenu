@@ -14,7 +14,7 @@ from .column import Column, ColumnConfig
 from .events import Event, EventBuffer
 from .network import Plexus, TrainReport
 from .readout import LinearReadout
-from .tasks import DelayedXOR, Episode, TemporalPatterns
+from .tasks import DelayedParity, DelayedXOR, Episode, TemporalPatterns
 from .transport import LocalTransport, Transport
 
 __all__ = [
@@ -27,6 +27,7 @@ __all__ = [
     "Plexus",
     "Transport",
     "TrainReport",
+    "DelayedParity",
     "DelayedXOR",
     "Episode",
     "TemporalPatterns",

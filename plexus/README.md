@@ -99,22 +99,31 @@ online model captures most of what is there. It previously sat at chance; the
 fix was aligning the online decision vector with the one the probe validates
 (bug 8 below).
 
-**Local plasticity still does not demonstrably earn its place.** Paired
-permutation test over those 8 seeds: mean difference **+0.023**, improved on
-5/8 seeds, **p = 0.36**. Not distinguishable from zero.
+**Local plasticity does not help. This is settled, not pending.** 20 paired
+seeds via `.github/workflows/plexus-experiment.yml`:
 
-Worth recording how that number moved, because it is a lesson in itself:
+| Condition | Accuracy |
+|---|---|
+| frozen | 0.713 ± 0.078 |
+| plastic | 0.710 ± 0.075 |
+
+Mean paired difference **−0.003**, better on **9/20** seeds, exact permutation
+**p = 0.79**. Zero, as precisely as this measurement can say so.
+
+How that number moved is the lesson:
 
 | Seeds | frozen | plastic | mean paired diff |
 |---|---|---|---|
 | 3 | 0.686 | 0.745 | +0.059 |
 | 5 | 0.713 | 0.755 | +0.042 |
-| 8 | 0.717 | 0.740 | **+0.023 (p = 0.36)** |
+| 8 | 0.717 | 0.740 | +0.023 (p = 0.36) |
+| **20** | **0.713** | **0.710** | **−0.003 (p = 0.79)** |
 
-At three seeds this looked like a clear win. It decayed steadily as seeds
-accumulated. Anything claimed here from fewer than ~10 paired seeds should be
-treated as noise — hence `.github/workflows/plexus-experiment.yml`, which runs
-20 seeds in parallel.
+At three seeds this looked like a clear win and was written up as one. It
+decayed monotonically as seeds accumulated and landed on exactly nothing.
+Nothing here should be believed from fewer than ~20 paired seeds, which is why
+the sweep runs in CI — 20 seeds in parallel take about two minutes of wall
+clock, against roughly an hour of sequential local runs.
 
 What the fixes *did* achieve is moving plasticity from **actively harmful**
 (0.49–0.61 against 0.733 frozen) to **neutral**. The three changes that
@@ -200,7 +209,26 @@ transport swap rather than a rewrite: `NetworkTransport` implements the same
 three methods, and because events are addressed by *emission* time, a late
 packet still lands in the correct slot of history.
 
-What is established: the architecture holds information across a delay, and
-short-term plasticity is what makes that work. What is not: that the local
-three-factor rule improves on a frozen reservoir. On the evidence so far it
-does not.
+**Established.** The architecture holds information across a ~250 ms delay and
+solves delayed XOR end to end at 0.71–0.74 against 0.50 chance. Short-term
+synaptic plasticity is what makes that work: without it the column is at chance,
+with it the label is 0.86 decodable. That is the main positive result.
+
+**Refuted.** That the local three-factor rule beats a frozen reservoir. Twenty
+paired seeds put the difference at −0.003 with p = 0.79.
+
+Two readings are worth separating. The *locality* claims — no synchronisation
+barrier, emission-time addressing, latency tolerance through eligibility traces —
+are structural and hold regardless of whether the learning rule helps. What is
+refuted is that this particular rule is worth running on this task.
+
+The most likely reason is that the task leaves nothing to do: a *random* column
+already makes delayed XOR ~0.86 linearly decodable, so the rule is being asked
+to improve a representation that is already near the ceiling. `DelayedParity`
+(`n_cues=3`) is the intended follow-up — a frozen column gets ~0.57 there, so
+there is real headroom. First indications are that 3-cue parity is currently a
+*memory* wall rather than a mixing one: with 96 neurons both linear and MLP
+decoders sit at chance, and even at 192 neurons with shortened delays they
+reach only ~0.57. Holding three cues looks to be past what this column's
+short-term plasticity can carry, which is a capacity result worth having in its
+own right.

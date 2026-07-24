@@ -24,49 +24,55 @@ class Episode:
     response: np.ndarray  # (T,) bool -- steps where the answer is read out
 
 
-class DelayedXOR:
-    """Hold two cues across a gap, then report their XOR.
+class DelayedParity:
+    """Hold N cues across gaps, then report their parity.
 
-    Cue A appears as one of two channel groups (A+ or A-), then after a delay
-    cue B appears as one of two others. After a further delay the network must
-    report whether the signs agreed.
+    Each cue appears as one of two channel groups (a "+" group or a "-" group),
+    separated in time, and after a further delay the network must report the
+    parity of the signs.
 
-    Both cues are always present -- only their *identity* varies -- so total
-    activity is identical across all four conditions. Nothing but held,
-    combined memory of two events separated in time can solve it, and the
-    combination is XOR, so no linear function of the two memories works either.
+    Every cue is always present -- only its *identity* varies -- so total
+    activity is identical across all conditions. Nothing but held, combined
+    memory of events separated in time can solve it, and parity is the maximally
+    nonlinear combination: no linear function of the individual memories works,
+    and flipping any single cue flips the answer.
+
+    Difficulty scales sharply with ``n_cues``. Two cues (delayed XOR) turn out
+    to be roughly 0.85 decodable from a *random* column, leaving a learning rule
+    almost nothing to improve. Three cues is where a frozen reservoir starts to
+    run out, which is the regime a plasticity rule has to earn its place in.
     """
 
     def __init__(
         self,
+        n_cues: int = 2,
         group_size: int = 4,
         n_distractor: int = 8,
-        length: int = 400,
-        cue_a_time: int = 40,
-        cue_b_time: int = 140,
+        length: int | None = None,
+        first_cue: int = 40,
+        cue_spacing: int = 100,
         cue_duration: int = 25,
-        response_start: int = 280,
+        response_gap: int = 140,
         go_lead: int = 15,
         go_duration: int = 45,
         jitter: int = 10,
         noise_rate: float = 0.02,
         cue_strength: float = 1.0,
     ):
+        self.n_cues = n_cues
         self.group_size = group_size
         self.n_distractor = n_distractor
-        # Five groups: A-, A+, B-, B+, and a go cue. The go cue is identical in
-        # every condition, so it carries no label information -- it exists
-        # because memory held in synaptic efficacy is silent by construction
-        # and has to be probed to be read. This is the standard delayed-response
-        # paradigm, not a hint.
-        self.n_inputs = 5 * group_size + n_distractor
-        self.go_group = 4
+        # Two groups per cue plus a go cue. The go cue is identical in every
+        # condition, so it carries no label information -- it exists because
+        # memory held in synaptic efficacy is silent by construction and has to
+        # be probed to be read. Standard delayed-response paradigm, not a hint.
+        self.n_inputs = (2 * n_cues + 1) * group_size + n_distractor
+        self.go_group = 2 * n_cues
         self.n_classes = 2
-        self.length = length
-        self.cue_a_time = cue_a_time
-        self.cue_b_time = cue_b_time
+        self.cue_times = [first_cue + i * cue_spacing for i in range(n_cues)]
+        self.response_start = self.cue_times[-1] + cue_duration + response_gap
+        self.length = length if length is not None else self.response_start + 120
         self.cue_duration = cue_duration
-        self.response_start = response_start
         self.go_lead = go_lead
         self.go_duration = go_duration
         self.jitter = jitter
@@ -86,18 +92,17 @@ class DelayedXOR:
         mask = rng.random((T, self.n_inputs)) < self.noise_rate
         x[mask] = rng.uniform(0.4, 1.0, size=int(mask.sum())).astype(np.float32)
 
-        a = int(rng.integers(0, 2))
-        b = int(rng.integers(0, 2))
+        bits = [int(rng.integers(0, 2)) for _ in range(self.n_cues)]
+        bursts = [
+            (
+                self.cue_times[i] + int(rng.integers(-self.jitter, self.jitter + 1)),
+                2 * i + bits[i],
+                self.cue_duration,
+            )
+            for i in range(self.n_cues)
+        ]
+        bursts.append((self.response_start - self.go_lead, self.go_group, self.go_duration))
 
-        t_a = self.cue_a_time + int(rng.integers(-self.jitter, self.jitter + 1))
-        t_b = self.cue_b_time + int(rng.integers(-self.jitter, self.jitter + 1))
-
-        t_go = self.response_start - self.go_lead
-        bursts = (
-            (t_a, a, self.cue_duration),
-            (t_b, 2 + b, self.cue_duration),
-            (t_go, self.go_group, self.go_duration),
-        )
         for t0, group, dur in bursts:
             sl = self._group(group)
             seg = x[t0 : t0 + dur, sl]
@@ -107,7 +112,20 @@ class DelayedXOR:
 
         response = np.zeros(T, dtype=bool)
         response[self.response_start :] = True
-        return Episode(inputs=x, label=a ^ b, response=response)
+        label = 0
+        for b in bits:
+            label ^= b
+        return Episode(inputs=x, label=label, response=response)
+
+
+class DelayedXOR(DelayedParity):
+    """Two-cue parity: hold two cues across a gap, then report their XOR."""
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault("n_cues", 2)
+        kwargs.setdefault("cue_spacing", 100)
+        kwargs.setdefault("response_gap", 115)
+        super().__init__(**kwargs)
 
 
 class TemporalPatterns:
