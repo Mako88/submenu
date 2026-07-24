@@ -10,7 +10,15 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from plexus import Column, ColumnConfig, DelayedXOR, EventBuffer, LocalTransport, Plexus
+from plexus import (
+    Column,
+    ColumnConfig,
+    DelayedXOR,
+    DistributedPlexus,
+    EventBuffer,
+    LocalTransport,
+    Plexus,
+)
 from plexus.readout import LinearReadout
 from plexus.tasks import TemporalPatterns
 
@@ -341,6 +349,91 @@ def test_modulator_lag_does_not_break_the_step_loop():
         m.run_episode(task.episode(rng), learn=True)
     assert np.all(np.isfinite(m.column.W))
     assert not np.allclose(before, m.column.W)
+
+
+# --------------------------------------------------------------------------
+# Distribution: the invariants that make splitting across machines safe.
+# --------------------------------------------------------------------------
+def _distributed(peer_delay=30, seed=0, columns=3, neurons=16, **kw):
+    task = DelayedXOR()
+    return task, DistributedPlexus(
+        task.n_inputs,
+        task.n_classes,
+        n_columns=columns,
+        column=ColumnConfig(n_neurons=neurons, seed=seed, **kw),
+        peer_delay=peer_delay,
+        seed=seed,
+    )
+
+
+def test_columns_agree_on_which_units_inhibit():
+    """Dale signs must be a property of the emitting neuron, not the reader.
+
+    Regression test for a real distribution bug: signs were drawn from each
+    column's own seed, so the same neuron could excite one column while
+    inhibiting another. No biological network does that, and nothing
+    downstream could detect it.
+    """
+    _task, m = _distributed()
+    first = m.columns[0].source_sign
+    for col in m.columns[1:]:
+        assert np.array_equal(first, col.source_sign)
+
+
+def test_each_column_publishes_only_what_it_owns():
+    """A column must never write into another column's slice."""
+    _task, m = _distributed()
+    for i, col in enumerate(m.columns):
+        assert col.source_offset == m.n_inputs + i * m.per_column
+        others = [c for c in m.columns if c is not col]
+        for other in others:
+            lo, hi = other.source_offset, other.source_offset + m.per_column
+            assert not (lo <= col.source_offset < hi)
+
+
+def test_step_order_does_not_change_the_result():
+    """The result must not depend on which column is stepped first.
+
+    Every column publishes before any column reads, and no synapse has a delay
+    below one step, so no column can observe another's present. If that holds,
+    reversing the step order is invisible -- and if it did not hold, the model
+    could not be run on separate machines at all.
+    """
+    task, forward = _distributed(seed=3)
+    _task2, reverse = _distributed(seed=3)
+    reverse.columns.reverse()  # step them in the opposite order
+
+    rng_a, rng_b = np.random.default_rng(5), np.random.default_rng(5)
+    for _ in range(3):
+        forward.run_episode(task.episode(rng_a), learn=False)
+        reverse.run_episode(task.episode(rng_b), learn=False)
+
+    got = {c.source_offset: c.out for c in reverse.columns}
+    for col in forward.columns:
+        assert np.allclose(col.out, got[col.source_offset]), "step order changed the result"
+
+
+def test_peer_synapses_carry_the_longer_delay():
+    """Reaching another column must cost the peer delay, and only that."""
+    _task, m = _distributed(peer_delay=40)
+    col = m.columns[0]
+    own_lo, own_hi = col.source_offset, col.source_offset + m.per_column
+    is_peer = (col.src >= m.n_inputs) & ((col.src < own_lo) | (col.src >= own_hi))
+    assert is_peer.any(), "expected some cross-column synapses"
+    assert col.delay[is_peer].min() >= 40
+    local = (col.src >= own_lo) & (col.src < own_hi)
+    assert col.delay[local].max() <= col.cfg.delay_max
+
+
+def test_distributed_model_runs_and_stays_sparse():
+    task, m = _distributed(peer_delay=120, columns=3, neurons=16)
+    rng = np.random.default_rng(0)
+    for _ in range(3):
+        loss, correct = m.run_episode(task.episode(rng), learn=True)
+        assert np.isfinite(loss)
+        assert isinstance(correct, bool)
+    assert 0.0 < m.sparsity < 0.25
+    assert all(np.all(np.isfinite(c.W)) for c in m.columns)
 
 
 # --------------------------------------------------------------------------
