@@ -1,0 +1,21 @@
+Sweep 006 -- magnitude updates, 24 neurons, 20 seeds, with elig_rms fixed.
+
+Every sweep so far ran with a mis-scaled update. elig_rms normalises the weight
+change by the trace's own magnitude, and it was seeded at 1e-3 with a 0.999
+decay. That was harmless while the modulator fired ~70 times per episode, but
+the "one decision, one release" fix cut it to one update per episode, after
+which the EMA advanced 70x more slowly and stayed dominated by its own
+initialisation: tracking 4.6e-3 against an actual 2.4e-2 after 200 episodes.
+
+So the effective learning rate ran about 5x high and drifted upward as the
+average slowly caught up. Bias correction plus a window measured in updates
+brings the tracked value to within 1.17x of the true RMS.
+
+This re-establishes the baseline comparison (equivalent to sweep 002) with the
+scaling correct. Sweep 005, which tested sign-only updates, ran before the fix
+and is confounded; it should be repeated after this.
+
+Prediction, recorded before the result: the gradient check is independent of
+this bug and still says the trace carries no magnitude information, so correct
+scaling alone should not rescue the rule. But a 5x drifting learning rate is
+enough to mask a small effect either way, and no previous number is clean.

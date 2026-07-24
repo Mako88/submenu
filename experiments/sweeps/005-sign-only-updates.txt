@@ -20,3 +20,6 @@ measured defect rather than at its surroundings, so it has a real chance. But
 sign-only throws away any notion of *how much* a synapse mattered, which may
 simply trade one noise source for another. A null here means the trace needs
 rebuilding rather than reinterpreting, and the surrogate h is the suspect.
+
+CONFOUNDED -- this sweep ran before the elig_rms scaling bug was found, so its
+  update sizes were mis-scaled like every sweep before it. Re-run after 006.

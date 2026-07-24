@@ -298,9 +298,17 @@ class Column:
         self.elig = np.zeros((N, B, S), dtype=np.float32)  # reward-bridging trace
         self.dv_dlam = np.zeros(N, dtype=np.float32)
         self.elig_tau = np.zeros(N, dtype=np.float32)
-        self.elig_rms = np.full(N, 1e-3, dtype=np.float32)
+        # Bias-corrected, and its window is measured in *updates*, not steps.
+        # Both matter: seeding this at 1e-3 with a 0.999 decay was fine while
+        # the modulator fired ~70x per episode, but once one decision produced
+        # one release the EMA advanced 70x more slowly and stayed dominated by
+        # its own initialisation -- tracking 4.6e-3 against an actual 2.4e-2, so
+        # the effective learning rate ran ~5x high and drifted as it caught up.
+        # The same failure as the readout's variance, one level down.
+        self.elig_rms = np.zeros(N, dtype=np.float32)
         self.sensitivity = np.zeros((N, B, S), dtype=np.float32)
-        self.decay_elig_rms = np.float32(0.999)
+        self.decay_elig_rms = np.float32(0.99)
+        self.n_updates = 0
 
         self.learning = True
         self._steps = 0
@@ -533,8 +541,10 @@ class Column:
         else:
             rms = np.ones(self.cfg.n_neurons, dtype=np.float32)
         d = self.decay_elig_rms
+        self.n_updates += 1
         self.elig_rms = (d * self.elig_rms + (1.0 - d) * rms).astype(np.float32)
-        scale = np.maximum(self.elig_rms, 1e-8)[:, None, None]
+        corrected = self.elig_rms / (1.0 - d**self.n_updates)
+        scale = np.maximum(corrected, 1e-8)[:, None, None]
         if cfg.elig_mode == "sign":
             involved = np.abs(self.elig) > cfg.elig_gate * scale
             drive = np.sign(self.elig) * involved
