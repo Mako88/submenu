@@ -49,10 +49,9 @@ class Plexus:
         n_classes: int,
         column: ColumnConfig | None = None,
         readout_tau: float = 60.0,
-        readout_lr: float = 5e-3,
+        readout_lr: float = 0.5,
         feedback_mode: str = "symmetric",
         modulator_lag: int = 0,
-        update_every: int = 1,
         answer_steps: int = 50,
         seed: int = 0,
     ):
@@ -60,7 +59,6 @@ class Plexus:
         cfg = replace(cfg, n_external=n_inputs, modulator_dim=n_classes, seed=seed)
         self.cfg = cfg
         self.n_classes = n_classes
-        self.update_every = update_every
         self.answer_steps = answer_steps
 
         depth = cfg.delay_max + 2
@@ -96,38 +94,47 @@ class Plexus:
         if fb is not None:
             self.column.feedback = fb
 
-        losses: list[float] = []
+        loss = 0.0
         votes = np.zeros(self.n_classes, dtype=np.float64)
         answered = 0
+        answer_state = np.zeros(self.cfg.n_neurons, dtype=np.float32)
+        err = None
 
         for k in range(ep.inputs.shape[0]):
             t = self._t
             self._t += 1
 
             activity = self.column.step(t, ep.inputs[k])
-            logits = self.readout.observe(activity)
+            self.readout.observe(activity)
 
             # The response window splits into answer-then-feedback. Scoring and
             # learning must not overlap: if the readout updates while votes are
             # still being counted, it fits the current episode's label within a
             # few steps and the remaining votes are trivially correct. That
             # reads as perfect training accuracy on a model that has learned
-            # nothing -- which is exactly what it did before this split.
-            # Answering first and being told the answer afterwards is also the
-            # honest order of events for a system learning from feedback.
+            # nothing. Answering first and being told the answer afterwards is
+            # also the honest order of events for a system learning from
+            # feedback.
             if ep.response[k]:
                 answered += 1
                 if answered <= self.answer_steps:
-                    votes += softmax(logits)
+                    # Answer phase: integrate evidence, then commit once.
+                    answer_state += self.readout.trace
                     self.transport.broadcast(t, self._zero_mod)
+                    if answered == self.answer_steps:
+                        answer_state /= self.answer_steps
+                        logits, z = self.readout.decide(answer_state)
+                        votes = softmax(logits)
+                        err, loss = self.readout.error(logits, ep.label)
+                        if learn:
+                            self.readout.update(err, z)
+                elif err is not None and learn:
+                    # Feedback phase: sustained modulator release. The column's
+                    # eligibility traces still hold what it did during the
+                    # answer, so this lands on the synapses that earned it.
+                    self.transport.broadcast(t, self.readout.modulator(err))
                 else:
-                    err, loss = self.readout.error(ep.label)
-                    losses.append(loss)
-                    if learn and (answered - self.answer_steps) % self.update_every == 0:
-                        self.readout.update(err)
-                        self.transport.broadcast(t, self.readout.modulator(err))
-                    else:
-                        self.transport.broadcast(t, self._zero_mod)
+                    self.transport.broadcast(t, self._zero_mod)
             else:
                 self.transport.broadcast(t, self._zero_mod)
 
@@ -148,7 +155,7 @@ class Plexus:
             self.column.apply_modulator(t)
 
         correct = bool(np.argmax(votes) == ep.label)
-        return (float(np.mean(losses)) if losses else 0.0), correct
+        return loss, correct
 
     # -----------------------------------------------------------------
     def train(

@@ -44,7 +44,7 @@ class LinearReadout:
         n_inputs: int,
         n_outputs: int,
         tau: float = 60.0,
-        lr: float = 5e-3,
+        lr: float = 0.5,
         dt: float = 1.0,
         feedback_mode: str = "symmetric",
         seed: int = 0,
@@ -62,47 +62,90 @@ class LinearReadout:
         self.gain = np.float32(1.0 - self.decay)  # unit DC gain, as in the column
         self.feedback_mode = feedback_mode
         self.trace = np.zeros(n_inputs, dtype=np.float32)
-        # Column activity is sparse by design, so the filtered trace has a tiny
-        # magnitude that depends on the target firing rate. Rather than bake
-        # that into the weight scale, track its RMS and normalise. This is the
-        # one place in the model where anything is pooled across neurons, and
-        # it is also the one place where pooling is free: the readout already
-        # has to see the whole population.
-        self.scale = np.float32(1e-3)
-        self.decay_scale = np.float32(0.999)
+        # Per-neuron running mean and variance, used to standardise the trace.
+        #
+        # Centering is not cosmetic. Column activity is sparse and strictly
+        # non-negative, so the population mean is by far the largest direction
+        # in the state and it carries no label information at all. A delta rule
+        # on uncentered input spends its whole budget on that direction and
+        # crawls along the low-variance discriminative ones -- the readout sat
+        # at chance while an offline decoder on *standardised* copies of the
+        # very same states reached 0.86.
+        #
+        # Each dimension is normalised using only its own statistics, so this
+        # stays a per-neuron operation with nothing pooled across the
+        # population and nothing to synchronise.
+        # Both start at zero and are bias-corrected on read. Seeding variance
+        # at 1.0 instead looks harmless and is not: column traces are tiny, so
+        # the leftover initialisation dominated the true variance for thousands
+        # of episodes, shrinking standardised features to a standard deviation
+        # of 0.003 and leaving the decoder at chance on separable data.
+        self.mean = np.zeros(n_inputs, dtype=np.float32)
+        self.var = np.zeros(n_inputs, dtype=np.float32)
+        self.n_decisions = 0
+        # Statistics now advance once per decision, not once per timestep,
+        # so the window is measured in episodes.
+        self.decay_stats = np.float32(0.99)
         self.learning = True
 
     def observe(self, activity: np.ndarray) -> np.ndarray:
-        """Filter incoming column activity and return current logits."""
+        """Filter incoming column activity. Returns the current trace."""
         self.trace = (self.decay * self.trace + self.gain * activity).astype(np.float32)
-        rms = float(np.sqrt(np.mean(self.trace**2)))
-        if self.learning and rms > 0.0:
-            self.scale = np.float32(
-                self.decay_scale * self.scale + (1.0 - self.decay_scale) * rms
-            )
-        return self.logits
+        return self.trace
 
-    @property
-    def normalized(self) -> np.ndarray:
-        return self.trace / max(float(self.scale), 1e-8)
+    def decide(self, state: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Standardise a decision vector and classify it.
 
-    @property
-    def logits(self) -> np.ndarray:
-        return self.W @ self.normalized + self.b
+        The statistics are gathered over *decision vectors* -- one per episode,
+        the same objects being classified -- not over per-timestep traces.
+        Normalising by the wrong quantity is a silent killer here: per-timestep
+        variance is dominated by within-episode dynamics, which averaging over
+        the answer window removes, so dividing by it shrank the features to a
+        standard deviation of 0.009 and did so unevenly across dimensions. The
+        readout sat at chance on states an offline decoder read at 0.85.
+        """
+        state = state.astype(np.float32)
+        d = self.decay_stats
+        if self.learning:
+            self.n_decisions += 1
+            self.mean = (d * self.mean + (1.0 - d) * state).astype(np.float32)
+            bias = 1.0 - d**self.n_decisions
+            centered = state - self.mean / bias
+            self.var = (d * self.var + (1.0 - d) * centered**2).astype(np.float32)
+        bias = 1.0 - d ** max(self.n_decisions, 1)
+        mean = self.mean / bias
+        std = np.sqrt(self.var / bias)
+        z = ((state - mean) / (std + 1e-12)).astype(np.float32)
+        return (self.W @ z + self.b).astype(np.float32), z
 
-    def error(self, target: int) -> tuple[np.ndarray, float]:
-        """Cross-entropy error signal and loss for the current filtered state."""
-        p = softmax(self.logits)
+    def error(self, logits: np.ndarray, target: int) -> tuple[np.ndarray, float]:
+        """Cross-entropy error signal and loss for a given set of logits."""
+        p = softmax(logits)
         onehot = np.zeros(self.n_outputs, dtype=np.float32)
         onehot[target] = 1.0
         loss = float(-np.log(max(p[target], 1e-9)))
         return (p - onehot).astype(np.float32), loss
 
-    def update(self, err: np.ndarray) -> None:
-        """Delta rule on the readout itself -- local, no backward pass."""
+    def update(self, err: np.ndarray, state: np.ndarray) -> None:
+        """Delta rule against the state the answer was actually based on.
+
+        The readout gets an eligibility trace of its own, for the same reason
+        the column has one. Feedback arrives after the answer, by which point
+        the network has moved on -- the go cue has ended and activity is
+        decaying. Updating against the *current* state would train the decoder
+        on a different distribution from the one it is scored on, which is
+        enough on its own to hold accuracy at chance.
+        """
         if not self.learning:
             return
-        self.W -= self.lr * np.outer(err, self.normalized)
+        # Normalised LMS: dividing by the state's own energy makes the step
+        # size mean "move the logit this fraction of the way" regardless of how
+        # many neurons there are or how active they were. Without it the
+        # effective rate scales with ||state||^2 (~192 here), and any fixed lr
+        # is either inert or wildly divergent -- at lr=0.05 the readout was
+        # confidently wrong, with cross-entropy near 5 on a two-class problem.
+        energy = float(state @ state) + 1.0
+        self.W -= (self.lr / energy) * np.outer(err, state)
         self.b -= self.lr * err
 
     def modulator(self, err: np.ndarray) -> np.ndarray:

@@ -95,41 +95,67 @@ def collect(model, task, n, rng):
     return np.array(states, dtype=np.float64), np.array(labels)
 
 
+def measure(model, task, n, seed=11):
+    X, y = collect(model, task, n, np.random.default_rng(seed))
+    split = int(0.7 * len(X))
+    Xtr, Xte, ytr, yte = X[:split], X[split:], y[:split], y[split:]
+    mu, sd = Xtr.mean(0), Xtr.std(0) + 1e-8
+    Xtr, Xte = (Xtr - mu) / sd, (Xte - mu) / sd
+    return logistic_score(logistic(Xtr, ytr), Xte, yte), mlp(Xtr, ytr, Xte, yte)
+
+
+def build(neurons, lr, seed):
+    task = DelayedXOR()
+    return task, Plexus(
+        task.n_inputs,
+        task.n_classes,
+        column=ColumnConfig(n_neurons=neurons, lr=lr, seed=seed),
+        seed=seed,
+    )
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--n", type=int, default=1200)
     ap.add_argument("--neurons", type=int, default=192)
     ap.add_argument("--warmup", type=int, default=40)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument(
+        "--compare",
+        type=int,
+        default=0,
+        metavar="EPISODES",
+        help="train plastic and frozen columns for EPISODES and compare how "
+        "linearly decodable their representations become",
+    )
     args = ap.parse_args()
 
-    # Recover the individual cues alongside the XOR label by re-deriving them.
-    task = DelayedXOR()
-    model = Plexus(
-        task.n_inputs,
-        task.n_classes,
-        column=ColumnConfig(n_neurons=args.neurons, seed=args.seed),
-        seed=args.seed,
-    )
+    if args.compare:
+        # This is the cleanest measurement of what the plasticity rule does,
+        # because it does not depend on the online readout's sample efficiency
+        # at all. It asks only one thing: after the same amount of experience,
+        # is the column's own representation more linearly separable when the
+        # three-factor rule was running than when it was frozen?
+        print(f"training {args.compare} episodes per condition, then probing\n")
+        for label, lr in (("plastic", ColumnConfig.lr), ("frozen ", 0.0)):
+            task, model = build(args.neurons, lr, args.seed)
+            rng = np.random.default_rng(1000 + args.seed)
+            model.train(task, args.compare, rng=rng, report_every=10**9)
+            lin, nonlin = measure(model, task, args.n)
+            print(f"{label}  linear {lin:.3f}   MLP {nonlin:.3f}")
+        print("\nA higher linear score for 'plastic' means the rule made the")
+        print("representation easier to read -- which is its entire job.")
+        return
+
+    task, model = build(args.neurons, ColumnConfig.lr, args.seed)
     rng = np.random.default_rng(7)
     # Let homeostasis settle before probing, so we measure the operating regime
     # rather than the initial transient.
     for _ in range(args.warmup):
         model.run_episode(task.episode(rng), learn=True)
 
-    X, y = collect(model, task, args.n, np.random.default_rng(11))
-    split = int(0.7 * len(X))
-    Xtr, Xte, ytr, yte = X[:split], X[split:], y[:split], y[split:]
-    mu, sd = Xtr.mean(0), Xtr.std(0) + 1e-8
-    Xtr, Xte = (Xtr - mu) / sd, (Xte - mu) / sd
-
-    print(f"probing {args.neurons} neurons, {len(X)} episodes, state captured at answer time")
-    print(f"state norm: mean {np.abs(X).mean():.4f}   nonzero dims "
-          f"{int((np.abs(X).sum(0) > 0).sum())}/{X.shape[1]}\n")
-
-    W = logistic(Xtr, ytr)
-    lin = logistic_score(W, Xte, yte)
-    nonlin = mlp(Xtr, ytr, Xte, yte)
+    lin, nonlin = measure(model, task, args.n)
+    print(f"probing {args.neurons} neurons, {args.n} episodes, state at answer time\n")
     print(f"XOR decodable, linear : {lin:.3f}   (chance 0.500)")
     print(f"XOR decodable, MLP    : {nonlin:.3f}   (chance 0.500)")
     print()

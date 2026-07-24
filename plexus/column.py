@@ -223,6 +223,8 @@ class Column:
         self.elig = np.zeros((N, B, S), dtype=np.float32)  # reward-bridging trace
         self.dv_dlam = np.zeros(N, dtype=np.float32)
         self.elig_tau = np.zeros(N, dtype=np.float32)
+        self.elig_rms = np.full(N, 1e-3, dtype=np.float32)
+        self.decay_elig_rms = np.float32(0.999)
 
         self.learning = True
         self._steps = 0
@@ -349,7 +351,7 @@ class Column:
         #    12ms constant. Heterogeneous time constants must buy memory, not
         #    gain, or the population is just badly normalised.
         self.b *= self.decay_branch
-        self.b += self.gain_branch * x.sum(axis=2)
+        self.b += self.gain_branch * (self.W * x).sum(axis=2)
         a, dphi, engaged = self._phi(self.b)
 
         # 4. Soma integration.
@@ -420,7 +422,20 @@ class Column:
             return
 
         signal = (self.feedback @ m).astype(np.float32)  # (N,)
-        self.W += cfg.lr * signal[:, None, None] * self.elig
+
+        # Normalise by each neuron's own recent eligibility magnitude, so that
+        # `lr` means "this fraction of the weight scale per update" instead of
+        # being hostage to the trace magnitude. Chaining unit-DC-gain filters
+        # leaves eligibility around 1e-2, and with a raw lr the modulator moved
+        # weights by 0.1% while homeostatic scaling moved them by 21% -- the
+        # three-factor rule was, measurably, decorative. Each neuron uses only
+        # its own statistics, so this is local, and it is roughly what
+        # metaplasticity does biologically.
+        rms = np.sqrt(np.mean(self.elig**2, axis=(1, 2))).astype(np.float32)
+        d = self.decay_elig_rms
+        self.elig_rms = (d * self.elig_rms + (1.0 - d) * rms).astype(np.float32)
+        gain = signal / np.maximum(self.elig_rms, 1e-8)
+        self.W += cfg.lr * gain[:, None, None] * self.elig
         np.clip(self.W, 0.0, cfg.weight_max, out=self.W)
 
         if cfg.lr_tau > 0.0:

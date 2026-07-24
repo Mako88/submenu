@@ -11,6 +11,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from plexus import Column, ColumnConfig, DelayedXOR, EventBuffer, LocalTransport, Plexus
+from plexus.readout import LinearReadout
 from plexus.tasks import TemporalPatterns
 
 
@@ -117,21 +118,22 @@ def test_membrane_gain_is_independent_of_time_constant():
     """Long time constants must buy memory, not gain.
 
     With a naive leaky integrator the DC gain is 1/(1-decay), so a 320ms
-    neuron would respond ~25x more strongly than a 12ms one to the same
-    sustained input. Correlation between tau and drive should be negligible.
+    neuron settles ~25x higher than a 12ms one under identical sustained
+    drive. That is the exact defect this guards against, so the measurement is
+    the steady-state level under constant input, with firing suppressed so the
+    reset does not confound it. Transient *responsiveness* legitimately falls
+    with tau; steady-state gain must not depend on it at all.
     """
     cfg = ColumnConfig(n_neurons=256, n_external=16, seed=1)
     transport = LocalTransport(16 + 256, cfg.delay_max + 2, cfg.modulator_dim)
     col = Column(cfg, transport)
     col.learning = False
-    rng = np.random.default_rng(2)
-    peak = np.zeros(cfg.n_neurons, dtype=np.float32)
-    for t in range(1500):
-        ext = (rng.random(16) < 0.05).astype(np.float32)
-        col.step(t, ext)
-        peak = np.maximum(peak, np.abs(col.v))
-    r = np.corrcoef(col.tau_soma, peak)[0, 1]
-    assert abs(r) < 0.35, f"tau/drive correlation {r:.3f} suggests a gain leak"
+    col.theta.fill(1e6)  # suppress firing; we want the raw integrator level
+    steady = np.ones(16, dtype=np.float32)
+    for t in range(4000):
+        col.step(t, steady)
+    r = np.corrcoef(col.tau_soma, np.abs(col.v))[0, 1]
+    assert abs(r) < 0.2, f"tau/steady-state correlation {r:.3f} indicates a gain leak"
 
 
 def test_dale_law_signs_are_preserved():
@@ -217,6 +219,22 @@ def test_stp_state_resets_between_episodes():
 # --------------------------------------------------------------------------
 # Learning mechanics.
 # --------------------------------------------------------------------------
+def test_readout_standardisation_reaches_unit_scale():
+    """Standardised features must actually have ~unit scale, on tiny inputs.
+
+    Column traces are small, so an EMA variance seeded at 1.0 stays dominated
+    by its own initialisation for thousands of episodes. That produced z with
+    a standard deviation of 0.003 and pinned the decoder at chance on data an
+    offline decoder read at 0.85 -- with nothing visibly wrong anywhere. The
+    input scale here is deliberately tiny to catch exactly that.
+    """
+    r = LinearReadout(n_inputs=32, n_outputs=2, seed=0)
+    rng = np.random.default_rng(0)
+    zs = [r.decide(rng.normal(0.0, 1e-3, size=32).astype(np.float32))[1] for _ in range(300)]
+    spread = float(np.array(zs[-100:]).std())
+    assert 0.4 < spread < 2.5, f"standardised feature spread {spread:.4f} is not unit-scale"
+
+
 def test_training_metric_does_not_leak_the_label():
     """Votes must be counted before any update on the same episode.
 
@@ -231,9 +249,9 @@ def test_training_metric_does_not_leak_the_label():
     updates: list[int] = []
     original = m.readout.update
 
-    def spy(err):
+    def spy(err, state):
         updates.append(m._t)
-        return original(err)
+        return original(err, state)
 
     m.readout.update = spy
     ep = task.episode(np.random.default_rng(0))
@@ -245,6 +263,29 @@ def test_training_metric_does_not_leak_the_label():
     assert updates, "expected the readout to train at all"
     assert min(updates) > last_vote, "readout updated while votes were still being counted"
 
+
+
+def test_output_depends_on_synaptic_weights():
+    """Perturbing W must change what the column emits.
+
+    Regression test for the worst bug in this model's history: the branch
+    integration summed its inputs *unweighted*, so W was read by synaptic
+    scaling and by the learning rule but never used to compute anything. The
+    network ran on implicit unit weights, learning was a no-op with no visible
+    symptom, and a plastic column and a frozen one produced bit-identical
+    states while their weight matrices differed by 25%.
+    """
+    cfg = ColumnConfig(n_neurons=32, n_external=8, seed=0)
+
+    def emissions(scale):
+        transport = LocalTransport(8 + 32, cfg.delay_max + 2, cfg.modulator_dim)
+        col = Column(cfg, transport)
+        col.learning = False
+        col.W = col.W * scale
+        rng = np.random.default_rng(3)
+        return np.array([col.step(t, (rng.random(8) < 0.1).astype(np.float32)) for t in range(400)])
+
+    assert not np.allclose(emissions(1.0), emissions(0.4))
 
 
 def test_frozen_column_weights_do_not_move():

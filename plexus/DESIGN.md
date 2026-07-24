@@ -122,6 +122,31 @@ and was discarded at reset. A continuously running system has no such boundary;
 plainly: latency tolerance requires the system to still be running when the
 signal lands. Episode boundaries are the enemy of it, not network delay.
 
+## The bug that invalidated everything before it
+
+`W` was never applied in the forward pass. Branch integration read
+
+```python
+self.b += self.gain_branch * x.sum(axis=2)      # unweighted!
+```
+
+so synaptic weights were used by synaptic scaling and by the learning rule, but
+never to compute anything. The network ran on implicit unit weights, and
+learning was a no-op with no visible symptom — sparsity, plateau engagement,
+thresholds and loss all looked healthy.
+
+It surfaced only from a comparison that should have been impossible: a plastic
+column and a frozen one produced **bit-identical** states while their weight
+matrices differed by 25 %. Any measurement taken before this fix describes a
+different model from the one in the repository.
+
+The general lesson is worth stating: the dangerous bugs here are not the ones
+that crash, they are the ones that leave a plausible-looking model that is
+quietly not doing the thing it claims. Four separate bugs in this project all
+produced the same innocuous symptom — a decoder at chance — which is why
+`experiments/probe.py` earns its place. Asking *is the information present?*
+separately from *is the rule extracting it?* localised every one of them.
+
 ## Honest limitations
 
 - Local learning rules have historically plateaued below backprop on hard credit
@@ -138,6 +163,31 @@ signal lands. Episode boundaries are the enemy of it, not network delay.
   small output space, but `dfa` is the strictly local option.
 - Open-network participation means untrusted, heterogeneous, churning nodes.
   Start with a trusted cluster; treat that as much later work.
+
+## Where the evidence actually stands
+
+**Established.** The architecture holds information across a ~250-step delay,
+and short-term synaptic plasticity is what makes that work: with STP disabled
+the column is at chance (0.527 linear / 0.533 MLP), with it enabled the label
+is recoverable at 0.864 ± 0.013 / 0.984 ± 0.006. That is a large,
+reproducible architectural effect and it is the main positive result.
+
+**Not established, and currently contradicted.** That the local three-factor
+rule beats a frozen reservoir. Across three seeds it is neutral at a low rate
+(0.856 ± 0.008 vs 0.864 ± 0.013 frozen) and clearly harmful at higher ones.
+The most likely cause is bootstrapping: the column's credit signal is derived
+from a readout that is itself weak, so the column follows a noisy teacher and
+degrades a representation that was already good.
+
+Worth being precise about what that does and does not impugn. The *locality*
+claims — no synchronisation barrier, emission-time addressing, latency
+tolerance via eligibility traces — are structural and hold regardless. What is
+unproven is that this particular learning rule is worth running.
+
+The obvious next experiments, in order: train the readout to convergence before
+enabling column plasticity, so the teacher is not noise; then test on a task
+where the frozen reservoir is *not* already linearly sufficient, since XOR
+decodability at 0.86 from a random column leaves the rule very little to do.
 
 ## Status
 
