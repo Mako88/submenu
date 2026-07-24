@@ -99,65 +99,40 @@ online model captures most of what is there. It previously sat at chance; the
 fix was aligning the online decision vector with the one the probe validates
 (bug 8 below).
 
-**Local plasticity does not help. This is settled, not pending.** 20 paired
-seeds via `.github/workflows/plexus-experiment.yml`:
+**Local plasticity does not help.** Five 20-seed paired sweeps, each removing
+one explanation, all run through `.github/workflows/plexus-experiment.yml`:
 
-| Condition | Accuracy |
-|---|---|
-| frozen | 0.713 ± 0.078 |
-| plastic | 0.710 ± 0.075 |
-
-Mean paired difference **−0.003**, better on **9/20** seeds, exact permutation
-**p = 0.79**. Zero, as precisely as this measurement can say so.
-
-How that number moved is the lesson:
-
-| Seeds | frozen | plastic | mean paired diff |
+| Sweep | What it changed | Δ (plastic − frozen) | p |
 |---|---|---|---|
-| 3 | 0.686 | 0.745 | +0.059 |
-| 5 | 0.713 | 0.755 | +0.042 |
-| 8 | 0.717 | 0.740 | +0.023 (p = 0.36) |
-| **20** | **0.713** | **0.710** | **−0.003 (p = 0.79)** |
+| 001 | 96 neurons, baseline | −0.003 | 0.79 |
+| 002 | 24 neurons: label present but tangled (+0.193 linear→MLP gap) | +0.011 | 0.45 |
+| 004 | readout pre-trained to convergence first | −0.003 | 0.87 |
+| 006 | eligibility normaliser fixed (lr had run ~5× high) | +0.006 | 0.66 |
+| 007 | sign-only updates, magnitude discarded | +0.003 | 0.77 |
 
-At three seeds this looked like a clear win and was written up as one. It
-decayed monotonically as seeds accumulated and landed on exactly nothing.
+Between them these exhaust the external explanations. Not the benchmark: it
+fails with no headroom and with plenty. Not the teacher: a converged readout
+changes nothing. Not the scaling: correcting a 5×-inflated, drifting learning
+rate moves the number by 0.005. Not the magnitude noise: using only the sign
+does not help either.
+
+How the first of these numbers moved is its own lesson:
+
+| Seeds | Δ | |
+|---|---|---|
+| 3 | +0.059 | written up as a clear win |
+| 5 | +0.042 | |
+| 8 | +0.023 | p = 0.36 |
+| **20** | **−0.003** | **p = 0.79** |
+
 Nothing here should be believed from fewer than ~20 paired seeds, which is why
-the sweep runs in CI — 20 seeds in parallel take about two minutes of wall
-clock, against roughly an hour of sequential local runs.
+the sweeps run in CI — 20 in parallel take about two minutes of wall clock
+against roughly an hour sequentially.
 
-**The obvious excuse does not survive either.** The natural reading of the
-result above is that 96 neurons leaves nothing to improve: a random column that
-size already makes the label 0.86 linearly decodable. Smaller columns mix less,
-and at 24 neurons the label is clearly present but *not* linearly accessible —
-linear 0.689 against MLP 0.881, a gap of +0.193 that is exactly what a learning
-rule is for. Sweep 002, 20 paired seeds at that size:
-
-| Condition | Accuracy |
-|---|---|
-| frozen | 0.592 ± 0.059 |
-| plastic | 0.602 ± 0.069 |
-
-**+0.011, better on 11/20 seeds, p = 0.45.** So the rule fails to help both
-where there is no room and where there is plenty, which rules out the benchmark.
-
-**Nor is it the teacher.** The next suspect was the credit signal, since the
-column is told `readout.Wᵀ @ (−err)` and the readout is a single-pass decoder
-reaching only ~0.72 of the ~0.86 available. Sweep 004 trains the readout alone
-for 400 episodes with the column frozen, then switches plasticity on, with both
-arms getting the same 800 total episodes:
-
-| Condition | Accuracy |
-|---|---|
-| frozen | 0.601 ± 0.055 |
-| plastic | 0.598 ± 0.042 |
-
-**−0.003, 12/20 seeds, p = 0.87.** A converged teacher changes nothing.
-
-**What it actually is** (`experiments/gradcheck.py`). Everything rests on the
-claim that `elig[n,b,s]` tracks how much neuron *n*'s output would change if
-that synapse were strengthened, and nothing had tested it. A finite-difference
-check — nudge one weight, replay identical input, measure what moved — over 90
-sampled synapses with recurrence disabled:
+**Why it fails** (`experiments/gradcheck.py`). Everything rests on the claim
+that `elig[n,b,s]` tracks how much neuron *n*'s output would change if that
+synapse were strengthened, and nothing had tested it. A finite-difference check
+over 90 sampled synapses, recurrence disabled:
 
 | | |
 |---|---|
@@ -165,13 +140,13 @@ sampled synapses with recurrence disabled:
 | correlation | **−0.045** |
 | median ratio (numeric / analytic) | +0.0023 |
 
-The trace points the right way appreciably more often than chance, and its
-magnitudes carry **no** information. Since the update is `lr · signal · elig`,
-every step mixes real directional signal with magnitude noise of comparable
-size. That is precisely what a rule which neither helps nor destroys looks
-like, and it explains all three nulls without appealing to the task or the
-teacher. **Fixing the trace's magnitude is the next real piece of work**, and
-nothing else is worth tuning until it is done.
+The trace points the right way appreciably more often than chance and its
+magnitudes carry no information at all. Sweep 007 shows that keeping only the
+sign is not enough either, so the trace needs **rebuilding rather than
+reinterpreting**. The suspect is the surrogate `h`: it smooths the threshold so
+gradients keep flowing, but nothing makes it proportional to how sensitive a
+spike count actually is to a weight. That is a design change, not a parameter,
+and it is where the next real work is.
 
 What the fixes *did* achieve is moving plasticity from **actively harmful**
 (0.49–0.61 against 0.733 frozen) to **neutral**. The three changes that
