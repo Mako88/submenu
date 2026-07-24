@@ -133,6 +133,42 @@ releasing one modulator per decision instead of sustaining it for ~70 steps
 against an increasingly contaminated trace; and normalising the update
 population-wide rather than per neuron.
 
+## Splitting it across machines
+
+`DistributedPlexus` cuts the model into columns that share one event substrate.
+Each column owns a slice of the source space, publishes only that slice, and
+reaches its peers exclusively through a conduction delay. The per-step loop is:
+
+```python
+transport.begin(t)                    # open the timestep
+transport.publish_slice(t, 0, ext)    # nobody's column owns the sensors
+for col in columns: col.publish(t)    # each writes only what it owns
+for col in columns: col.step(t)       # each reads history, never the present
+```
+
+Only the middle two lines would cross a network. Every column publishes before
+any column reads, and every synapse carries a delay of at least one step, so no
+column can observe another's current state — which means **the order columns
+are stepped in cannot change the result**. That is asserted by
+`test_step_order_does_not_change_the_result`, and it is the property that makes
+the loop safe on separate machines rather than merely tidy about ownership.
+
+Distribution costs the model exactly one parameter: `peer_delay`, the
+conduction delay on synapses reaching a neuron another column owns. One step is
+1 ms, so it reads directly as network latency — 2 is a rack, 30 a region, 150
+intercontinental. Cortex runs 0.5–30 ms conduction delays natively, so the
+lower half of that range is not a compromise; it is the regime the architecture
+was designed around.
+
+Two real bugs surfaced only once the model was actually split:
+
+- The source space was sized for a column's own neurons, so any synapse
+  reaching a peer indexed out of bounds.
+- Dale signs were drawn from each column's own seed, so the same neuron could
+  be excitatory as far as one column was concerned and inhibitory to another.
+  Being excitatory is a property of the *emitting* neuron, not of whoever reads
+  it. Signs now come from a shared `sign_seed`.
+
 ## Bugs worth knowing about
 
 Each is now a regression test. Every one of them left a model that ran, trained,
