@@ -29,9 +29,7 @@ on:
         required: false
         default: '0'
       neurons:
-        description: 'Neurons in the column. Smaller columns mix less, so the
-          label is present but not linearly accessible -- the regime where a
-          learning rule actually has room to help.'
+        description: 'Neurons in the column (smaller columns mix less)'
         required: false
         default: '24'
   # workflow_dispatch only works for workflows already on the default branch, so

@@ -21,3 +21,5 @@ run 2 -- 20 seeds, 400 episodes, 24 neurons, plastic lr 5e-3, tau_elig 70.
   left to improve. At 24 neurons the label is present but tangled: linear
   0.689 against MLP 0.881, a gap of +0.193. That gap is exactly what a
   learning rule is for, so this is the first test with real headroom in it.
+
+  (retriggered: run 2 did not start on the first push)
