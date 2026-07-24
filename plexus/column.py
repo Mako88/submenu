@@ -287,6 +287,7 @@ class Column:
         self.dv_dlam = np.zeros(N, dtype=np.float32)
         self.elig_tau = np.zeros(N, dtype=np.float32)
         self.elig_rms = np.full(N, 1e-3, dtype=np.float32)
+        self.sensitivity = np.zeros((N, B, S), dtype=np.float32)
         self.decay_elig_rms = np.float32(0.999)
 
         self.learning = True
@@ -455,6 +456,10 @@ class Column:
         self.eps += self.gain_soma[:, None, None] * self.pre * sens
         self.elig *= self.decay_elig
         self.elig += self.gain_elig * h[:, None, None] * self.eps
+        # Unfiltered per-step sensitivity, d(out)/dW before the reward-bridging
+        # filter. Exposed so experiments/gradcheck.py can integrate it over a
+        # run and compare against a finite difference.
+        self.sensitivity = h[:, None, None] * self.eps
 
         if cfg.lr_tau > 0.0:
             self.dv_dlam = (v_prev + self.decay_soma * self.dv_dlam).astype(np.float32)
