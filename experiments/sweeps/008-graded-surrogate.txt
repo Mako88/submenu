@@ -28,3 +28,20 @@ Prediction, recorded before the result: a correlation of +0.207 is a real
 improvement on -0.045 but still far from tracking the gradient properly, so a
 detectable effect is plausible but a large one is not. Compare against sweep
 006, the clean baseline at these settings: +0.006, p = 0.66.
+
+RESULT -- 20 paired seeds, SURROGATE=graded confirmed in the run env:
+  frozen 0.592 +/- 0.059, plastic 0.591 +/- 0.060, mean paired difference
+  -0.001, better on 8/20, permutation p = 0.97. The flattest result yet.
+
+  This partly falsifies the diagnosis that produced it. Improving the trace's
+  gradient correlation from -0.045 to +0.207 changed end-to-end accuracy by
+  -0.001, so magnitude fidelity was not the binding constraint even though it
+  was genuinely broken.
+
+  Leading hypothesis, untested: the readout is the bottleneck and hides any
+  column improvement. It extracts ~0.59 where an offline decoder on the same
+  states gets ~0.69, and both arms re-fit it every episode, so a representation
+  gain smaller than that ~0.10 gap is invisible to this measurement. If so, the
+  right instrument is experiments/compare_step.py, which decodes the column
+  state offline and bypasses the readout -- built early, then dropped once
+  end-to-end accuracy started working, which was the wrong call.
