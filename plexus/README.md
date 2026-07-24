@@ -160,6 +160,32 @@ intercontinental. Cortex runs 0.5–30 ms conduction delays natively, so the
 lower half of that range is not a compromise; it is the regime the architecture
 was designed around.
 
+### Latency costs nothing
+
+Four columns of 24 neurons, 4 seeds per point, frozen columns
+(`.github/workflows/plexus-latency.yml`):
+
+| peer delay | eval accuracy |
+|---|---|
+| 2 ms — same rack | 0.625 ± 0.079 |
+| 10 ms | 0.650 ± 0.080 |
+| 30 ms — same region | 0.673 ± 0.095 |
+| 80 ms | 0.655 ± 0.056 |
+| 150 ms — intercontinental | 0.673 ± 0.090 |
+
+**A 75× increase in inter-column latency costs −0.048 accuracy** — that is,
+nothing, and the sign is negative: the 150 ms condition scored slightly *higher*
+than the 2 ms one. Seed-to-seed spread within a single condition (±0.06–0.10)
+dwarfs any difference between conditions.
+
+This is the architectural claim, measured rather than asserted. It holds because
+delay is not lag the model is fighting — it is a parameter the model already
+had. A peer 150 ms away is read the same way a peer 2 ms away is read: through
+a conduction delay, addressed by emission time. Nothing waits, so nothing
+degrades. (The slight upward trend is not significant here, but it is the
+direction the design predicts: a wider spread of delays enriches the temporal
+basis, which is why cortex uses delays for coding rather than minimising them.)
+
 Two real bugs surfaced only once the model was actually split:
 
 - The source space was sized for a column's own neurons, so any synapse

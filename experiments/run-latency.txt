@@ -6,3 +6,9 @@ run 1 -- peer_delay in {2, 10, 30, 80, 150} steps x 4 seeds, 4 columns of 24
   so this spans a rack (2) to an intercontinental round trip (150). Flat
   accuracy across it would make latency tolerance a measured property rather
   than a design aspiration.
+
+run 1 result -- accuracy flat across the whole range:
+    2ms 0.625 +/- 0.079   10ms 0.650 +/- 0.080   30ms 0.673 +/- 0.095
+   80ms 0.655 +/- 0.056  150ms 0.673 +/- 0.090   (4 seeds each)
+  2ms -> 150ms costs -0.048, i.e. nothing, and the sign is negative. Within-
+  condition seed spread dwarfs any between-condition difference.
