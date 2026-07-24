@@ -21,3 +21,9 @@ Prediction, recorded before the result: if the teacher was the problem, plastic
 should now beat frozen. If this comes back null too, the three-factor rule as
 implemented does not work, and the next suspect is the eligibility trace itself
 rather than anything feeding it.
+
+MISFIRE -- the first attempt ran with PRETRAIN=0 and so tested nothing. Push
+  triggered runs carry no workflow inputs, and the env default was '0', so the
+  sweep silently repeated sweep 002 with a different seed stream: frozen 0.592
+  +/- 0.059, plastic 0.606 +/- 0.065, +0.015, 13/20, p = 0.26. Consistent with
+  the earlier nulls, but not the experiment. Default corrected to 400.

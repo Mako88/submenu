@@ -35,7 +35,7 @@ on:
       pretrain:
         description: 'Readout-only episodes before column plasticity'
         required: false
-        default: '0'
+        default: '400'
   # workflow_dispatch only works for workflows already on the default branch, so
   # until this is merged the sweep is triggered by touching a sentinel file.
   # Editing experiments/run-experiment.txt (which also records the settings)
@@ -52,7 +52,9 @@ env:
   TAU_ELIG: ${{ github.event.inputs.tau_elig || '70' }}
   MODULATOR_LAG: ${{ github.event.inputs.modulator_lag || '0' }}
   NEURONS: ${{ github.event.inputs.neurons || '24' }}
-  PRETRAIN: ${{ github.event.inputs.pretrain || '0' }}
+  # Default 400, not 0: push-triggered runs carry no inputs, so a default of
+  # 0 silently ran the sweep without the pretraining it was meant to test.
+  PRETRAIN: ${{ github.event.inputs.pretrain || '400' }}
 
 jobs:
   seeds:

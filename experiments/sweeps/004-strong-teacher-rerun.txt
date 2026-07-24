@@ -1,0 +1,14 @@
+Sweep 004 -- sweep 003 as actually intended: 400 readout-only episodes with the
+column frozen, then 400 with plasticity on. Both arms get the same 800 total.
+
+Sweep 003 misfired with PRETRAIN=0 and merely repeated 002.
+
+Context that has since sharpened the question: experiments/gradcheck.py now
+finite-difference-checks the eligibility trace and finds it carries direction
+(sign agreement 0.64, 58/90, p = 0.004) but no magnitude (correlation -0.045,
+analytic ~400x the measured change). So even a perfect teacher is being
+multiplied by a trace whose sizes are uninformative.
+
+Prediction, recorded before the result: given that finding, pretraining alone
+should NOT rescue the rule. If it comes back null, the fix is the trace, not
+the teacher.
