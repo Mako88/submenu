@@ -257,9 +257,9 @@ def test_training_metric_does_not_leak_the_label():
     updates: list[int] = []
     original = m.readout.update
 
-    def spy(err, state):
+    def spy(*args, **kwargs):
         updates.append(m._t)
-        return original(err, state)
+        return original(*args, **kwargs)
 
     m.readout.update = spy
     ep = task.episode(np.random.default_rng(0))

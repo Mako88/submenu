@@ -1,0 +1,29 @@
+Sweep 010 -- plastic vs frozen with an RLS readout. 24 neurons, 20 seeds,
+graded surrogate.
+
+Eight end-to-end sweeps found nothing, and the standing suspicion was that the
+readout could not extract what the column had: it reached ~0.59 where an offline
+decoder on the same states reached ~0.69. Any column improvement smaller than
+that gap was invisible.
+
+The readout now uses recursive least squares (FORCE, Sussillo & Abbott 2009)
+instead of a delta rule. A delta rule takes a fixed step along each sample; RLS
+carries the inverse correlation matrix of its inputs, so one sample moves every
+direction by as much as the accumulated evidence warrants. One local seed:
+
+    100 episodes    delta 0.580    rls 0.673
+    400 episodes    delta 0.653    rls 0.693     (offline ceiling ~0.69)
+
+RLS at 400 episodes has essentially closed the gap to the offline ceiling, and
+at 100 it already beats what the delta rule reached at 400. That is the
+instrument problem gone, if it holds across seeds.
+
+The cost is real and worth stating: P is (n+1)x(n+1) and pools across the whole
+population, which is a genuine exception to the locality rule. It stays inside
+the readout, the one component that already sees every neuron, and it never
+crosses the network -- but it does not scale to a large column.
+
+Prediction, recorded before the result: this is the first sweep where a column
+improvement could actually show up, so it is the cleanest test of the learning
+rule yet. Given eight nulls, the honest prior is still null -- but a null here
+means something different, because it can no longer be blamed on the readout.

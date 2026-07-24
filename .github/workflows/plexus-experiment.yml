@@ -44,6 +44,10 @@ on:
         description: 'Sensitivity: window, graded, or hybrid'
         required: false
         default: 'graded'
+      readout_rule:
+        description: 'Readout learning rule: delta or rls'
+        required: false
+        default: 'rls'
   # workflow_dispatch only works for workflows already on the default branch, so
   # until this is merged the sweep is triggered by touching a sentinel file.
   # Editing experiments/run-experiment.txt (which also records the settings)
@@ -67,6 +71,7 @@ env:
   PRETRAIN: ${{ github.event.inputs.pretrain || '0' }}
   ELIG_MODE: ${{ github.event.inputs.elig_mode || 'magnitude' }}
   SURROGATE: ${{ github.event.inputs.surrogate || 'graded' }}
+  READOUT_RULE: ${{ github.event.inputs.readout_rule || 'rls' }}
 
 jobs:
   seeds:
@@ -102,7 +107,8 @@ jobs:
             --neurons $NEURONS \
             --pretrain $PRETRAIN \
             --elig-mode $ELIG_MODE \
-            --surrogate $SURROGATE
+            --surrogate $SURROGATE \
+            --readout-rule $READOUT_RULE
 
       - name: Plastic condition
         if: steps.gate.outputs.run == 'yes'
@@ -116,7 +122,8 @@ jobs:
             --neurons $NEURONS \
             --pretrain $PRETRAIN \
             --elig-mode $ELIG_MODE \
-            --surrogate $SURROGATE
+            --surrogate $SURROGATE \
+            --readout-rule $READOUT_RULE
 
       - name: Upload this seed's results
         if: steps.gate.outputs.run == 'yes'

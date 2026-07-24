@@ -47,10 +47,15 @@ class LinearReadout:
         lr: float = 0.5,
         dt: float = 1.0,
         feedback_mode: str = "symmetric",
+        rule: str = "delta",
+        rls_alpha: float = 1.0,
+        rls_forget: float = 0.999,
         seed: int = 0,
     ):
         if feedback_mode not in ("symmetric", "dfa"):
             raise ValueError("feedback_mode must be 'symmetric' or 'dfa'")
+        if rule not in ("delta", "rls"):
+            raise ValueError("rule must be 'delta' or 'rls'")
         rng = np.random.default_rng(seed)
         self.W = rng.normal(0.0, 1.0 / np.sqrt(n_inputs), size=(n_outputs, n_inputs)).astype(
             np.float32
@@ -87,6 +92,24 @@ class LinearReadout:
         # so the window is measured in episodes.
         self.decay_stats = np.float32(0.99)
         self.learning = True
+
+        # Recursive least squares (FORCE, Sussillo & Abbott 2009). A delta rule
+        # takes a fixed step along the current sample and has to see a direction
+        # many times to move along it; RLS carries the inverse correlation
+        # matrix of the inputs, so one sample updates every direction by exactly
+        # as much as the accumulated evidence warrants. On a reservoir readout
+        # that is the difference between converging in hundreds of episodes and
+        # in tens.
+        #
+        # The cost is honest: P is (n+1)x(n+1) and pools across the population,
+        # which is a real exception to the locality rule. It is confined to the
+        # readout -- the one place that already sees every neuron -- and it does
+        # not cross the network, but it does not scale to a large column and it
+        # should not be pretended otherwise.
+        self.rule = rule
+        self.rls_forget = float(rls_forget)
+        if rule == "rls":
+            self.P = (np.eye(n_inputs + 1, dtype=np.float64) / float(rls_alpha))
 
     def observe(self, activity: np.ndarray) -> np.ndarray:
         """Filter incoming column activity. Returns the current trace."""
@@ -126,7 +149,7 @@ class LinearReadout:
         loss = float(-np.log(max(p[target], 1e-9)))
         return (p - onehot).astype(np.float32), loss
 
-    def update(self, err: np.ndarray, state: np.ndarray) -> None:
+    def update(self, err: np.ndarray, state: np.ndarray, target: int | None = None) -> None:
         """Delta rule against the state the answer was actually based on.
 
         The readout gets an eligibility trace of its own, for the same reason
@@ -138,6 +161,28 @@ class LinearReadout:
         """
         if not self.learning:
             return
+
+        if self.rule == "rls":
+            if target is None:
+                raise ValueError("the rls rule needs the target class")
+            # Proper least squares against a one-hot target, with the bias
+            # folded in as a constant input. The softmax error is left alone and
+            # still feeds the column's modulator, so switching rule changes how
+            # fast the readout learns and nothing about what the column is told.
+            z = np.append(state.astype(np.float64), 1.0)
+            Pz = self.P @ z
+            k = Pz / (self.rls_forget + float(z @ Pz))
+            onehot = np.zeros(self.n_outputs, dtype=np.float64)
+            onehot[target] = 1.0
+            residual = (self.W @ state + self.b).astype(np.float64) - onehot
+            self.W -= np.outer(residual, k[:-1]).astype(np.float32)
+            self.b -= (residual * k[-1]).astype(np.float32)
+            # Forgetting keeps P adapting: in the plastic condition the column's
+            # representation drifts under it, so a fixed correlation estimate
+            # would slowly describe a network that no longer exists.
+            self.P = (self.P - np.outer(k, Pz)) / self.rls_forget
+            return
+
         # Normalised LMS: dividing by the state's own energy makes the step
         # size mean "move the logit this fraction of the way" regardless of how
         # many neurons there are or how active they were. Without it the

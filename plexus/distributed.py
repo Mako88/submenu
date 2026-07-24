@@ -56,6 +56,7 @@ class DistributedPlexus:
         readout_tau: float = 60.0,
         readout_lr: float = 0.5,
         feedback_mode: str = "symmetric",
+        readout_rule: str = "delta",
         modulator_lag: int = 0,
         answer_steps: int = 50,
         seed: int = 0,
@@ -98,6 +99,7 @@ class DistributedPlexus:
             tau=readout_tau,
             lr=readout_lr,
             feedback_mode=feedback_mode,
+            rule=readout_rule,
             seed=seed + 1,
         )
         self.n_inputs = n_inputs
@@ -161,7 +163,7 @@ class DistributedPlexus:
                         votes = softmax(logits)
                         err, loss = self.readout.error(logits, ep.label)
                         if learn:
-                            self.readout.update(err, z)
+                            self.readout.update(err, z, ep.label)
                         self.transport.broadcast(
                             t, self.readout.modulator(err) if learn else self._zero_mod
                         )

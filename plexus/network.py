@@ -51,6 +51,7 @@ class Plexus:
         readout_tau: float = 60.0,
         readout_lr: float = 0.5,
         feedback_mode: str = "symmetric",
+        readout_rule: str = "delta",
         modulator_lag: int = 0,
         answer_steps: int = 50,
         seed: int = 0,
@@ -75,6 +76,7 @@ class Plexus:
             tau=readout_tau,
             lr=readout_lr,
             feedback_mode=feedback_mode,
+            rule=readout_rule,
             seed=seed + 1,
         )
         self._t = 0
@@ -128,7 +130,7 @@ class Plexus:
                         votes = softmax(logits)
                         err, loss = self.readout.error(logits, ep.label)
                         if learn:
-                            self.readout.update(err, z)
+                            self.readout.update(err, z, ep.label)
                         # One decision, one feedback signal, released while the
                         # eligibility trace still holds what produced that
                         # decision. Sustaining the modulator across the whole

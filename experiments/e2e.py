@@ -34,6 +34,7 @@ def main() -> None:
     ap.add_argument("--eval", type=int, default=150)
     ap.add_argument("--neurons", type=int, default=96)
     ap.add_argument("--readout-lr", type=float, default=0.5)
+    ap.add_argument("--readout-rule", default="delta", choices=["delta","rls"])
     ap.add_argument("--modulator-lag", type=int, default=0)
     ap.add_argument("--elig-mode", default="magnitude", choices=["magnitude","sign"])
     ap.add_argument("--surrogate", default="window", choices=["window","graded","hybrid"])
@@ -64,6 +65,7 @@ def main() -> None:
             elig_mode=args.elig_mode, surrogate=args.surrogate, seed=args.seed
         ),
         readout_lr=args.readout_lr,
+        readout_rule=args.readout_rule,
         feedback_mode=args.feedback,
         modulator_lag=args.modulator_lag,
         seed=args.seed,
@@ -85,7 +87,8 @@ def main() -> None:
                                  tau_elig=args.tau_elig, episodes=args.episodes,
                                  modulator_lag=args.modulator_lag,
                                  pretrain=args.pretrain, elig_mode=args.elig_mode,
-                                 surrogate=args.surrogate)) + "\n")
+                                 surrogate=args.surrogate,
+                                 readout_rule=args.readout_rule)) + "\n")
     print(f"{args.tag} seed={args.seed}: eval {acc:.3f}")
 
 
