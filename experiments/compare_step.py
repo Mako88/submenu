@@ -38,6 +38,10 @@ def main() -> None:
     ap.add_argument("--neurons", type=int, default=96)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--no-stp", action="store_true")
+    ap.add_argument("--elig-norm", default="column", choices=["column","neuron","none"])
+    ap.add_argument("--scaling-lr", type=float, default=ColumnConfig.scaling_lr)
+    ap.add_argument("--pretrain", type=int, default=0,
+                    help="episodes of readout-only training before column plasticity")
     ap.add_argument("--report", action="store_true")
     args = ap.parse_args()
 
@@ -60,11 +64,19 @@ def main() -> None:
         task.n_inputs,
         task.n_classes,
         column=ColumnConfig(n_neurons=args.neurons, lr=args.lr, seed=args.seed,
-                            stp=not args.no_stp),
+                            stp=not args.no_stp, elig_norm=args.elig_norm,
+                            scaling_lr=args.scaling_lr),
         seed=args.seed,
     )
-    model.train(task, args.episodes, rng=np.random.default_rng(1000 + args.seed),
-                report_every=10**9)
+    rng = np.random.default_rng(1000 + args.seed)
+    if args.pretrain:
+        # Let the readout find a decent decoder before the column starts taking
+        # its advice. The column's credit signal is readout.W^T @ (-err), so a
+        # weak readout is a noisy teacher and the column faithfully follows it.
+        saved, model.column.cfg.lr = model.column.cfg.lr, 0.0
+        model.train(task, args.pretrain, rng=rng, report_every=10**9)
+        model.column.cfg.lr = saved
+    model.train(task, args.episodes, rng=rng, report_every=10**9)
 
     X, y = collect(model, task, args.collect, np.random.default_rng(11 + args.seed))
     split = int(0.7 * len(X))

@@ -79,6 +79,10 @@ def collect(model, task, n, rng):
         model.readout.reset()
         model.transport.reset()
         answered = 0
+        # Accumulate exactly the decision vector the readout would classify:
+        # the answer-window average of the filtered trace. Standardisation is
+        # left to the offline decoder, which is the point -- we want to know
+        # what the column represents, not how well the online readout scales it.
         snap = None
         for k in range(ep.inputs.shape[0]):
             t = model._t
@@ -89,7 +93,7 @@ def collect(model, task, n, rng):
             if ep.response[k]:
                 answered += 1
                 if answered == model.answer_steps:
-                    snap = model.readout.normalized.copy()
+                    snap = model.readout.trace.copy()
         states.append(snap)
         labels.append(ep.label)
     return np.array(states, dtype=np.float64), np.array(labels)

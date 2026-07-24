@@ -1,0 +1,119 @@
+name: plexus experiment
+
+# Multi-seed comparisons are the whole ballgame here: the plasticity effect
+# looked like +0.059 at three seeds and decayed to +0.023 at eight. Settling it
+# needs more seeds than a laptop session comfortably runs, and the seeds are
+# independent, so a matrix gets 20 of them in the wall-clock time of one.
+
+on:
+  workflow_dispatch:
+    inputs:
+      seeds:
+        description: 'Number of seeds (each runs both conditions)'
+        required: false
+        default: '20'
+      episodes:
+        description: 'Training episodes per run'
+        required: false
+        default: '400'
+      plastic_lr:
+        description: 'Column learning rate for the plastic condition'
+        required: false
+        default: '0.005'
+      tau_elig:
+        description: 'Eligibility trace time constant (ms)'
+        required: false
+        default: '70'
+      modulator_lag:
+        description: 'Steps of modulator delay (tests latency tolerance)'
+        required: false
+        default: '0'
+
+jobs:
+  seeds:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install numpy
+
+      - name: Skip seeds beyond the requested count
+        id: gate
+        run: |
+          if [ "${{ matrix.seed }}" -lt "${{ github.event.inputs.seeds }}" ]; then
+            echo "run=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=no" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Frozen control
+        if: steps.gate.outputs.run == 'yes'
+        run: |
+          python experiments/e2e.py --tag frozen --lr 0 \
+            --seed ${{ matrix.seed }} \
+            --episodes ${{ github.event.inputs.episodes }} \
+            --tau-elig ${{ github.event.inputs.tau_elig }} \
+            --modulator-lag ${{ github.event.inputs.modulator_lag }}
+
+      - name: Plastic condition
+        if: steps.gate.outputs.run == 'yes'
+        run: |
+          python experiments/e2e.py --tag plastic \
+            --lr ${{ github.event.inputs.plastic_lr }} \
+            --seed ${{ matrix.seed }} \
+            --episodes ${{ github.event.inputs.episodes }} \
+            --tau-elig ${{ github.event.inputs.tau_elig }} \
+            --modulator-lag ${{ github.event.inputs.modulator_lag }}
+
+      - name: Upload this seed's results
+        if: steps.gate.outputs.run == 'yes'
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-seed-${{ matrix.seed }}
+          path: experiments/e2e_results.jsonl
+          retention-days: 14
+
+  aggregate:
+    needs: seeds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install numpy
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: e2e-seed-*
+          path: collected
+
+      - name: Combine and run a paired test
+        run: |
+          cat collected/*/e2e_results.jsonl > experiments/e2e_results.jsonl
+          python experiments/e2e.py --report
+          python experiments/paired_test.py | tee summary.txt
+
+      - name: Upload combined results
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-combined
+          path: |
+            experiments/e2e_results.jsonl
+            summary.txt
+          retention-days: 30
+
+      - name: Put the summary in the run page
+        run: |
+          {
+            echo '## plexus: plastic vs frozen'
+            echo '```'
+            cat summary.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

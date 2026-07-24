@@ -97,7 +97,6 @@ class Plexus:
         loss = 0.0
         votes = np.zeros(self.n_classes, dtype=np.float64)
         answered = 0
-        answer_state = np.zeros(self.cfg.n_neurons, dtype=np.float32)
         err = None
 
         for k in range(ep.inputs.shape[0]):
@@ -118,21 +117,29 @@ class Plexus:
             if ep.response[k]:
                 answered += 1
                 if answered <= self.answer_steps:
-                    # Answer phase: integrate evidence, then commit once.
-                    answer_state += self.readout.trace
-                    self.transport.broadcast(t, self._zero_mod)
+                    # Answer phase: let evidence accumulate in the trace, then
+                    # commit once at the end of it. The decision vector is the
+                    # trace itself, not an average over the window -- the trace
+                    # already applies ~60ms of exponential weighting, and
+                    # averaging on top of that dilutes a signal concentrated
+                    # just after the go cue (0.69 vs 0.85 decodable).
                     if answered == self.answer_steps:
-                        answer_state /= self.answer_steps
-                        logits, z = self.readout.decide(answer_state)
+                        logits, z = self.readout.decide(self.readout.trace)
                         votes = softmax(logits)
                         err, loss = self.readout.error(logits, ep.label)
                         if learn:
                             self.readout.update(err, z)
-                elif err is not None and learn:
-                    # Feedback phase: sustained modulator release. The column's
-                    # eligibility traces still hold what it did during the
-                    # answer, so this lands on the synapses that earned it.
-                    self.transport.broadcast(t, self.readout.modulator(err))
+                        # One decision, one feedback signal, released while the
+                        # eligibility trace still holds what produced that
+                        # decision. Sustaining the modulator across the whole
+                        # feedback phase applied the same error ~70 times as the
+                        # trace accumulated post-decision activity -- both far
+                        # too strong and steadily more misdirected.
+                        self.transport.broadcast(
+                            t, self.readout.modulator(err) if learn else self._zero_mod
+                        )
+                    else:
+                        self.transport.broadcast(t, self._zero_mod)
                 else:
                     self.transport.broadcast(t, self._zero_mod)
             else:

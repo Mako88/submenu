@@ -86,25 +86,43 @@ readout of any kind could work. With it, the cue is held in synaptic efficacy
 rather than in ongoing spiking — activity-silent working memory, which is what
 a 2 %-sparse network needs to bridge a delay.
 
-**Local plasticity does not yet earn its place** — the negative result this
-project exists to be honest about. Same protocol, 3 seeds, measuring how
-linearly separable the column's own representation becomes:
+**End to end, the model learns the task** (`experiments/e2e.py`). 96 neurons,
+400 episodes, 150 held-out episodes, 8 paired seeds:
 
-| Condition | Linear | MLP |
-|---|---|---|
-| frozen (no three-factor rule) | **0.864 ± 0.013** | 0.984 ± 0.006 |
-| plastic, `lr=2e-4` | 0.856 ± 0.008 | 0.980 ± 0.014 |
-| plastic, `lr=1e-3` | 0.673 | 0.953 |
-| plastic, `lr=4e-3` | 0.793 | 0.900 |
+| Condition | Held-out accuracy |
+|---|---|
+| frozen reservoir | 0.717 ± 0.055 |
+| plastic, `lr=5e-3` | 0.740 ± 0.044 |
 
-At best neutral, and clearly harmful as the rate rises. The likely cause is a
-bootstrapping problem: the column's credit signal is `readout.Wᵀ @ (−err)`, and
-the readout is itself weak, so the column faithfully follows a noisy teacher.
+Chance is 0.500 and an offline decoder on the same states reaches ~0.85, so the
+online model captures most of what is there. It previously sat at chance; the
+fix was aligning the online decision vector with the one the probe validates
+(bug 8 below).
 
-**The end-to-end model is still limited by readout sample efficiency.** The
-representation is separable at ~0.86 offline, but the online single-pass delta
-rule extracts it slowly — 0.44 → 0.55 → 0.58 over 300/600/900 episodes.
-Learning, but far from what the same data supports offline.
+**Local plasticity still does not demonstrably earn its place.** Paired
+permutation test over those 8 seeds: mean difference **+0.023**, improved on
+5/8 seeds, **p = 0.36**. Not distinguishable from zero.
+
+Worth recording how that number moved, because it is a lesson in itself:
+
+| Seeds | frozen | plastic | mean paired diff |
+|---|---|---|---|
+| 3 | 0.686 | 0.745 | +0.059 |
+| 5 | 0.713 | 0.755 | +0.042 |
+| 8 | 0.717 | 0.740 | **+0.023 (p = 0.36)** |
+
+At three seeds this looked like a clear win. It decayed steadily as seeds
+accumulated. Anything claimed here from fewer than ~10 paired seeds should be
+treated as noise — hence `.github/workflows/plexus-experiment.yml`, which runs
+20 seeds in parallel.
+
+What the fixes *did* achieve is moving plasticity from **actively harmful**
+(0.49–0.61 against 0.733 frozen) to **neutral**. The three changes that
+mattered were: matching the eligibility window to the readout's filter, so
+credit stops being smeared over 240 ms of activity that predates the cue;
+releasing one modulator per decision instead of sustaining it for ~70 steps
+against an increasingly contaminated trace; and normalising the update
+population-wide rather than per neuron.
 
 ## Bugs worth knowing about
 
@@ -137,10 +155,43 @@ and reported plausible numbers:
    initialisation dominated the true variance for thousands of episodes,
    shrinking standardised features to std 0.003. Now bias-corrected.
 
-Bugs 4–7 all produced the same symptom — a decoder stuck at chance on data that
+8. **Deciding on a window average instead of the trace.** The online readout
+   classified the answer-window mean while the probe validated the trace at the
+   end of that window. The trace already applies ~60 ms of exponential
+   weighting; averaging on top diluted a signal concentrated just after the go
+   cue (0.69 vs 0.85 decodable). Aligning them took the end-to-end model from
+   chance to 0.73 — the single largest improvement in the project.
+9. **Eligibility window mismatched to the readout.** `tau_eligibility` was
+   240 ms against a 60 ms readout filter, so credit was smeared over activity
+   reaching back before cue B arrived. This was most of why plasticity was
+   actively harmful.
+10. **The modulator was sustained for ~70 steps.** One decision produced ~70
+    weight updates with the same error, applied against an eligibility trace
+    that kept absorbing post-decision activity — too strong and steadily more
+    misdirected. Now one decision, one release.
+
+Bugs 4–8 all produced the same symptom — a decoder stuck at chance on data that
 was demonstrably separable — which is why `experiments/probe.py` exists. Being
 able to ask "is the information even present?" separately from "is the learning
 rule extracting it?" was worth more than any single fix.
+
+### Which earlier fixes were themselves confounded
+
+Bug 1 hid the forward pass for most of the project's life, so every tuning
+decision before it was made on a network running with implicit unit weights.
+Auditing those afterwards, most survive — the DC-gain fix, the scale-free
+plateau knee, multiplicative homeostasis and the readout scaling fixes are all
+mathematically independent of whether `W` is applied. Two did not:
+
+- **Per-neuron eligibility normalisation** was introduced to fix a symptom bug 1
+  created. It divides each neuron's update by *its own* eligibility magnitude,
+  which destroys the natural weighting in which strongly engaged neurons receive
+  larger updates, and amplifies noise from neurons that barely participated.
+  Now `elig_norm="column"` by default; the old behaviour is still selectable.
+- **`scaling_lr`** was set to `2e-2` while synaptic scaling was *dynamically
+  inert*, since it only ever moved a `W` that nothing read. It is now a live
+  force (~21 % weight movement) and is a genuine free parameter that has never
+  been tuned against a working forward pass.
 
 ## Status
 

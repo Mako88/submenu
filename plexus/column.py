@@ -78,9 +78,14 @@ class ColumnConfig:
     threshold_init: float = 1.0
     surrogate_width: float = 0.5
 
-    # Eligibility trace horizon. This is the credit-assignment window *and*
-    # the tolerance for a late-arriving modulator -- they are the same number.
-    tau_eligibility: float = 240.0
+    # Eligibility trace horizon. This single number does two jobs that pull in
+    # opposite directions: it sets how precisely credit is assigned, and it sets
+    # how late a modulator may arrive. Matching it to the readout's filter
+    # (~60ms) is what moved plasticity from actively harmful to neutral -- at
+    # 240ms credit was smeared over activity predating the cue. Raising it buys
+    # latency tolerance at the cost of credit precision, and separating the two
+    # into distinct traces is the obvious next design step.
+    tau_eligibility: float = 70.0
 
     # Short-term synaptic plasticity (Tsodyks-Markram). Facilitation outlasts
     # depression here, which puts terminals in the regime where a transient
@@ -104,6 +109,20 @@ class ColumnConfig:
     tau_rate: float = 300.0
 
     # Learning.
+    #
+    # `elig_norm` selects what the weight update is normalised by, and the
+    # choice matters more than it looks:
+    #   "column" -- one scale for the whole population. Makes `lr` meaningful
+    #               while preserving the natural weighting in which strongly
+    #               engaged neurons receive larger updates.
+    #   "neuron" -- each neuron divides by its own eligibility magnitude. This
+    #               destroys that relative weighting: a neuron that barely
+    #               participated has tiny, mostly-noise eligibility, and
+    #               normalising amplifies that noise to full scale alongside
+    #               genuinely engaged ones.
+    #   "none"   -- raw. `lr` then depends on trace magnitude and is not
+    #               portable across configurations.
+    elig_norm: str = "column"
     lr: float = 4e-3
     lr_tau: float = 0.0  # set > 0 to learn membrane time constants
     weight_max: float = 4.0
@@ -423,15 +442,20 @@ class Column:
 
         signal = (self.feedback @ m).astype(np.float32)  # (N,)
 
-        # Normalise by each neuron's own recent eligibility magnitude, so that
-        # `lr` means "this fraction of the weight scale per update" instead of
-        # being hostage to the trace magnitude. Chaining unit-DC-gain filters
-        # leaves eligibility around 1e-2, and with a raw lr the modulator moved
-        # weights by 0.1% while homeostatic scaling moved them by 21% -- the
-        # three-factor rule was, measurably, decorative. Each neuron uses only
-        # its own statistics, so this is local, and it is roughly what
-        # metaplasticity does biologically.
-        rms = np.sqrt(np.mean(self.elig**2, axis=(1, 2))).astype(np.float32)
+        # Normalise the update so `lr` means "this fraction of the weight scale
+        # per update" rather than being hostage to trace magnitude. Chaining
+        # unit-DC-gain filters leaves eligibility around 1e-2, and with a raw lr
+        # the modulator moved weights by 0.1% while homeostatic scaling moved
+        # them by 21% -- the three-factor rule was, measurably, decorative.
+        # See `elig_norm` for why the scale is population-wide by default.
+        if cfg.elig_norm == "neuron":
+            rms = np.sqrt(np.mean(self.elig**2, axis=(1, 2))).astype(np.float32)
+        elif cfg.elig_norm == "column":
+            rms = np.full(
+                self.cfg.n_neurons, np.sqrt(np.mean(self.elig**2)), dtype=np.float32
+            )
+        else:
+            rms = np.ones(self.cfg.n_neurons, dtype=np.float32)
         d = self.decay_elig_rms
         self.elig_rms = (d * self.elig_rms + (1.0 - d) * rms).astype(np.float32)
         gain = signal / np.maximum(self.elig_rms, 1e-8)
