@@ -1,0 +1,12 @@
+Sentinel file for .github/workflows/plexus-experiment.yml.
+
+Editing this file triggers the 20-seed plastic-vs-frozen sweep. It exists
+because workflow_dispatch is only available for workflows that already live on
+the default branch, and this work is on a feature branch.
+
+Record what each run was for, so the artifacts can be matched to a question.
+
+run 1 -- 20 seeds, 400 episodes, plastic lr 5e-3, tau_elig 70, no modulator lag
+  Question: is the +0.023 plastic-vs-frozen difference real? Eight seeds gave
+  p = 0.36, and the effect shrank from +0.059 at three seeds to +0.023 at
+  eight, so the honest answer needs more seeds than a session comfortably runs.

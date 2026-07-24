@@ -28,6 +28,21 @@ on:
         description: 'Steps of modulator delay (tests latency tolerance)'
         required: false
         default: '0'
+  # workflow_dispatch only works for workflows already on the default branch, so
+  # until this is merged the sweep is triggered by touching a sentinel file.
+  # Editing experiments/run-experiment.txt (which also records the settings)
+  # starts a run from whatever branch the change lands on.
+  push:
+    paths:
+      - 'experiments/run-experiment.txt'
+
+# Push-triggered runs have no inputs, so every parameter falls back to a default.
+env:
+  SEEDS: ${{ github.event.inputs.seeds || '20' }}
+  EPISODES: ${{ github.event.inputs.episodes || '400' }}
+  PLASTIC_LR: ${{ github.event.inputs.plastic_lr || '0.005' }}
+  TAU_ELIG: ${{ github.event.inputs.tau_elig || '70' }}
+  MODULATOR_LAG: ${{ github.event.inputs.modulator_lag || '0' }}
 
 jobs:
   seeds:
@@ -46,7 +61,7 @@ jobs:
       - name: Skip seeds beyond the requested count
         id: gate
         run: |
-          if [ "${{ matrix.seed }}" -lt "${{ github.event.inputs.seeds }}" ]; then
+          if [ "${{ matrix.seed }}" -lt "$SEEDS" ]; then
             echo "run=yes" >> "$GITHUB_OUTPUT"
           else
             echo "run=no" >> "$GITHUB_OUTPUT"
@@ -57,19 +72,19 @@ jobs:
         run: |
           python experiments/e2e.py --tag frozen --lr 0 \
             --seed ${{ matrix.seed }} \
-            --episodes ${{ github.event.inputs.episodes }} \
-            --tau-elig ${{ github.event.inputs.tau_elig }} \
-            --modulator-lag ${{ github.event.inputs.modulator_lag }}
+            --episodes $EPISODES \
+            --tau-elig $TAU_ELIG \
+            --modulator-lag $MODULATOR_LAG
 
       - name: Plastic condition
         if: steps.gate.outputs.run == 'yes'
         run: |
           python experiments/e2e.py --tag plastic \
-            --lr ${{ github.event.inputs.plastic_lr }} \
+            --lr $PLASTIC_LR \
             --seed ${{ matrix.seed }} \
-            --episodes ${{ github.event.inputs.episodes }} \
-            --tau-elig ${{ github.event.inputs.tau_elig }} \
-            --modulator-lag ${{ github.event.inputs.modulator_lag }}
+            --episodes $EPISODES \
+            --tau-elig $TAU_ELIG \
+            --modulator-lag $MODULATOR_LAG
 
       - name: Upload this seed's results
         if: steps.gate.outputs.run == 'yes'
