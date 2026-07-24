@@ -123,6 +123,18 @@ class ColumnConfig:
     #   "none"   -- raw. `lr` then depends on trace magnitude and is not
     #               portable across configurations.
     elig_norm: str = "column"
+    # What of the eligibility trace the update actually uses.
+    #   "magnitude" -- the trace as-is.
+    #   "sign"      -- direction only, gated by magnitude. A finite-difference
+    #                  check (experiments/gradcheck.py) finds the trace agrees
+    #                  with the true gradient in sign 0.64 of the time
+    #                  (p = 0.004) and in magnitude not at all (r = -0.045), so
+    #                  the magnitude is contributing noise of the same order as
+    #                  the signal. Magnitude is still used as a participation
+    #                  gate, since a near-zero trace means the synapse was not
+    #                  involved and the sign check has nothing to say about it.
+    elig_mode: str = "magnitude"
+    elig_gate: float = 1.0  # gate at this multiple of the trace's own RMS
     lr: float = 4e-3
     lr_tau: float = 0.0  # set > 0 to learn membrane time constants
     weight_max: float = 4.0
@@ -522,8 +534,13 @@ class Column:
             rms = np.ones(self.cfg.n_neurons, dtype=np.float32)
         d = self.decay_elig_rms
         self.elig_rms = (d * self.elig_rms + (1.0 - d) * rms).astype(np.float32)
-        gain = signal / np.maximum(self.elig_rms, 1e-8)
-        self.W += cfg.lr * gain[:, None, None] * self.elig
+        scale = np.maximum(self.elig_rms, 1e-8)[:, None, None]
+        if cfg.elig_mode == "sign":
+            involved = np.abs(self.elig) > cfg.elig_gate * scale
+            drive = np.sign(self.elig) * involved
+        else:
+            drive = self.elig / scale
+        self.W += cfg.lr * signal[:, None, None] * drive
         np.clip(self.W, 0.0, cfg.weight_max, out=self.W)
 
         if cfg.lr_tau > 0.0:

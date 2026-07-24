@@ -35,7 +35,11 @@ on:
       pretrain:
         description: 'Readout-only episodes before column plasticity'
         required: false
-        default: '400'
+        default: '0'
+      elig_mode:
+        description: 'Use the eligibility trace as magnitude, or sign only'
+        required: false
+        default: 'sign'
   # workflow_dispatch only works for workflows already on the default branch, so
   # until this is merged the sweep is triggered by touching a sentinel file.
   # Editing experiments/run-experiment.txt (which also records the settings)
@@ -52,9 +56,12 @@ env:
   TAU_ELIG: ${{ github.event.inputs.tau_elig || '70' }}
   MODULATOR_LAG: ${{ github.event.inputs.modulator_lag || '0' }}
   NEURONS: ${{ github.event.inputs.neurons || '24' }}
-  # Default 400, not 0: push-triggered runs carry no inputs, so a default of
-  # 0 silently ran the sweep without the pretraining it was meant to test.
-  PRETRAIN: ${{ github.event.inputs.pretrain || '400' }}
+  # These defaults are what push-triggered sweeps actually run, since such runs
+  # carry no inputs. Getting one wrong silently changes the experiment: sweep
+  # 003 ran with PRETRAIN=0 and tested nothing. Sweep 004 established that
+  # pretraining changes no outcome, so it is back off by default.
+  PRETRAIN: ${{ github.event.inputs.pretrain || '0' }}
+  ELIG_MODE: ${{ github.event.inputs.elig_mode || 'sign' }}
 
 jobs:
   seeds:
@@ -88,7 +95,8 @@ jobs:
             --tau-elig $TAU_ELIG \
             --modulator-lag $MODULATOR_LAG \
             --neurons $NEURONS \
-            --pretrain $PRETRAIN
+            --pretrain $PRETRAIN \
+            --elig-mode $ELIG_MODE
 
       - name: Plastic condition
         if: steps.gate.outputs.run == 'yes'
@@ -100,7 +108,8 @@ jobs:
             --tau-elig $TAU_ELIG \
             --modulator-lag $MODULATOR_LAG \
             --neurons $NEURONS \
-            --pretrain $PRETRAIN
+            --pretrain $PRETRAIN \
+            --elig-mode $ELIG_MODE
 
       - name: Upload this seed's results
         if: steps.gate.outputs.run == 'yes'

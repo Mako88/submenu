@@ -35,6 +35,7 @@ def main() -> None:
     ap.add_argument("--neurons", type=int, default=96)
     ap.add_argument("--readout-lr", type=float, default=0.5)
     ap.add_argument("--modulator-lag", type=int, default=0)
+    ap.add_argument("--elig-mode", default="magnitude", choices=["magnitude","sign"])
     ap.add_argument("--pretrain", type=int, default=0,
                     help="episodes of readout-only training before column plasticity")
     ap.add_argument("--feedback", default="symmetric")
@@ -58,7 +59,8 @@ def main() -> None:
         task.n_inputs,
         task.n_classes,
         column=ColumnConfig(
-            n_neurons=args.neurons, lr=args.lr, tau_eligibility=args.tau_elig, seed=args.seed
+            n_neurons=args.neurons, lr=args.lr, tau_eligibility=args.tau_elig,
+            elig_mode=args.elig_mode, seed=args.seed
         ),
         readout_lr=args.readout_lr,
         feedback_mode=args.feedback,
@@ -81,7 +83,7 @@ def main() -> None:
         fh.write(json.dumps(dict(tag=args.tag, lr=args.lr, seed=args.seed, acc=acc,
                                  tau_elig=args.tau_elig, episodes=args.episodes,
                                  modulator_lag=args.modulator_lag,
-                                 pretrain=args.pretrain)) + "\n")
+                                 pretrain=args.pretrain, elig_mode=args.elig_mode)) + "\n")
     print(f"{args.tag} seed={args.seed}: eval {acc:.3f}")
 
 

@@ -1,0 +1,22 @@
+Sweep 005 -- sign-only eligibility, 24 neurons, 20 seeds, no pretraining.
+
+This follows directly from the gradient check rather than from guesswork. Over
+90 sampled synapses the eligibility trace agrees with the finite-difference
+gradient in sign 0.64 of the time (58/90, one-sided p = 0.004) and in magnitude
+not at all (correlation -0.045). Since the update is lr * signal * elig, the
+magnitude has been contributing noise of the same order as the signal for every
+step of every sweep so far.
+
+So: use only the part that carries information. elig_mode="sign" takes the
+direction and discards the size, with magnitude retained solely as a
+participation gate at one RMS -- a near-zero trace means the synapse was not
+involved, and the sign check has nothing to say about those.
+
+Comparable to sweep 002 (24 neurons, no pretraining), which gave +0.011 at
+p = 0.45 with magnitude updates.
+
+Prediction, recorded before the result: this is the first change aimed at the
+measured defect rather than at its surroundings, so it has a real chance. But
+sign-only throws away any notion of *how much* a synapse mattered, which may
+simply trade one noise source for another. A null here means the trace needs
+rebuilding rather than reinterpreting, and the surrogate h is the suspect.
