@@ -68,6 +68,28 @@ class EventBuffer:
         self._buf[slot] = values
         self._stamp[slot] = t
 
+    def begin(self, t: int) -> None:
+        """Open the slot for emission time ``t``, clearing stale contents once.
+
+        Multiple writers contribute to one timestep when the model is split
+        across columns, so the slot is cleared by whoever touches it first
+        rather than by each writer.
+        """
+        slot = t % self.depth
+        if self._stamp[slot] != t:
+            self._buf[slot] = 0.0
+            self._stamp[slot] = t
+
+    def write_slice(self, t: int, start: int, values: np.ndarray) -> None:
+        """Write one writer's own span of the source space for time ``t``.
+
+        This is what makes ownership explicit: a column publishes the slice it
+        owns and never touches anyone else's. In a distributed run the same
+        call becomes a send, and the slices are filled by different machines.
+        """
+        self.begin(t)
+        self._buf[t % self.depth, start : start + len(values)] = values
+
     def scatter(self, t: int, sources: np.ndarray, values: np.ndarray) -> None:
         """Accumulate sparse events emitted at time ``t``.
 

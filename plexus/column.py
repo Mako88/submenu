@@ -136,6 +136,21 @@ class ColumnConfig:
     dt: float = 1.0
 
     fanin_recurrent_frac: float = 0.55
+    # Shared across every column so they agree on which units inhibit.
+    sign_seed: int = 12345
+
+    # Placement in a shared source space, for splitting a model across columns.
+    # `source_offset` is where this column's own neurons live; `peer_span` is
+    # the full range of neurons it may draw synapses from, own and remote. The
+    # defaults keep a single column self-contained.
+    source_offset: int | None = None
+    peer_span: int | None = None
+    # Conduction delay for synapses onto neurons owned by another column. This
+    # is the only thing that changes when a column moves to another machine:
+    # a remote peer is just a longer axon.
+    peer_delay_min: int | None = None
+    peer_delay_max: int | None = None
+    peer_frac: float = 0.35  # share of recurrent synapses drawn from peers
 
     def __post_init__(self) -> None:
         if self.delay_min < 1:
@@ -160,13 +175,17 @@ class Column:
         self.rng = rng
 
         N, B, S = cfg.n_neurons, cfg.n_branches, cfg.n_synapses
-        self.n_sources = cfg.n_external + N
+        # Where this column's neurons live in the shared source space, and how
+        # far its synapses may reach. A lone column owns everything after the
+        # external inputs; in a split model each owns its own slice.
+        self.source_offset = cfg.n_external if cfg.source_offset is None else cfg.source_offset
+        self.peer_span = N if cfg.peer_span is None else cfg.peer_span
+        self.n_sources = max(cfg.n_external + self.peer_span, self.source_offset + N)
         if transport.n_sources < self.n_sources:
             raise ValueError(
                 f"transport carries {transport.n_sources} sources, column needs {self.n_sources}"
             )
-        if transport.depth <= cfg.delay_max:
-            raise ValueError("transport depth must exceed delay_max")
+
 
         # --- Connectivity -------------------------------------------------
         # Each branch draws its synapses from a mix of external and recurrent
@@ -175,13 +194,38 @@ class Column:
         # over whichever sources land on it.
         self.src = self._sample_sources(rng, N, B, S)
         self.delay = rng.integers(cfg.delay_min, cfg.delay_max + 1, size=(N, B, S)).astype(np.int64)
+        # Synapses reaching a neuron owned by another column carry the longer
+        # peer delay. This is the whole of what distribution costs the model.
+        if cfg.peer_delay_max is not None:
+            own_lo, own_hi = self.source_offset, self.source_offset + N
+            remote = (self.src >= cfg.n_external) & ((self.src < own_lo) | (self.src >= own_hi))
+            lo = cfg.peer_delay_min if cfg.peer_delay_min is not None else cfg.peer_delay_max
+            self.delay = np.where(
+                remote,
+                rng.integers(lo, cfg.peer_delay_max + 1, size=self.delay.shape),
+                self.delay,
+            ).astype(np.int64)
+        self.max_delay = int(self.delay.max())
+        if transport.depth <= self.max_delay:
+            raise ValueError(
+                f"transport depth {transport.depth} must exceed max delay {self.max_delay}"
+            )
 
         # Dale's law: a unit is excitatory or inhibitory, and every synapse it
         # makes carries that sign for life. Learning moves magnitude only.
+        #
+        # Signs come from a dedicated shared RNG, not this column's seed,
+        # because being excitatory is a property of the *emitting* neuron and
+        # not of whoever reads it. Every column must therefore derive the same
+        # sign for the same global index -- otherwise a neuron would excite one
+        # column while inhibiting another, which no biological network does and
+        # which nothing downstream could detect.
+        sign_rng = np.random.default_rng(cfg.sign_seed)
         sign = np.ones(self.n_sources, dtype=np.float32)
-        n_inh = int(round(cfg.inhibitory_frac * N))
+        n_units = self.n_sources - cfg.n_external
+        n_inh = int(round(cfg.inhibitory_frac * n_units))
         if n_inh:
-            inh = rng.choice(N, size=n_inh, replace=False) + cfg.n_external
+            inh = sign_rng.choice(n_units, size=n_inh, replace=False) + cfg.n_external
             sign[inh] = -1.0
         self.source_sign = sign
         self.syn_sign = sign[self.src].astype(np.float32)
@@ -275,7 +319,13 @@ class Column:
                 if n_ext_syn > 0:
                     picks.append(rng.integers(0, n_ext, size=n_ext_syn))
                 if n_rec > 0:
-                    picks.append(rng.integers(0, cfg.n_neurons, size=n_rec) + n_ext)
+                    n_peer = int(round(cfg.peer_frac * n_rec)) if self.peer_span > cfg.n_neurons else 0
+                    if n_rec - n_peer > 0:
+                        picks.append(
+                            rng.integers(0, cfg.n_neurons, size=n_rec - n_peer) + self.source_offset
+                        )
+                    if n_peer > 0:
+                        picks.append(rng.integers(0, self.peer_span, size=n_peer) + n_ext)
                 src[n, b] = rng.permutation(np.concatenate(picks))
         return src
 
@@ -336,6 +386,16 @@ class Column:
         self.u = u_post
         return (value * release / self._release_ref).astype(np.float32)
 
+    def publish(self, t: int) -> None:
+        """Announce this column's last emission into the shared substrate.
+
+        Split out of :meth:`step` so a multi-column driver can publish every
+        column before any column reads. Combined with a minimum delay of one
+        step, that makes the result independent of the order columns are
+        stepped in -- the property that lets them live on separate machines.
+        """
+        self.transport.publish_slice(t, self.source_offset, self.out)
+
     # -----------------------------------------------------------------
     def step(self, t: int, external: np.ndarray | None = None) -> np.ndarray:
         """Advance one timestep and return this column's emitted values.
@@ -346,14 +406,13 @@ class Column:
         """
         cfg = self.cfg
 
-        # 1. Publish local activity for time t, alongside external drive.
-        frame = np.zeros(self.transport.n_sources, dtype=np.float32)
-        if cfg.n_external:
-            if external is None:
-                raise ValueError("column configured with external inputs but none supplied")
-            frame[: cfg.n_external] = external
-        frame[cfg.n_external : cfg.n_external + cfg.n_neurons] = self.out
-        self.transport.publish(t, frame)
+        # 1. Publish the slice this column owns. External drive is published
+        #    by the driver, since no column owns it. Publishing last step's
+        #    output before gathering is what guarantees every read goes through
+        #    a delay of at least one step.
+        if external is not None and cfg.n_external:
+            self.transport.publish_slice(t, 0, external)
+            self.publish(t)
 
         # 2. Gather delayed input for every synapse, applying Dale sign.
         if self._fast:

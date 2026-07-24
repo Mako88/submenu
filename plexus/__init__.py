@@ -11,6 +11,7 @@ what neurons compute while dropping what neurons merely had to cope with.
 """
 
 from .column import Column, ColumnConfig
+from .distributed import DistributedPlexus
 from .events import Event, EventBuffer
 from .network import Plexus, TrainReport
 from .readout import LinearReadout
@@ -19,6 +20,7 @@ from .transport import LocalTransport, Transport
 
 __all__ = [
     "Column",
+    "DistributedPlexus",
     "ColumnConfig",
     "Event",
     "EventBuffer",

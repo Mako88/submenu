@@ -84,6 +84,12 @@ class LocalTransport(Transport):
     def publish(self, t: int, values: np.ndarray) -> None:
         self._events.write(t, values)
 
+    def publish_slice(self, t: int, start: int, values: np.ndarray) -> None:
+        self._events.write_slice(t, start, values)
+
+    def begin(self, t: int) -> None:
+        self._events.begin(t)
+
     def gather(self, t: int, sources: np.ndarray, delays: np.ndarray) -> np.ndarray:
         return self._events.gather(t, sources, delays)
 

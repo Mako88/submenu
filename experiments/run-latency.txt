@@ -1,0 +1,8 @@
+Sentinel for .github/workflows/plexus-latency.yml.
+
+run 1 -- peer_delay in {2, 10, 30, 80, 150} steps x 4 seeds, 4 columns of 24
+  neurons, frozen columns.
+  Question: does inter-column conduction delay cost accuracy? One step is 1ms,
+  so this spans a rack (2) to an intercontinental round trip (150). Flat
+  accuracy across it would make latency tolerance a measured property rather
+  than a design aspiration.

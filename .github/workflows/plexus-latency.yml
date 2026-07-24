@@ -1,0 +1,74 @@
+name: plexus latency
+
+# Sweeps inter-column conduction delay across a range spanning "same rack" to
+# "intercontinental". Each (delay, seed) is independent, so the whole sweep is
+# one matrix and finishes in the wall-clock time of a single run.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'experiments/run-latency.txt'
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        peer_delay: [2, 10, 30, 80, 150]
+        seed: [0, 1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install numpy
+
+      - name: Run one (delay, seed)
+        run: |
+          python experiments/latency.py \
+            --peer-delay ${{ matrix.peer_delay }} \
+            --seed ${{ matrix.seed }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: latency-d${{ matrix.peer_delay }}-s${{ matrix.seed }}
+          path: experiments/latency_results.jsonl
+          retention-days: 14
+
+  aggregate:
+    needs: sweep
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install numpy
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: latency-*
+          path: collected
+
+      - name: Combine and report
+        run: |
+          cat collected/*/latency_results.jsonl > experiments/latency_results.jsonl
+          python experiments/latency.py --report | tee latency.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: latency-combined
+          path: |
+            experiments/latency_results.jsonl
+            latency.txt
+          retention-days: 30
+
+      - name: Put the summary in the run page
+        run: |
+          {
+            echo '## plexus: accuracy vs inter-column latency'
+            echo '```'
+            cat latency.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
