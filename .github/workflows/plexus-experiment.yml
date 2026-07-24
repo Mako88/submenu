@@ -32,6 +32,10 @@ on:
         description: 'Neurons in the column (smaller columns mix less)'
         required: false
         default: '24'
+      pretrain:
+        description: 'Readout-only episodes before column plasticity'
+        required: false
+        default: '0'
   # workflow_dispatch only works for workflows already on the default branch, so
   # until this is merged the sweep is triggered by touching a sentinel file.
   # Editing experiments/run-experiment.txt (which also records the settings)
@@ -48,6 +52,7 @@ env:
   TAU_ELIG: ${{ github.event.inputs.tau_elig || '70' }}
   MODULATOR_LAG: ${{ github.event.inputs.modulator_lag || '0' }}
   NEURONS: ${{ github.event.inputs.neurons || '24' }}
+  PRETRAIN: ${{ github.event.inputs.pretrain || '0' }}
 
 jobs:
   seeds:
@@ -80,7 +85,8 @@ jobs:
             --episodes $EPISODES \
             --tau-elig $TAU_ELIG \
             --modulator-lag $MODULATOR_LAG \
-            --neurons $NEURONS
+            --neurons $NEURONS \
+            --pretrain $PRETRAIN
 
       - name: Plastic condition
         if: steps.gate.outputs.run == 'yes'
@@ -91,7 +97,8 @@ jobs:
             --episodes $EPISODES \
             --tau-elig $TAU_ELIG \
             --modulator-lag $MODULATOR_LAG \
-            --neurons $NEURONS
+            --neurons $NEURONS \
+            --pretrain $PRETRAIN
 
       - name: Upload this seed's results
         if: steps.gate.outputs.run == 'yes'

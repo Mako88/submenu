@@ -1,0 +1,23 @@
+Sweep 003 -- plastic vs frozen at 24 neurons with a pre-trained readout.
+20 seeds, 400 readout-only episodes, then 400 episodes with column plasticity.
+
+Sweeps 001 and 002 both found nothing: -0.003 (p 0.79) with no headroom at 96
+neurons, +0.011 (p 0.45) with a +0.193 linear-to-MLP gap at 24. Between them
+they rule out the benchmark, since the rule fails equally whether or not there
+is room to improve.
+
+That leaves the credit signal. The column is told readout.W^T @ (-err), so it
+is only ever as well-directed as the readout is trained, and the readout is a
+single-pass delta rule that reaches ~0.72 of the ~0.86 available. A column
+faithfully following a half-trained teacher is exactly what both nulls look
+like.
+
+This sweep fixes the teacher before blaming the student: the readout trains
+alone for 400 episodes with the column frozen, and only then does column
+plasticity switch on. Both arms get the same 800 total episodes, so the only
+difference is whether the column learns during the second half.
+
+Prediction, recorded before the result: if the teacher was the problem, plastic
+should now beat frozen. If this comes back null too, the three-factor rule as
+implemented does not work, and the next suspect is the eligibility trace itself
+rather than anything feeding it.

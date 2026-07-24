@@ -35,6 +35,8 @@ def main() -> None:
     ap.add_argument("--neurons", type=int, default=96)
     ap.add_argument("--readout-lr", type=float, default=0.5)
     ap.add_argument("--modulator-lag", type=int, default=0)
+    ap.add_argument("--pretrain", type=int, default=0,
+                    help="episodes of readout-only training before column plasticity")
     ap.add_argument("--feedback", default="symmetric")
     ap.add_argument("--report", action="store_true")
     args = ap.parse_args()
@@ -63,14 +65,23 @@ def main() -> None:
         modulator_lag=args.modulator_lag,
         seed=args.seed,
     )
-    model.train(task, args.episodes, rng=np.random.default_rng(1000 + args.seed),
-                report_every=10**9)
+    rng = np.random.default_rng(1000 + args.seed)
+    if args.pretrain:
+        # Let the readout converge before the column starts taking its advice.
+        # The column's credit signal is readout.W^T @ (-err), so a half-trained
+        # decoder is a noisy teacher and the column follows it faithfully. Both
+        # nulls so far are consistent with that, and this is the test.
+        saved, model.column.cfg.lr = model.column.cfg.lr, 0.0
+        model.train(task, args.pretrain, rng=rng, report_every=10**9)
+        model.column.cfg.lr = saved
+    model.train(task, args.episodes, rng=rng, report_every=10**9)
     acc = model.evaluate(task, args.eval, rng=np.random.default_rng(9999))
 
     with OUT.open("a") as fh:
         fh.write(json.dumps(dict(tag=args.tag, lr=args.lr, seed=args.seed, acc=acc,
                                  tau_elig=args.tau_elig, episodes=args.episodes,
-                                 modulator_lag=args.modulator_lag)) + "\n")
+                                 modulator_lag=args.modulator_lag,
+                                 pretrain=args.pretrain)) + "\n")
     print(f"{args.tag} seed={args.seed}: eval {acc:.3f}")
 
 
