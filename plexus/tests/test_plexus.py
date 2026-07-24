@@ -480,3 +480,93 @@ def test_episode_shapes_are_consistent():
         assert ep.response.shape == (task.length,)
         assert ep.response.any()
         assert 0 <= ep.label < task.n_classes
+
+
+# --------------------------------------------------------------------------
+# Audit tests: quantities that could look healthy while measuring nothing.
+# Every bug found late in this project had that shape, so these check the
+# link between a quantity and what it claims to represent, not just outputs.
+# --------------------------------------------------------------------------
+def test_eligibility_normaliser_tracks_actual_magnitude():
+    """elig_rms must track the trace it normalises by.
+
+    Regression test for a bug that mis-scaled every sweep. It was seeded at
+    1e-3 with a 0.999 decay, which was fine while the modulator fired ~70x per
+    episode; once one decision produced one release it advanced 70x more slowly
+    and stayed dominated by its initialisation, tracking 4.6e-3 against an
+    actual 2.4e-2. The effective learning rate ran ~5x high and drifted.
+    """
+    task = DelayedXOR()
+    m = Plexus(task.n_inputs, task.n_classes, column=ColumnConfig(n_neurons=32), seed=0)
+    rng = np.random.default_rng(0)
+    for _ in range(40):
+        m.run_episode(task.episode(rng), learn=True)
+    col = m.column
+    assert col.n_updates > 0, "normaliser never updated"
+    tracked = col.elig_rms / (1.0 - float(col.decay_elig_rms) ** col.n_updates)
+    actual = np.sqrt(np.mean(col.elig**2, axis=(1, 2)))
+    ratio = float(np.median(actual) / np.median(np.maximum(tracked, 1e-12)))
+    assert 0.3 < ratio < 3.0, f"normaliser off by {ratio:.1f}x from the true magnitude"
+
+
+def test_event_value_variation_comes_from_stp_not_threshold_crossing():
+    """Records where an event's value actually comes from.
+
+    The design intent was that suprathreshold magnitude makes an event more
+    informative than a spike. Measured, that component uses well under 1% of
+    its available span: the soft reset (v -= theta) means v never climbs far
+    past threshold, so u stays ~0 and the raw emission is nearly constant.
+
+    The variation is real but it comes from short-term plasticity scaling the
+    amplitude -- which is arguably the more biological mechanism, since real
+    terminals modulate amplitude through release probability. This test pins
+    both halves so that a future change to the emission is noticed rather than
+    silently assumed to have been working all along.
+    """
+    cfg = ColumnConfig(n_neurons=64, n_external=16, seed=0)
+    transport = LocalTransport(16 + 64, cfg.delay_max + 2, cfg.modulator_dim)
+    col = Column(cfg, transport)
+    span = cfg.value_scale - cfg.value_base
+
+    raw, post = [], []
+    original = col._short_term_plasticity
+
+    def spy(value, fired):
+        raw.append(value[fired].copy())
+        out = original(value, fired)
+        post.append(out[fired].copy())
+        return out
+
+    col._short_term_plasticity = spy
+    rng = np.random.default_rng(0)
+    for t in range(4000):
+        col.step(t, (rng.random(16) < 0.05).astype(np.float32))
+
+    r, p = np.concatenate(raw), np.concatenate(post)
+    graded_fraction = float((np.median(r) - cfg.value_base) / span)
+    assert graded_fraction < 0.05, (
+        f"suprathreshold grading now uses {graded_fraction:.1%} of its span; "
+        "if the emission was changed on purpose, update this test and the README claim"
+    )
+    assert float(p.std() / np.median(p)) > 0.15, "events carry no amplitude variation at all"
+
+
+def test_learnable_time_constants_run_without_breaking_dynamics():
+    """lr_tau is an advertised feature that is off by default and so untested.
+
+    Code that never executes is exactly where the forward-pass bug lived, so
+    this at least exercises the path and checks it leaves the column in a sane
+    state rather than silently producing NaNs or absurd constants.
+    """
+    task = DelayedXOR()
+    cfg = ColumnConfig(n_neurons=32, lr_tau=1e-3)
+    m = Plexus(task.n_inputs, task.n_classes, column=cfg, seed=0)
+    before = m.column.tau_soma.copy()
+    rng = np.random.default_rng(0)
+    for _ in range(8):
+        m.run_episode(task.episode(rng), learn=True)
+    tau = m.column.tau_soma
+    assert np.all(np.isfinite(tau))
+    assert np.all(tau > 0.0)
+    assert not np.allclose(before, tau), "lr_tau > 0 but time constants never moved"
+    assert np.all(np.isfinite(m.column.v)) and np.all(np.isfinite(m.column.W))

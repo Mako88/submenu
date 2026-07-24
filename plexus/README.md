@@ -47,7 +47,7 @@ python3 experiments/demo.py --task xor
 
 | Biology | Here | Why |
 |---|---|---|
-| All-or-none spikes | Sparse events carrying a **value** | The spike is binary because axons attenuate. Digital transport doesn't. A rate code burns 10–50 spikes per scalar; we send one event |
+| All-or-none spikes | Sparse events carrying a **value** | The spike is binary because axons attenuate; digital transport doesn't. But see the correction below — the value turned out to be carried by synaptic efficacy, not by suprathreshold magnitude |
 | Fixed time constants | Heterogeneous, learnable (12–320 ms) | Channel kinetics are a constraint, not a design |
 | Diffuse chemical modulation | **Routed vector** modulator | Dopamine broadcasts one scalar by diffusion; we send a vector each neuron reads through its own projection |
 | Delays as unavoidable lag | Delays as **first-class parameters** | Makes network latency a value the model already represents |
@@ -217,6 +217,25 @@ Two real bugs surfaced only once the model was actually split:
   be excitatory as far as one column was concerned and inhibitory to another.
   Being excitatory is a property of the *emitting* neuron, not of whoever reads
   it. Signs now come from a shared `sign_seed`.
+
+### Correction: where an event's value actually comes from
+
+The design intent was that suprathreshold magnitude makes an event more
+informative than a spike. Measured, that component uses **0.32 % of its
+available span** — the soft reset (`v -= θ`) means the membrane never climbs far
+past threshold, so `u ≈ 0` and the raw emission is nearly constant at
+`value_base`. By that mechanism, events are binary in practice.
+
+The variation is real and large — about **52 %** relative spread — but it comes
+from short-term plasticity scaling the amplitude, not from the threshold
+crossing. That is arguably the more biological answer, since real terminals
+modulate amplitude through release probability rather than through how far past
+threshold the soma got. It is not, however, what was claimed, and `value_scale`
+is very nearly an inert parameter as a result.
+
+Found by auditing every config field for whether it changes behaviour at all —
+the generalised form of the test that caught the forward-pass bug. Pinned by
+`test_event_value_variation_comes_from_stp_not_threshold_crossing`.
 
 ## Bugs worth knowing about
 
