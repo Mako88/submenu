@@ -1,0 +1,30 @@
+Sweep 008 -- graded sensitivity, 24 neurons, 20 seeds, magnitude updates.
+
+The first change that improved the measured defect rather than working around
+it. Sweeps 001-007 established that the rule does nothing and that the cause is
+the eligibility trace: it agreed with the finite-difference gradient in sign
+0.64 of the time and in magnitude not at all (correlation -0.045).
+
+The surrogate was the suspect. The standard window, a smooth bump around
+threshold, ignores whether the neuron fired at all. But valued events make the
+emission genuinely smooth above threshold, so d(value)/du = 1 - tanh^2(u/span)
+is a real derivative there, not a surrogate, and exactly zero below. Measured
+against finite differences over 90 synapses:
+
+  window   correlation -0.045   sign 0.64 (p 0.0040)   ratio 0.0023
+  graded   correlation +0.207   sign 0.69 (p 0.0002)   ratio 0.0773
+  hybrid   correlation -0.026   sign 0.63 (p 0.0074)   ratio 0.0078
+
+Graded is better on every axis, and the first positive magnitude correlation in
+the project. That hybrid is no better than window is itself informative: adding
+the window term back reintroduces the noise, so the window is the problem
+rather than an imperfect approximation of the answer.
+
+The forward pass is untouched by this -- the surrogate only enters the
+eligibility trace -- so dynamics, sparsity and every frozen-column result are
+unaffected.
+
+Prediction, recorded before the result: a correlation of +0.207 is a real
+improvement on -0.045 but still far from tracking the gradient properly, so a
+detectable effect is plausible but a large one is not. Compare against sweep
+006, the clean baseline at these settings: +0.006, p = 0.66.

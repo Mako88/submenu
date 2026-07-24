@@ -39,7 +39,11 @@ on:
       elig_mode:
         description: 'Use the eligibility trace as magnitude, or sign only'
         required: false
-        default: 'sign'
+        default: 'magnitude'
+      surrogate:
+        description: 'Sensitivity: window, graded, or hybrid'
+        required: false
+        default: 'graded'
   # workflow_dispatch only works for workflows already on the default branch, so
   # until this is merged the sweep is triggered by touching a sentinel file.
   # Editing experiments/run-experiment.txt (which also records the settings)
@@ -61,7 +65,8 @@ env:
   # 003 ran with PRETRAIN=0 and tested nothing. Sweep 004 established that
   # pretraining changes no outcome, so it is back off by default.
   PRETRAIN: ${{ github.event.inputs.pretrain || '0' }}
-  ELIG_MODE: ${{ github.event.inputs.elig_mode || 'sign' }}
+  ELIG_MODE: ${{ github.event.inputs.elig_mode || 'magnitude' }}
+  SURROGATE: ${{ github.event.inputs.surrogate || 'graded' }}
 
 jobs:
   seeds:
@@ -96,7 +101,8 @@ jobs:
             --modulator-lag $MODULATOR_LAG \
             --neurons $NEURONS \
             --pretrain $PRETRAIN \
-            --elig-mode $ELIG_MODE
+            --elig-mode $ELIG_MODE \
+            --surrogate $SURROGATE
 
       - name: Plastic condition
         if: steps.gate.outputs.run == 'yes'
@@ -109,7 +115,8 @@ jobs:
             --modulator-lag $MODULATOR_LAG \
             --neurons $NEURONS \
             --pretrain $PRETRAIN \
-            --elig-mode $ELIG_MODE
+            --elig-mode $ELIG_MODE \
+            --surrogate $SURROGATE
 
       - name: Upload this seed's results
         if: steps.gate.outputs.run == 'yes'

@@ -73,6 +73,18 @@ class ColumnConfig:
     # neurons cross by a hair, so a purely graded payload would be ~0 for
     # almost every event. This way an event is never less informative than a
     # binary spike, and usually more.
+    # How the per-step sensitivity d(out)/dv is computed.
+    #   "window" -- a smooth bump around threshold, ignoring whether the neuron
+    #               fired. Standard surrogate-gradient practice, and what the
+    #               gradient check measured as carrying sign but not magnitude.
+    #   "graded" -- the true derivative of the emitted value where the output is
+    #               actually smooth. Valued events make the emission continuous
+    #               above threshold, so this part is a real gradient, not a
+    #               surrogate; below threshold it is exactly zero.
+    #   "hybrid" -- graded where the neuron fired, plus a small window term to
+    #               keep credit flowing to silent-but-close neurons.
+    surrogate: str = "window"
+    surrogate_mix: float = 0.3  # weight of the window term in "hybrid"
     value_base: float = 0.6
     value_scale: float = 2.0
     threshold_init: float = 1.0
@@ -385,7 +397,18 @@ class Column:
         value = np.where(
             fired, cfg.value_base + span * np.tanh(np.maximum(u, 0.0) / span), 0.0
         ).astype(np.float32)
-        susceptibility = (1.0 / (1.0 + np.abs(u) / cfg.surrogate_width) ** 2).astype(np.float32)
+        window = (1.0 / (1.0 + np.abs(u) / cfg.surrogate_width) ** 2).astype(np.float32)
+        if cfg.surrogate == "window":
+            susceptibility = window
+        else:
+            # d(value)/du where the emission is genuinely smooth. tanh(u/span)
+            # has derivative sech^2(u/span) = 1 - tanh^2, and the emitted value
+            # scales it by span, so d(value)/du = 1 - tanh^2(u/span).
+            span = cfg.value_scale - cfg.value_base
+            graded = np.where(fired, 1.0 - np.tanh(np.maximum(u, 0.0) / span) ** 2, 0.0)
+            susceptibility = (
+                graded if cfg.surrogate == "graded" else graded + cfg.surrogate_mix * window
+            ).astype(np.float32)
         return value, susceptibility
 
     def _short_term_plasticity(self, value: np.ndarray, fired: np.ndarray) -> np.ndarray:

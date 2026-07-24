@@ -74,6 +74,8 @@ def main() -> None:
     ap.add_argument("--samples", type=int, default=45)
     ap.add_argument("--eps", type=float, default=0.15)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--surrogate", default="window",
+                    choices=["window", "graded", "hybrid"])
     args = ap.parse_args()
 
     tau = 70.0
@@ -83,6 +85,7 @@ def main() -> None:
         n_branches=4,
         n_synapses=8,
         tau_eligibility=tau,
+        surrogate=args.surrogate,
         fanin_recurrent_frac=0.0,  # feedforward: eligibility should be exact
         stp=False,  # STP is a separate nonlinearity, not part of dW
         seed=args.seed,
