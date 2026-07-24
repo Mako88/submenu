@@ -38,7 +38,7 @@ on:
   # starts a run from whatever branch the change lands on.
   push:
     paths:
-      - 'experiments/run-experiment.txt'
+      - 'experiments/sweeps/**'
 
 # Push-triggered runs have no inputs, so every parameter falls back to a default.
 env:

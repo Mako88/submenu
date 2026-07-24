@@ -1,0 +1,14 @@
+Sweep 002 -- plastic vs frozen at 24 neurons, 20 seeds, 400 episodes.
+
+Sweep 001 (96 neurons) found no effect, but it had no headroom: a random column
+of that size already makes delayed XOR 0.86 linearly decodable against 0.98 for
+an MLP on the same states, so the rule was asked to improve something already
+near its ceiling.
+
+Smaller columns mix less. At 24 neurons the label is clearly present but not
+linearly accessible -- linear 0.689 against MLP 0.881, a gap of +0.193. Closing
+that gap is precisely what a three-factor rule is for, so this is the first
+comparison with room for an effect to exist.
+
+Each file added under experiments/sweeps/ starts one run and records what it
+was asking. Sweep 001 lives in experiments/run-experiment.txt.
