@@ -40,7 +40,7 @@ a column that ignores its own weights is a different column.
 | Rate-code and time-binned-linear baselines (0.494, 0.486) | `baselines.py` | task-only measurement | Involves no column at all. |
 | Conduction-delay tolerance: 2ms -> 150ms costs -0.048 | README, `run-latency.txt` | latency sweep | `latency.py` defaults `--lr 0.0`, so this ran on **frozen** columns and neither learning-path fix can touch it. Valid -- but narrower than the claim it is used to support; see below. |
 | Three-factor rule does not beat a frozen column | sweeps 006-010 | five post-fix nulls | The headline negative result was re-established after every relevant fix. This one is solid. |
-| Salience-gated Hebbian binding beats a frozen column, 0.876 vs 0.802 | sweep 014 | 20 paired seeds | Most recent measurement in the project. Post-everything. Representation quality only -- not yet confirmed end to end. |
+| Salience-gated Hebbian binding beats a frozen column, 0.876 vs 0.802 | sweep 014 | 20 paired seeds | Representation quality only -- not yet confirmed end to end. Sweep 015 re-ran it after the mechanism was rewritten and reproduced both numbers exactly, which confirms the refactor rather than replicating the effect: same seeds, same deterministic computation, so it is one measurement reported twice. |
 | The engram allocator is worse than binding alone | sweep 014 | 20 paired seeds, p = 0.0001 | Why the mechanism was deleted. Note what it does *not* say: delayed XOR asks nothing of memory separation, so this refutes allocation on this benchmark only. |
 
 ### Stale — decision still in force, evidence no longer valid

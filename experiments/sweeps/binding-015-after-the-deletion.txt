@@ -58,4 +58,49 @@ and 014, so all three are directly comparable.
 
 RESULT -- 20 paired seeds
 -------------------------
-Pending.
+condition    linear            MLP
+off          0.802 +/- 0.051   0.987 +/- 0.009
+on           0.876 +/- 0.045   0.999 +/- 0.002
+
+  linear   +0.074, 18/20 seeds, p = 0.0000
+  MLP      +0.012, 17/20 seeds, p = 0.0001
+
+Both predictions held, to three decimal places. `off` reproduces 0.802 and
+`on` reproduces 0.876 -- not within the +/- 0.01 the prediction allowed, but
+exactly.
+
+The exactness is the actual finding, and it is worth more than the tolerance
+would have been. `off` matching to the digit says the deletion touched nothing
+outside the mechanism: hebbian=False is bit-identical to the pre-existing path.
+`on` matching to the digit says the rewrite is arithmetically equivalent on the
+surviving path -- in sweep 014's hebb-only condition the graded branch computed
+`clip(act_fast / baseline, 0, 5) * alloc_frac` and passed it to _bind, and the
+standalone _bind computes the same expression with the same inputs. The
+allocation scaffolding really was inert around it, in the strongest sense: its
+removal changed no bit of the result.
+
+WHAT THIS IS NOT
+----------------
+It is a regression check, not a replication. Same seeds, same episode stream,
+same deterministic computation -- so it re-confirms that the code still does
+what it did, and adds no independent evidence that the mechanism works. The
++0.074 rests on sweep 014 and on 014 alone.
+
+That distinction is easy to lose when a number comes back green twice. Two
+runs agreeing because they compute the same thing is not two measurements.
+
+NEW, THOUGH SMALL
+-----------------
+The MLP decoder also improves, 0.987 -> 0.999, p = 0.0001. Sweep 014 reported
+that column but ran no test on it. It means binding does not only make the
+existing information more linearly accessible -- it adds a little that a
+nonlinear decoder can use too. At 0.987 the ceiling leaves almost no room, so
+the effect is real but nearly exhausted on this task, and it should not be
+leaned on.
+
+NEXT
+----
+End-to-end confirmation, which is the one thing still missing. Everything
+measured so far is representation quality; sweep 009 is the standing warning
+that it and accuracy can come apart, and that warning was written when the gap
+ran the other way.
