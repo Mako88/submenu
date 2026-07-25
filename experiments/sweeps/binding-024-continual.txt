@@ -1,0 +1,124 @@
+Sweep 024 -- does learning a second task cost what the column learned on the first?
+===================================================================================
+
+QUESTION
+--------
+Every number in this repo is a number about one task with one answer and no
+interference between memories. That is TODO item 1 and the largest gap in the
+project: delayed XOR cannot ask about capacity and cannot ask about forgetting.
+
+It also makes sweep 014's refutation of engram allocation narrower than it
+reads. The allocator's whole purpose was to push successive memories onto
+*different* neurons, following Han et al. 2007 / Yiu et al. 2014 / Cai et al.
+2016, and it demonstrably produced engrams overlapping less than independent
+sampling (`engram-012`, rotate 0.815 against 1.661). A benchmark with one memory
+never asks for that, so 014 refuted allocation *on delayed XOR* and not in
+general. This is the smallest benchmark that asks.
+
+THE BENCHMARK
+--------------
+Two tasks that are the same computation over a different sensory mapping:
+delayed XOR with the input channels permuted. Identical difficulty, identical
+statistics, disjoint in what they ask the column's fixed wiring to do.
+
+  train on A  ->  measure A            acquisition
+  train on B  ->  measure A and B      retention, and whether B learned at all
+
+The permutation is what makes this a benchmark rather than two tasks. Per
+timestep the total input energy is *identical* between A and B, and the multiset
+of per-channel totals is identical, so the two cannot differ in any quantity
+that ignores which channel is which. If B were simply harder, forgetting and
+difficulty would not be separable in the result. Asserted by
+`test_channel_permutation_is_a_relabelling_and_not_a_harder_task`, whose third
+assertion is that the mappings genuinely differ -- without it the two variants
+would be one task and retention would be trivially perfect.
+
+Decodability is measured by an offline decoder fit fresh each time, so the
+online readout is not involved and this is a statement about the column's
+representation.
+
+A CLAIM THIS SWEEP ALREADY FALSIFIED, BEFORE IT RAN
+-----------------------------------------------------
+The experiment's docstring asserted that `off` cannot forget, "because nothing
+about a frozen column changes". The first run refuted it: `off` lost **0.167**
+at one seed.
+
+A column with `lr=0` and no binding still runs threshold homeostasis, knee
+adaptation and synaptic scaling. A and B have identical marginal statistics, but
+each neuron sees a different subset of channels through its fixed wiring, so its
+own drive distribution changes when the mapping changes and its threshold
+follows. Sweep 022 measured that operating point carrying most of the column's
+representation quality -- so it is precisely the thing that then moves.
+
+**"Frozen" has been used interchangeably with "unchanging" throughout this
+project and it is neither.** Sweep 019 already caught one version of this
+(frozen is not untrained). This is the second, and the docstring is corrected.
+
+CONDITIONS  (20 seeds, 150 episodes per task, 96 neurons, column lr 0)
+-----------------------------------------------------------------------
+  off            homeostasis and scaling only
+  on             salience-gated Hebbian binding
+  lateral        lateral inhibition only
+  both           binding + lateral
+
+PREDICTION (recorded before the 20-seed run)
+----------------------------------------------
+One seed is in hand and the prediction is informed by it, as with sweeps 020,
+022 and 023.
+
+  off        retention -0.10 to -0.20, acquisition +0.08 to +0.14
+  on         retention -0.04 to +0.04, acquisition +0.15 to +0.25
+  lateral    retention between the two, closer to off
+  both       retention like `on`, acquisition highest
+
+**The central claim: binding retains better than `off`, and the difference is
+significant.** One seed puts it at +0.017 against -0.167. Predicting the effect
+survives at 20 seeds but shrinks -- call it a paired difference of +0.08 to
++0.15, p < 0.05.
+
+The reasoning, so it can be wrong for a stated reason: binding writes into `W`,
+which is a much larger store than the per-neuron threshold vector and is
+modified only on modulator release rather than continuously. If A's structure is
+held in `W` and the forgetting mechanism is `theta` drifting, then a column with
+binding has somewhere to keep A that the drift does not reach.
+
+WHAT WOULD SURPRISE ME, AND WHAT IT WOULD MEAN
+------------------------------------------------
+`on` retaining *worse* than `off`. Binding is unsupervised and fires on every
+modulator release, so it writes task B's structure into the same `W` that holds
+A's -- classic catastrophic interference, and the standard expectation for an
+undifferentiated Hebbian store. If that is what happens, **this is the benchmark
+that gives engram allocation its rematch**, because separating which neurons
+carry which memory is the textbook fix and 014 refuted it on a task that could
+not show the difference.
+
+I am predicting against that outcome and would find it the more interesting
+result.
+
+A CONFOUND, NAMED
+------------------
+`retention` is a within-condition difference (`a_after - a_before`), so a
+condition that acquired A less well has less to lose. At one seed `off` starts
+at 0.900 and `on` at 0.833, which flatters `on`'s retention through regression
+to the mean. The paired test is per seed and per condition, which controls it
+across seeds but not within one -- so `a_before` is reported alongside, and if
+the two conditions differ there by more than ~0.03 at 20 seeds, retention needs
+reading as a pair with acquisition rather than alone.
+
+WHAT THIS SWEEP CANNOT SAY
+---------------------------
+Nothing about capacity -- two tasks is not a stream. Nothing about whether the
+forgetting mechanism is really threshold drift; that is a direct measurement
+(correlate per-neuron |dtheta| against per-neuron contribution to A's decoder)
+and it is the obvious follow-up if `off` forgets as much as one seed suggests.
+
+SETTINGS
+--------
+20 seeds, 150 episodes per task, 400 probe episodes, 96 neurons, column lr 0.
+Channel seeds fixed at 1 and 2 for every model seed, so every seed faces the
+same pair of tasks and a hard permutation does not become invisible seed
+variance.
+
+RESULT -- 20 paired seeds
+-------------------------
+Pending.

@@ -1,0 +1,22 @@
+Sentinel for .github/workflows/plexus-continual.yml.
+
+Editing this file starts a 20-seed run. It exists so that writing a *result*
+into experiments/sweeps/ does not re-run the matrix that produced it -- GitHub
+path filters cannot tell a file being added from one being edited, so the
+trigger has to live where results are never written.
+
+run 1 -- sweep 024: does learning a second task cost what the column learned on
+  the first? Four conditions (off / binding / lateral / both) across two tasks
+  that are the same computation over a permuted sensory mapping, so they are
+  identical in difficulty and statistics and differ only in which channel
+  carries which role.
+
+  One seed already refuted a claim written in the experiment's own docstring:
+  a column with lr=0 and no binding lost 0.167 of task A when trained on task B.
+  "Frozen" is not "unchanging" -- homeostasis and synaptic scaling keep running,
+  and sweep 022 found that operating point carrying most of the representation
+  quality.
+
+  Prediction in experiments/sweeps/binding-024-continual.txt, which names the
+  surprising outcome (binding retaining *worse* than off) as the one that would
+  give engram allocation its rematch.

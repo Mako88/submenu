@@ -63,7 +63,17 @@ class DelayedParity:
         jitter: int = 10,
         noise_rate: float = 0.02,
         cue_strength: float = 1.0,
+        channel_seed: int | None = None,
     ):
+        # A permutation of the input channels. Two tasks that differ only in
+        # this are the *same computation over a different sensory mapping* --
+        # identical difficulty, identical statistics, disjoint in what they ask
+        # the column's fixed wiring to do. That makes a task stream out of one
+        # benchmark without introducing a difficulty confound, which is what
+        # continual learning needs and what a stream of unrelated tasks cannot
+        # give: if task B is simply harder, forgetting and difficulty are not
+        # separable in the result.
+        self.channel_seed = channel_seed
         self.n_cues = n_cues
         self.group_size = group_size
         self.n_distractor = n_distractor
@@ -83,6 +93,10 @@ class DelayedParity:
         self.jitter = jitter
         self.noise_rate = noise_rate
         self.cue_strength = cue_strength
+        self.channel_perm = (
+            None if channel_seed is None
+            else np.random.default_rng(channel_seed).permutation(self.n_inputs)
+        )
 
     def _group(self, index: int) -> slice:
         return slice(index * self.group_size, (index + 1) * self.group_size)
@@ -120,6 +134,12 @@ class DelayedParity:
         label = 0
         for b in bits:
             label ^= b
+        if self.channel_perm is not None:
+            # Applied last, so everything above -- constant total energy across
+            # classes, every class using the same channels equally often -- is
+            # untouched. A permutation cannot change any of those properties,
+            # only which physical channel carries which role.
+            x = x[:, self.channel_perm]
         return Episode(inputs=x, label=label, response=response, bits=tuple(bits))
 
 

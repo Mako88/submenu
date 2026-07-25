@@ -965,6 +965,50 @@ def test_lateral_inhibition_step_is_scaled_to_the_weights():
     assert moved(ColumnConfig.lateral_lr * 4) > 2.0 * rel
 
 
+def test_channel_permutation_is_a_relabelling_and_not_a_harder_task():
+    """A task stream needs variants that differ in mapping, not in difficulty.
+
+    Continual learning asks whether learning B costs what was learned on A. If
+    B is simply harder, forgetting and difficulty are not separable in the
+    result and the benchmark answers neither question. A channel permutation is
+    the strongest guarantee available: total input energy per timestep is
+    *identical*, and the multiset of per-channel totals is identical, so the two
+    tasks cannot differ in any quantity that ignores which channel is which.
+
+    The third assertion is the one that stops this being vacuous — the mapping
+    must actually differ, or the two tasks are the same task and retention is
+    trivially perfect.
+    """
+    a = DelayedXOR(channel_seed=1)
+    b = DelayedXOR(channel_seed=2)
+    xa = a.episode(np.random.default_rng(7)).inputs
+    xb = b.episode(np.random.default_rng(7)).inputs
+
+    assert np.allclose(xa.sum(1), xb.sum(1)), "per-timestep energy differs"
+    assert np.allclose(np.sort(xa.sum(0)), np.sort(xb.sum(0))), (
+        "the multiset of per-channel totals differs, so one task carries more "
+        "drive on some channel than the other"
+    )
+    assert not np.allclose(xa.sum(0), xb.sum(0)), (
+        "the two variants map cues to the same channels, so they are one task"
+    )
+
+
+def test_channel_permutation_is_off_by_default():
+    """Every recorded sweep ran without it, and must keep meaning what it did.
+
+    A permutation applied by default would silently change the task underneath
+    every number in `experiments/sweeps/`, and nothing in a result file points
+    back at the task that produced it.
+    """
+    plain = DelayedXOR()
+    assert plain.channel_perm is None
+    rng_a, rng_b = np.random.default_rng(3), np.random.default_rng(3)
+    assert np.array_equal(
+        plain.episode(rng_a).inputs, DelayedXOR().episode(rng_b).inputs
+    )
+
+
 def _grown(n_new=8, warmup=400, seed=0):
     cfg = ColumnConfig(n_neurons=48, n_external=16, seed=seed)
     transport = LocalTransport(16 + 48, cfg.delay_max + 2, cfg.modulator_dim)

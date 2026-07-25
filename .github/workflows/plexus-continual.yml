@@ -1,0 +1,132 @@
+name: plexus continual
+
+# Sweep 024. Every number in this repo is a number about one task with one
+# answer and no interference between memories, which is the largest gap in the
+# project and why sweep 014's refutation of engram allocation is narrower than
+# it reads. This is the smallest benchmark that asks about forgetting: two tasks
+# that are the same computation over a different sensory mapping.
+
+on:
+  workflow_dispatch:
+    inputs:
+      seeds:
+        description: 'Number of seeds'
+        required: false
+        default: '20'
+      episodes:
+        description: 'Training episodes per task'
+        required: false
+        default: '150'
+      probe:
+        description: 'Probe episodes per measurement'
+        required: false
+        default: '400'
+      neurons:
+        description: 'Neurons in the column'
+        required: false
+        default: '96'
+  # A dedicated sentinel, never a results path. See plexus-binding.yml for what
+  # triggering on the sweep notes cost.
+  push:
+    paths:
+      - 'experiments/run-continual.txt'
+
+env:
+  SEEDS: ${{ github.event.inputs.seeds || '20' }}
+  EPISODES: ${{ github.event.inputs.episodes || '150' }}
+  PROBE: ${{ github.event.inputs.probe || '400' }}
+  NEURONS: ${{ github.event.inputs.neurons || '96' }}
+
+jobs:
+  seeds:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install numpy
+
+      - name: Skip seeds beyond the requested count
+        id: gate
+        run: |
+          if [ "${{ matrix.seed }}" -lt "$SEEDS" ]; then
+            echo "run=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=no" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run every condition for this seed
+        if: steps.gate.outputs.run == 'yes'
+        run: |
+          common="--seed ${{ matrix.seed }} --episodes $EPISODES --probe $PROBE --neurons $NEURONS"
+          python experiments/continual.py --tag off     --hebbian 0 $common
+          python experiments/continual.py --tag on      --hebbian 1 $common
+          python experiments/continual.py --tag lateral --hebbian 0 --lateral 1 $common
+          python experiments/continual.py --tag both    --hebbian 1 --lateral 1 $common
+
+      - name: Fail loudly if a condition produced nothing
+        if: steps.gate.outputs.run == 'yes'
+        run: |
+          for tag in off on lateral both; do
+            grep -q "\"tag\": \"$tag\"" experiments/continual_results.jsonl \
+              || { echo "no rows for condition '$tag'"; exit 1; }
+          done
+
+      - uses: actions/upload-artifact@v4
+        if: steps.gate.outputs.run == 'yes'
+        with:
+          name: continual-seed-${{ matrix.seed }}
+          path: experiments/continual_results.jsonl
+          retention-days: 14
+
+  aggregate:
+    needs: seeds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install numpy
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: continual-seed-*
+          path: collected
+
+      - name: Combine, report, and run the paired tests
+        run: |
+          cat collected/*/continual_results.jsonl > experiments/continual_results.jsonl
+          python experiments/continual.py --report | tee summary.txt
+          # retention is the sweep's question; acquisition and a_before are
+          # reported beside it because retention is a within-condition
+          # difference and a condition that acquired less has less to lose.
+          for pair in "on off" "lateral off" "both off" "both on"; do
+            set -- $pair
+            for metric in retention acquisition a_before; do
+              echo "" | tee -a summary.txt
+              python experiments/paired_test.py --file experiments/continual_results.jsonl \
+                --metric $metric --a "$1" --b "$2" | tee -a summary.txt
+            done
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: continual-combined
+          path: |
+            experiments/continual_results.jsonl
+            summary.txt
+          retention-days: 30
+
+      - name: Put the summary in the run page
+        run: |
+          {
+            echo '## plexus: does learning B cost what was learned on A?'
+            echo '```'
+            cat summary.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

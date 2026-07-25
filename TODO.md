@@ -24,12 +24,25 @@ Three benchmarks would each open something currently invisible:
 - **Capacity scaling.** Does the binding gain grow, hold or vanish with column
   size? Measured only at 96 neurons. If it vanishes at 1024, the mechanism is
   a small-column artefact and everything downstream of it changes.
-- **Continual learning.** A stream of tasks rather than one. This is where the
-  deleted engram allocator could earn its way back: the allocation refractory
-  demonstrably produced engrams overlapping *less* than independent sampling
-  (`engram-012`, rotate 0.815 against 1.661), and delayed XOR never asks for
-  that. Sweep 014 refuted allocation *on this benchmark*, which is not the same
-  as refuting it.
+- **Continual learning.** Built, and running as sweep 024. Two tasks that are
+  the same computation over a permuted sensory mapping — identical difficulty
+  and statistics, disjoint in what they ask the fixed wiring to do — measuring
+  what training on B costs task A. This is where the deleted engram allocator
+  could earn its way back: the allocation refractory demonstrably produced
+  engrams overlapping *less* than independent sampling (`engram-012`, rotate
+  0.815 against 1.661), and delayed XOR never asks for that. Sweep 014 refuted
+  allocation *on that benchmark*, which is not the same as refuting it. The
+  sweep names binding-retains-worse-than-off as the outcome that triggers the
+  rematch.
+
+  It has already refuted a claim I had written into its own docstring: **a
+  column with `lr=0` and no binding lost 0.167 of task A** when trained on task
+  B, at one seed. "Frozen" is not "unchanging" — homeostasis, knee adaptation
+  and synaptic scaling keep running, and each neuron sees a different subset of
+  channels through its fixed wiring, so its drive distribution changes when the
+  mapping does. Sweep 022 found that operating point carrying most of the
+  representation quality, so it is exactly what moves. Second time this project
+  has conflated frozen with unchanging; sweep 019 caught frozen-vs-untrained.
 - **Emergent structure.** The original motivation and still entirely
   unmeasured. Needs a metric before it needs an experiment.
 

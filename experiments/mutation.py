@@ -173,6 +173,20 @@ MUTATIONS = [
         "growing_the_event_buffer",
     ),
     (
+        ROOT / "plexus" / "tasks.py",
+        "task variants share a channel mapping, making the stream one task",
+        "            else np.random.default_rng(channel_seed).permutation(self.n_inputs)",
+        "            else np.random.default_rng(0).permutation(self.n_inputs)",
+        "channel_permutation_is_a_relabelling",
+    ),
+    (
+        ROOT / "plexus" / "tasks.py",
+        "the channel permutation applies by default, changing every recorded sweep",
+        "            None if channel_seed is None",
+        "            None if False",
+        "channel_permutation_is_off_by_default",
+    ),
+    (
         READOUT,
         "readout standardisation reduced to centering",
         "z = ((state - mean) / (std + 1e-12)).astype(np.float32)",
