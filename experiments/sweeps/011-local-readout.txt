@@ -1,0 +1,30 @@
+Sweep 011 (local measurement, 3 seeds) -- can the RLS gain be had locally?
+
+RLS gave the readout +0.032 at p = 0.0098, the project's first significant
+positive, but it buys that with an (n+1)x(n+1) inverse correlation matrix pooled
+across every neuron. In a split model that state would have to be assembled from
+every machine, which is exactly what the design rule forbids.
+
+Two local variants were built to find out which half of RLS does the work --
+the per-dimension adaptive step size, or the decorrelation between dimensions:
+
+    delta          0.598    fully local
+    rls_diag       0.500    fully local, one scalar per input
+    rls_block=6    0.584    local to a machine, blocks of 6 neurons
+    rls_block=12   0.598    local to a machine, blocks of 12
+    rls (full)     0.658    pooled across all 24 neurons
+
+The answer is decorrelation, and it does not decompose. Per-dimension adaptive
+rates alone are worse than a plain delta rule -- rls_diag lands at chance.
+Decorrelating within blocks of half the population recovers nothing at all.
+Only the full matrix helps.
+
+So the honest conclusion is that this gain cannot be bought locally at the
+readout, and the default goes back to delta. Trading the architecture's central
+property for +0.032 on a toy task is a bad deal.
+
+The finding does point somewhere better, though. If the column's outputs were
+already decorrelated, a local readout would suffice -- and decorrelation by
+lateral inhibition is both local and exactly what inhibitory interneurons do in
+cortex and olfactory bulb. That moves the operation from the readout, where it
+cannot be local, into the network, where it can.

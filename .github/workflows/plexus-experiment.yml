@@ -71,7 +71,7 @@ env:
   PRETRAIN: ${{ github.event.inputs.pretrain || '0' }}
   ELIG_MODE: ${{ github.event.inputs.elig_mode || 'magnitude' }}
   SURROGATE: ${{ github.event.inputs.surrogate || 'graded' }}
-  READOUT_RULE: ${{ github.event.inputs.readout_rule || 'rls' }}
+  READOUT_RULE: ${{ github.event.inputs.readout_rule || 'delta' }}
 
 jobs:
   seeds:

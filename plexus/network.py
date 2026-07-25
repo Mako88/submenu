@@ -52,6 +52,7 @@ class Plexus:
         readout_lr: float = 0.5,
         feedback_mode: str = "symmetric",
         readout_rule: str = "delta",
+        readout_block: int | None = None,
         modulator_lag: int = 0,
         answer_steps: int = 50,
         seed: int = 0,
@@ -77,6 +78,7 @@ class Plexus:
             lr=readout_lr,
             feedback_mode=feedback_mode,
             rule=readout_rule,
+            rls_block=readout_block,
             seed=seed + 1,
         )
         self._t = 0

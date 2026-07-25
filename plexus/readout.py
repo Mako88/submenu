@@ -50,12 +50,13 @@ class LinearReadout:
         rule: str = "delta",
         rls_alpha: float = 1.0,
         rls_forget: float = 0.999,
+        rls_block: int | None = None,
         seed: int = 0,
     ):
         if feedback_mode not in ("symmetric", "dfa"):
             raise ValueError("feedback_mode must be 'symmetric' or 'dfa'")
-        if rule not in ("delta", "rls"):
-            raise ValueError("rule must be 'delta' or 'rls'")
+        if rule not in ("delta", "rls", "rls_diag", "rls_block"):
+            raise ValueError("rule must be delta, rls, rls_diag or rls_block")
         rng = np.random.default_rng(seed)
         self.W = rng.normal(0.0, 1.0 / np.sqrt(n_inputs), size=(n_outputs, n_inputs)).astype(
             np.float32
@@ -106,10 +107,37 @@ class LinearReadout:
         # readout -- the one place that already sees every neuron -- and it does
         # not cross the network, but it does not scale to a large column and it
         # should not be pretended otherwise.
+        # Three variants, trading decorrelation against how much state has to be
+        # pooled. The design rule forbids *globally synchronised* state, not all
+        # aggregation, so where the matrix lives matters more than that it
+        # exists:
+        #   "rls"       -- one (n+1)x(n+1) matrix over every neuron. Pools across
+        #                  the whole population, so in a split model it would
+        #                  need state from every machine. This is the variant
+        #                  that genuinely breaks the rule.
+        #   "rls_block" -- one small matrix per column. A column is a machine, so
+        #                  nothing crosses the network and nothing synchronises.
+        #                  Keeps decorrelation within a column, drops it between.
+        #   "rls_diag"  -- one scalar per input. Fully local to a single neuron,
+        #                  no cross-neuron state at all. Keeps the per-dimension
+        #                  adaptive step size, drops decorrelation entirely.
+        # Which of those two effects carried the +0.032 is an empirical question,
+        # and the whole point of having all three.
         self.rule = rule
         self.rls_forget = float(rls_forget)
+        self.rls_block = int(rls_block) if rls_block else n_inputs
         if rule == "rls":
-            self.P = (np.eye(n_inputs + 1, dtype=np.float64) / float(rls_alpha))
+            self.P = np.eye(n_inputs + 1, dtype=np.float64) / float(rls_alpha)
+        elif rule == "rls_block":
+            edges = list(range(0, n_inputs, self.rls_block)) + [n_inputs]
+            self.blocks = [slice(a, b) for a, b in zip(edges, edges[1:])]
+            self.Pb = [
+                np.eye(sl.stop - sl.start, dtype=np.float64) / float(rls_alpha)
+                for sl in self.blocks
+            ]
+            self.pbias = 1.0 / float(rls_alpha)
+        elif rule == "rls_diag":
+            self.pdiag = np.full(n_inputs + 1, 1.0 / float(rls_alpha), dtype=np.float64)
 
     def observe(self, activity: np.ndarray) -> np.ndarray:
         """Filter incoming column activity. Returns the current trace."""
@@ -162,25 +190,52 @@ class LinearReadout:
         if not self.learning:
             return
 
-        if self.rule == "rls":
+        if self.rule.startswith("rls"):
             if target is None:
-                raise ValueError("the rls rule needs the target class")
+                raise ValueError("the rls rules need the target class")
             # Proper least squares against a one-hot target, with the bias
             # folded in as a constant input. The softmax error is left alone and
             # still feeds the column's modulator, so switching rule changes how
             # fast the readout learns and nothing about what the column is told.
-            z = np.append(state.astype(np.float64), 1.0)
-            Pz = self.P @ z
-            k = Pz / (self.rls_forget + float(z @ Pz))
+            lam = self.rls_forget
+            zf = state.astype(np.float64)
             onehot = np.zeros(self.n_outputs, dtype=np.float64)
             onehot[target] = 1.0
             residual = (self.W @ state + self.b).astype(np.float64) - onehot
-            self.W -= np.outer(residual, k[:-1]).astype(np.float32)
-            self.b -= (residual * k[-1]).astype(np.float32)
-            # Forgetting keeps P adapting: in the plastic condition the column's
-            # representation drifts under it, so a fixed correlation estimate
-            # would slowly describe a network that no longer exists.
-            self.P = (self.P - np.outer(k, Pz)) / self.rls_forget
+
+            if self.rule == "rls":
+                z = np.append(zf, 1.0)
+                Pz = self.P @ z
+                k = Pz / (lam + float(z @ Pz))
+                self.W -= np.outer(residual, k[:-1]).astype(np.float32)
+                self.b -= (residual * k[-1]).astype(np.float32)
+                # Forgetting keeps P adapting: in the plastic condition the
+                # column's representation drifts under it, so a fixed
+                # correlation estimate would describe a network that no longer
+                # exists.
+                self.P = (self.P - np.outer(k, Pz)) / lam
+
+            elif self.rule == "rls_block":
+                k = np.empty_like(zf)
+                for sl, P in zip(self.blocks, self.Pb):
+                    zb = zf[sl]
+                    Pz = P @ zb
+                    kb = Pz / (lam + float(zb @ Pz))
+                    k[sl] = kb
+                    P -= np.outer(kb, Pz)
+                    P /= lam
+                self.W -= np.outer(residual, k).astype(np.float32)
+                kb_bias = self.pbias / (lam + self.pbias)
+                self.b -= (residual * kb_bias).astype(np.float32)
+                self.pbias = (self.pbias - kb_bias * self.pbias) / lam
+
+            else:  # rls_diag -- one scalar per input, nothing shared
+                z = np.append(zf, 1.0)
+                denom = lam + self.pdiag * z * z
+                k = self.pdiag * z / denom
+                self.W -= np.outer(residual, k[:-1]).astype(np.float32)
+                self.b -= (residual * k[-1]).astype(np.float32)
+                self.pdiag = (self.pdiag - k * z * self.pdiag) / lam
             return
 
         # Normalised LMS: dividing by the state's own energy makes the step
