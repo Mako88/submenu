@@ -662,37 +662,40 @@ def test_learnable_time_constants_run_without_breaking_dynamics():
 
 
 # --------------------------------------------------------------------------
-# Engram allocation. Every test here exists because the mechanism failed the
-# property it checks during development -- the whole point of building the
-# diagnostics before believing the mechanism.
+# Salience-gated Hebbian binding. What survived sweep 014 -- the engram
+# allocator around it (excitability drift, recruitment competition, allocation
+# refractory) measured worse than binding alone on 19 of 20 seeds and was
+# deleted, so the tests for it went with it. See
+# experiments/sweeps/engram-014-is-allocation-necessary.txt.
 # --------------------------------------------------------------------------
-def _engram_model(neurons=64, episodes=0, seed=0, **kw):
+def _hebb_run(episodes=40, neurons=48, seed=0, **kw):
     task = DelayedXOR()
-    cfg = ColumnConfig(n_neurons=neurons, lr=0.0, seed=seed, engram=True, **kw)
-    model = Plexus(task.n_inputs, task.n_classes, column=cfg, seed=seed)
-    rng = np.random.default_rng(1000 + seed)
+    cfg = ColumnConfig(n_neurons=neurons, lr=0.0, seed=seed, hebbian=True, **kw)
+    m = Plexus(task.n_inputs, task.n_classes, column=cfg, seed=seed)
+    before = m.column.W.copy()
+    rng = np.random.default_rng(1)
     for _ in range(episodes):
-        model.run_episode(task.episode(rng), learn=True)
-    return task, model, rng
+        m.run_episode(task.episode(rng), learn=True)
+    return m, before
 
 
-def test_engram_off_leaves_the_column_untouched():
-    """The default must be bit-identical to the model without the mechanism.
+def test_hebbian_off_leaves_the_column_untouched():
+    """The default must reproduce the model without the mechanism exactly.
 
-    New mechanisms default to off so that every previous measurement stays
-    reproducible; a default that quietly changed the dynamics would invalidate
-    eleven sweeps of recorded results without any test failing.
+    New mechanisms default to off so previous measurements stay reproducible.
+    A default that quietly changed the dynamics would invalidate fourteen
+    sweeps of recorded results without any test failing.
     """
     task = DelayedXOR()
     outs = []
-    for engram in (False, True):
-        cfg = ColumnConfig(n_neurons=32, lr=0.0, seed=0, engram=engram)
+    for hebbian in (False, True):
+        cfg = ColumnConfig(n_neurons=32, lr=0.0, seed=0, hebbian=hebbian)
         m = Plexus(task.n_inputs, task.n_classes, column=cfg, seed=0)
         rng = np.random.default_rng(4)
         for _ in range(3):
             m.run_episode(task.episode(rng), learn=True)
         outs.append(m.column.W.copy())
-    assert not np.allclose(outs[0], outs[1]), "engram=True changed nothing at all"
+    assert not np.allclose(outs[0], outs[1]), "hebbian=True changed nothing at all"
 
     cfg = ColumnConfig(n_neurons=32, lr=0.0, seed=0)
     m = Plexus(task.n_inputs, task.n_classes, column=cfg, seed=0)
@@ -702,157 +705,108 @@ def test_engram_off_leaves_the_column_untouched():
     assert np.array_equal(m.column.W, outs[0]), "the default path is no longer the old path"
 
 
-def test_excitability_reaches_the_threshold_when_that_path_is_enabled():
-    """excite_threshold > 0 must actually change what the column emits.
+def _bind_column(n=8, **kw):
+    cfg = ColumnConfig(n_neurons=n, n_external=4, seed=0, hebbian=True,
+                       scaling_lr=0.0, **kw)
+    transport = LocalTransport(4 + n, cfg.delay_max + 2, cfg.modulator_dim)
+    return Column(cfg, transport)
 
-    The disconnected-quantity check, in the form that caught the forward-pass
-    bug: perturb the input, assert the output moves. The path is off by default
-    -- see the test below for why -- and code that never executes is exactly
-    where that bug lived, so it gets exercised explicitly.
+
+def test_binding_scales_with_how_active_the_neuron_was():
+    """The postsynaptic factor must reach the weights.
+
+    Driven directly rather than through a training run, because a pooled
+    statistic cannot see this. Per-neuron weight change varies with `pre` as
+    well, so "std/mean across neurons" stays large even when the activity
+    factor is replaced by a constant -- the first version of this test passed
+    its own mutation for exactly that reason. Holding `pre` identical across
+    neurons and varying only activity isolates the factor under test.
+
+    Graded binding is also what sweep 014 bought: recruiting a fixed minority
+    and giving them a full-strength update measured 0.830 against 0.876, worse
+    on 19 of 20 seeds at p = 0.0001.
     """
-    task = DelayedXOR()
-
-    def emissions(bump):
-        cfg = ColumnConfig(
-            n_neurons=32, lr=0.0, seed=0, engram=True, excite_drift=0.0,
-            excite_threshold=1.0,
-        )
-        m = Plexus(task.n_inputs, task.n_classes, column=cfg, seed=0)
-        m.column.xi[:16] = bump
-        rng = np.random.default_rng(5)
-        m.run_episode(task.episode(rng), learn=False)
-        return m.column.rate.copy()
-
-    quiet, excited = emissions(0.0), emissions(1.0)
-    assert not np.allclose(quiet, excited), "excitability never reached the threshold"
-    assert excited[:16].mean() > quiet[:16].mean(), "raising xi did not raise activity"
-
-
-def test_default_keeps_excitability_out_of_the_threshold():
-    """Excitability must not tilt the threshold by default, and here is why.
-
-    Driving a neuron harder depletes its short-term synaptic resources, and the
-    emitted value is scaled by what remains. So a neuron made more excitable
-    fires more often but reports *less* activity per event, and the activity
-    z-score the recruitment competition reads goes the wrong way: measured
-    correlation between the excitability bias and that z-score was -0.41. The
-    two ingredients of allocation were cancelling each other, and recruitment
-    anti-predicted excitability at -0.22. Routing excitability only into the
-    competition flips that to +0.20.
-
-    Biology has no reason to separate the two paths. We do, and the reason is a
-    property of our emission model rather than of neurons.
-    """
-    assert ColumnConfig.excite_threshold == 0.0
-    task = DelayedXOR()
-    cfg = ColumnConfig(n_neurons=32, lr=0.0, seed=0, engram=True)
-    m = Plexus(task.n_inputs, task.n_classes, column=cfg, seed=0)
-    m.column.xi[:16] = 2.0
-    m.run_episode(task.episode(np.random.default_rng(5)), learn=False)
-    assert np.array_equal(m.column.theta_eff, m.column.theta), (
-        "excitability is still reaching the threshold at the default setting"
-    )
-
-
-def test_recruitment_is_biased_by_excitability():
-    """Regression test for a criterion blind to its own driving variable.
-
-    The first version recruited on ``act_fast > margin * act_slow``. That ratio
-    is self-normalising: a neuron made more excitable raises its own baseline
-    along with its activity, so the criterion cancelled exactly the effect it
-    was meant to detect, and excitability correlated with recruitment at -0.40,
-    i.e. backwards. Any future rewrite of the competition has to keep this.
-    """
-    task, model, rng = _engram_model(neurons=64, episodes=40)
-    col = model.column
-    col.xi.fill(0.0)
-    col.xi_slow.fill(0.0)
-    half = col.cfg.n_neurons // 2
-    col.xi[:half] = 1.5
-
-    tagged = np.zeros(col.cfg.n_neurons)
-    trials = 12
-    for _ in range(trials):
-        col.xi[:half] = 1.5  # hold the bump against drift and allocation drops
-        col.xi[half:] = 0.0
-        model.run_episode(task.episode(rng), learn=True)
-        tagged += col.tag
-    assert tagged[:half].sum() > tagged[half:].sum(), (
-        f"excitable half recruited {tagged[:half].sum():.0f} times vs "
-        f"{tagged[half:].sum():.0f} for the rest -- recruitment ignores excitability"
-    )
-
-
-def test_allocation_recruits_a_minority():
-    """An engram that is the whole population has allocated nothing."""
-    task, model, rng = _engram_model(neurons=64, episodes=60, alloc_frac=0.15)
-    sizes = []
-    for _ in range(40):
-        model.run_episode(task.episode(rng), learn=True)
-        sizes.append(model.column.engram_size)
-    mean = float(np.mean(sizes))
-    assert 0.02 < mean < 0.45, f"recruited {mean:.1%} of the population per event"
-
-
-def test_recruitment_lowers_excitability():
-    """The allocation refractory has to be connected to the tag.
-
-    This is the step with no analogue in a conventional network: being
-    recruited must cost excitability, or successive memories pile onto the same
-    neurons instead of being allocated to different ones.
-    """
-    task, model, rng = _engram_model(neurons=64, episodes=30)
-    col = model.column
-    before = col.xi.copy()
-    model.run_episode(task.episode(rng), learn=True)
-    tag = col.tag
-    assert tag.any(), "nothing was recruited, so the test proves nothing"
-    drop = before - col.xi
-    assert drop[tag].mean() > drop[~tag].mean() + 0.1, (
-        "recruited neurons did not lose excitability relative to the rest"
-    )
-
-
-def test_hebbian_binding_only_touches_recruited_neurons():
-    """Binding must be gated by the tag, and must reach W.
-
-    Checked on the *rows* of W rather than its mean: synaptic scaling holds
-    each branch to a fixed L1 budget, so mean |W| is pinned to
-    branch_budget / n_synapses no matter what the Hebbian term does. A test on
-    the mean would pass identically with the binding removed.
-    """
-    task, model, rng = _engram_model(neurons=64, episodes=30, hebb_lr=0.05)
-    col = model.column
-    col.cfg.scaling_lr = 0.0  # isolate binding from the renormalisation
+    col = _bind_column()
+    col.pre[:] = 0.5
+    col.act_slow[:] = 0.1
+    col.n_samples = 500  # bias correction settled
+    col.act_fast[:] = 0.1
+    col.act_fast[0] = 0.4  # four times its own baseline
     before = col.W.copy()
-    model.run_episode(task.episode(rng), learn=True)
-    tag = col.tag
-    assert tag.any() and not tag.all(), "need a partial engram for this test"
+    col._bind()
     moved = np.abs(col.W - before).sum(axis=(1, 2))
-    assert moved[tag].mean() > 0.0, "binding never reached W"
-    assert np.allclose(moved[~tag], 0.0), "unrecruited neurons had their weights changed"
+    assert moved[0] > 2.0 * moved[1:].mean(), (
+        f"the four-times-more-active neuron bound {moved[0]:.4f} against "
+        f"{moved[1:].mean():.4f} for the rest -- activity is not scaling the update"
+    )
 
 
-def test_recruitment_statistics_advance_once_per_allocation():
-    """The baseline recruitment is scored against must match what is scored.
+def test_binding_strengthens_only_excitatory_synapses():
+    """Hebbian LTP is glutamatergic.
 
-    Accumulating it every timestep scores a neuron's activity at recruitment
-    time against the distribution of all timesteps -- most of which are nothing
-    like it -- so units that reliably answer the go cue look extraordinary at
-    every allocation and the criterion measures phasicness rather than what the
+    Strengthening an inhibitory synapse that was active during binding would
+    make the pattern harder to reactivate -- the opposite of what binding is
+    for -- so the sign gate has to hold.
+
+    Synaptic scaling is off here. It rescales every weight on a branch
+    multiplicatively, inhibitory ones included, so with it on the inhibitory
+    weights move for reasons that have nothing to do with binding and the sign
+    gate becomes unobservable. Isolating the mechanism under test from the one
+    that renormalises it is the point.
+    """
+    m, before = _hebb_run(scaling_lr=0.0)
+    col = m.column
+    delta = col.W - before
+    inhibitory = col.syn_sign < 0.0
+    assert np.allclose(delta[inhibitory], 0.0), "an inhibitory synapse was potentiated"
+    assert delta[~inhibitory].sum() > 0.0, "no excitatory synapse was potentiated"
+
+
+def test_binding_carries_which_synapses_were_driving_the_neuron():
+    """The presynaptic factor must reach the weights.
+
+    Binding proportional to postsynaptic activity alone would strengthen a
+    neuron's whole fan-in uniformly, writing no structure at all -- and it is
+    invisible to any statistic pooled across neurons, since the activity factor
+    still varies between them. So this looks *within* one neuron, where only
+    `pre` can differ.
+    """
+    col = _bind_column()
+    col.act_slow[:] = 0.1
+    col.act_fast[:] = 0.2
+    col.n_samples = 500
+    col.pre[:] = 0.1
+    col.pre[:, 0, 0] = 1.0  # one synapse per neuron was doing the driving
+    before = col.W.copy()
+    col._bind()
+    delta = col.W - before
+    excitatory = col.syn_sign[:, 0, 0] > 0.0
+    assert excitatory.any(), "no excitatory synapse in the probed position"
+    assert (delta[excitatory, 0, 0] > 3.0 * delta[excitatory, 0, 1]).all(), (
+        "the strongly-driving synapse gained no more than its neighbour, so "
+        "`pre` is not reaching the update"
+    )
+
+
+def test_binding_statistics_advance_once_per_event():
+    """The baseline binding is scored against must match what is scored.
+
+    Accumulating it every timestep compares a neuron's activity at binding time
+    against the distribution of all timesteps, most of which are nothing like
+    it, so the update tracks which units are phasic rather than what the
     episode engaged. The readout failed in precisely this way once already.
     """
-    task, model, rng = _engram_model(neurons=32, episodes=0)
-    col = model.column
+    task = DelayedXOR()
+    cfg = ColumnConfig(n_neurons=32, lr=0.0, seed=0, hebbian=True)
+    m = Plexus(task.n_inputs, task.n_classes, column=cfg, seed=0)
+    rng = np.random.default_rng(0)
     steps = 0
     for _ in range(3):
         ep = task.episode(rng)
-        model.run_episode(ep, learn=True)
+        m.run_episode(ep, learn=True)
         steps += ep.inputs.shape[0]
-    assert col.n_samples == col.n_allocations, (
-        f"{col.n_samples} statistics updates for {col.n_allocations} allocations"
-    )
-    assert col.n_samples < steps, "statistics are advancing per timestep, not per allocation"
+    assert m.column.n_samples == 3, f"{m.column.n_samples} updates for 3 episodes"
+    assert m.column.n_samples < steps, "statistics are advancing per timestep"
 
 
 # --------------------------------------------------------------------------
@@ -1122,50 +1076,44 @@ def test_drain_shorter_than_the_lag_is_rejected():
         Plexus(task.n_inputs, task.n_classes, modulator_lag=200, drain_steps=50, seed=0)
 
 
-def _bind_run(bind_mode, episodes=40, neurons=48, seed=0):
+def test_frozen_column_is_unaffected_by_modulator_lag():
+    """A column that never reads the modulator must not notice its delay.
+
+    `apply_modulator` returns immediately when learning is off, so at lr=0 the
+    lag is unobservable in principle. It was observable in practice, and not
+    through any leak: the episode's drain tail is as long as the lag, and
+    homeostasis keeps adapting through those extra silent steps. A 200-step lag
+    added 24,000 silent steps over 120 episodes and moved a *frozen* column's
+    threshold from 0.295 to 0.231, its sparsity from 0.0289 to 0.0189 and its
+    plateau engagement from 0.111 to 0.0926 -- worth -0.062 end-to-end accuracy
+    on 17/20 paired seeds at p = 0.0011.
+
+    That made every lag comparison a comparison of two operating points as well
+    as two lags. Holding `drain_steps` constant separates them, and this asserts
+    the separation is exact rather than merely smaller.
+    """
     task = DelayedXOR()
-    cfg = ColumnConfig(n_neurons=neurons, lr=0.0, seed=seed, engram=True, bind_mode=bind_mode)
-    m = Plexus(task.n_inputs, task.n_classes, column=cfg, seed=seed)
-    before = m.column.W.copy()
-    rng = np.random.default_rng(1)
-    for _ in range(episodes):
-        m.run_episode(task.episode(rng), learn=True)
-    return m.column, before
+
+    def train(lag):
+        cfg = ColumnConfig(n_neurons=24, lr=0.0, seed=0)
+        m = Plexus(
+            task.n_inputs, task.n_classes, column=cfg,
+            modulator_lag=lag, drain_steps=200, seed=0,
+        )
+        rng = np.random.default_rng(1000)
+        for _ in range(12):
+            m.run_episode(task.episode(rng), learn=True)
+        return m.column
+
+    a, b = train(0), train(200)
+    assert np.array_equal(a.theta, b.theta), "thresholds diverged"
+    assert np.array_equal(a.knee, b.knee), "dendritic knees diverged"
+    assert np.array_equal(a.W, b.W), "weights diverged"
+    assert a._steps == b._steps, f"{a._steps} steps vs {b._steps}"
 
 
-def test_graded_binding_reaches_every_neuron():
-    """"graded" must genuinely drop the competition, not just soften it.
-
-    It is the ablation that could delete the entire engram mechanism, so it has
-    to actually be the thing it claims: plain Hebbian LTP gated by salience,
-    with no recruitment anywhere. If it quietly kept tagging, the ablation
-    would be comparing the mechanism against itself.
-    """
-    col, before = _bind_run("graded")
-    moved = np.abs(col.W - before).sum(axis=(1, 2)) > 0.0
-    assert moved.all(), f"only {moved.mean():.0%} of neurons bound; this is still a competition"
-    assert col.engram_size == 0.0, "graded mode reported an engram it did not allocate"
-
-    col, before = _bind_run("tagged")
-    moved = np.abs(col.W - before).sum(axis=(1, 2)) > 0.0
-    assert moved.any(), "tagged mode bound nothing at all"
-
-
-def test_binding_modes_apply_the_same_total_weight_change():
-    """The two modes must differ in mechanism, not in learning rate.
-
-    In tagged mode a fraction `alloc_frac` of neurons receive a unit-weighted
-    update; graded mode scales its activity ratio by `alloc_frac` so the mean
-    increment matches. Without that the ablation would vary two things at once
-    and its outcome would say nothing about which one mattered -- the same
-    defect that made sweep 013 uninterpretable.
-    """
-    tagged, t0 = _bind_run("tagged")
-    graded, g0 = _bind_run("graded")
-    dt = float(np.abs(tagged.W - t0).mean())
-    dg = float(np.abs(graded.W - g0).mean())
-    assert dt > 0 and dg > 0
-    assert abs(dt - dg) / max(dt, dg) < 0.25, (
-        f"tagged moved weights by {dt:.5f} and graded by {dg:.5f}; the modes are "
-        "not scale-matched, so a difference between them would be confounded"
-    )
+def test_drain_shorter_than_the_lag_is_rejected():
+    """Silently discarding every learning signal must not be reachable."""
+    task = DelayedXOR()
+    with pytest.raises(ValueError, match="discarding"):
+        Plexus(task.n_inputs, task.n_classes, modulator_lag=200, drain_steps=50, seed=0)

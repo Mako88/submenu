@@ -358,24 +358,40 @@ with it the label is 0.86 decodable. That is the main positive result.
 **Refuted.** That the local three-factor rule beats a frozen reservoir. Twenty
 paired seeds put the difference at −0.003 with p = 0.79.
 
-**First positive learning result.** A different rule does beat it. Salience-gated
-Hebbian binding, wrapped in an engram-allocation mechanism, improves linear
-decodability by **+0.029 over a frozen column, 14/20 seeds, p = 0.0176**
-(`experiments/sweeps/engram-012-allocation.txt`). Two things make that worth
-more than the number: it is *local* — comparable in size to the +0.032 the RLS
-readout bought, but with nothing pooled across neurons, where RLS needed a
-global correlation matrix and did not decompose — and it is *unsupervised*,
-since recruitment reads only that a modulator was released, never its sign or
-its target.
+**First positive learning result.** A different rule does beat it.
+Salience-gated Hebbian binding — on a modulator release, every neuron
+strengthens the excitatory synapses that were driving it, in proportion to its
+own activity against its own baseline — improves linear decodability to
+**0.876 against a frozen column's 0.802**
+(`experiments/sweeps/engram-014-is-allocation-necessary.txt`).
 
-The ablations say plainly that the allocation machinery is not what earned it.
-Allocation without binding is reliably *worse* than off (−0.044, p = 0.0099),
-removing the allocation refractory costs nothing (p = 0.15), and the
-excitability bias correlates −0.012 with recruitment in the winning condition.
-Hebbian binding is carrying the effect; the engram apparatus around it is
-scaffolding until a benchmark that asks for memory separation says otherwise.
-The result is also representation quality, not end-to-end accuracy, and sweep
-009 is the standing reminder that those can come apart.
+Two properties matter more than the size. It is *local*: every quantity is a
+neuron reading its own state, nothing pooled, where the RLS readout's
+comparable gain needed a global correlation matrix that did not decompose
+(sweep 011). And it is *unsupervised*: the modulator is read only for its
+presence, never its sign or its target, so it does not depend on the error
+signal that has failed eleven times.
+
+It arrived by way of a mechanism that was deleted. This began as an engram
+allocator — excitability drift, a recruitment competition, an allocation
+refractory — following Han et al. 2007 / Yiu et al. 2014 / Cai et al. 2016.
+Sweep 012 measured the full apparatus at +0.029 over frozen, p = 0.0176, and
+that looked like the result. Sweep 014 stripped it: the full apparatus reads
+0.830 against 0.876 for binding alone, worse on 19 of 20 seeds at p = 0.0001.
+The excitability half cost 0.041 and the recruitment competition contributed
+nothing (p = 0.52). All of it is gone from the code and recorded in the sweep.
+
+The lesson is worth more than the mechanism: **a significant positive result is
+not evidence that the mechanism producing it is the right one.** Sweep 012's
++0.029 was real, replicated at +0.028, and less than half of what was available
+from the one component nobody had isolated.
+
+Two caveats. This is representation quality, not end-to-end accuracy, and sweep
+009 is the standing reminder that those can come apart. And delayed XOR has one
+episode, one answer and no interference between memories, so it never asks for
+what allocation is for — the refractory demonstrably produced engrams
+overlapping less than independent sampling, and that is worth revisiting on a
+capacity or continual-learning benchmark rather than treating as refuted.
 
 Two readings are worth separating. The *locality* claims — no synchronisation
 barrier, emission-time addressing, tolerance of inter-column conduction delay —

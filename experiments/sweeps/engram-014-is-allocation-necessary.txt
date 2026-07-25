@@ -76,4 +76,77 @@ in every respect, so 012's numbers are directly comparable.
 
 RESULT -- 20 paired seeds
 -------------------------
-Pending.
+condition      linear
+off             0.802 +/- 0.051
+full            0.830 +/- 0.049
+tag-only        0.871 +/- 0.041
+hebb-only       0.876 +/- 0.045
+
+  full       vs off         +0.028, 14/20 seeds, p = 0.0203   significant
+  full       vs hebb-only   -0.047,  1/20 seeds, p = 0.0001   significant, negative
+  tag-only   vs hebb-only   -0.005,  6/20 seeds, p = 0.52     nothing
+
+The prediction was WRONG, and usefully so. It said hebb-only would *match*
+full within +/- 0.02 at p > 0.05. hebb-only does not match full; it beats it on
+19 of 20 seeds at p = 0.0001, and beats a frozen column by +0.074 -- more than
+two and a half times what the full mechanism managed.
+
+A tie would have left "both work, keep both" arguable. This does not.
+
+WHERE THE HARM IS
+-----------------
+The ladder localises it, because each rung removes exactly one thing:
+
+  full -> tag-only    +0.041   excitability drift, gain, and the allocation
+                               refractory. This is the cost.
+  tag-only -> hebb-only +0.005 the recruitment competition. Nothing, either way.
+
+So the allocation machinery is not neutral scaffolding around a working
+mechanism. It is a liability, and specifically the excitability half of it. The
+recruitment competition is merely inert. Salience-gated Hebbian LTP -- the
+simplest component, present in the mechanism from the start -- is the entire
+effect, and the apparatus built around it was subtracting from it.
+
+Worth stating plainly, since sweep 012 read as a success: 012's +0.029 was real
+and replicates here at +0.028. It was also less than half of what was available
+from the part of the mechanism nobody had isolated. A significant positive
+result is not evidence that the mechanism producing it is the right one.
+
+WHY THE MACHINERY HURTS -- hypothesis, unmeasured
+--------------------------------------------------
+Tagged binding writes a full-strength update into ~17% of neurons and nothing
+into the rest, so each episode's structure is written into a small, largely
+arbitrary subset. Graded binding writes into every neuron in proportion to how
+much it actually responded. Under synaptic scaling, which renormalises each
+branch to a fixed budget, the graded version is a smooth reallocation and the
+tagged version is a repeated shock to a changing minority. The excitability
+drift makes the choice of minority partly random, which would explain why
+removing it recovers most of the gap.
+
+That is a story, not a measurement, and it is recorded as such. It would be
+tested by tagging deterministically on activity rank -- but see below.
+
+ACTION TAKEN
+------------
+The deletion the prediction committed to, carried out: excitability drift, the
+homeostatic setpoint coupling, the recruitment competition and its margin
+adaptation, the allocation refractory, and the tagged binding path are removed
+from plexus/column.py. What remains is `hebbian`: on a modulator release, every
+neuron strengthens the excitatory synapses that were driving it, in proportion
+to its own activity against its own baseline. Off by default, as every new
+mechanism is.
+
+The allocation results are NOT deleted -- they are here, and they include a
+real one: the refractory does produce engrams that overlap less than
+independent sampling (rotate 0.815 against 1.661 without it). Delayed XOR has
+one episode, one answer and no interference between memories, so it never asks
+for that. If a capacity or continual-learning benchmark ever does, this file
+and the git history are where the mechanism is, and it should be rebuilt from
+the measurement rather than from memory of it.
+
+NEXT
+----
+End-to-end confirmation of `hebbian` against a frozen column. The effect to
+confirm is now +0.074 rather than +0.029, which is a much easier target -- and
+sweep 009 is the standing warning that representation quality and accuracy can
+still come apart.
