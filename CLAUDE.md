@@ -252,6 +252,24 @@ someone who was not there what to do next time. So:
 
 ## Conventions
 
+- **One sweep matrix in flight at a time; parallel work is local.** A 20-seed
+  matrix takes every runner, so pushing a second sweep while the first is
+  running does not overlap them — the second's seeds queue, seize the runners
+  the moment the first's seeds finish, and starve the first's `aggregate`. All
+  sweep workflows share a `concurrency: plexus-sweeps` group so this is now
+  enforced rather than remembered.
+
+  > *Calibration.* Three times before it was noticed — 021/022, 023/024,
+  > 026/027 — each costing roughly twenty minutes of a run sitting behind
+  > another run's seeds.
+
+- **Never idle while a sweep runs.** When CI is working, pick up something that
+  does not depend on its result: a probe to build, a claim in the repo that has
+  never been measured, a test for a mechanism that lacks one. There is always
+  local work, and a sweep is fifteen to twenty minutes. Waiting for a result
+  before starting the next thing halves the throughput of the project for no
+  reason.
+
 - The design rule the whole architecture serves: **no operation may require
   globally synchronised state.** A mechanism needing a population sort, a global
   mean, or a pooled matrix is a violation and gets flagged as one even when it

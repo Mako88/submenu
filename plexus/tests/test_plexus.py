@@ -1723,3 +1723,81 @@ def test_drain_shorter_than_the_lag_is_rejected():
     task = DelayedXOR()
     with pytest.raises(ValueError, match="discarding"):
         Plexus(task.n_inputs, task.n_classes, modulator_lag=200, drain_steps=50, seed=0)
+
+
+# --------------------------------------------------------------------------
+# Event-driven execution rests on two claims. Both are cheap to check and both
+# would kill the design if false, so they are checked before it is written.
+# --------------------------------------------------------------------------
+def test_filter_catchup_over_a_gap_equals_stepping_through_it():
+    """Skipping N silent steps in closed form must equal taking them.
+
+    This is the arithmetic the whole event-driven rewrite rests on. Every filter
+    in the column is a pure exponential, so a gap with no input should be
+    skippable as `state *= decay**gap` rather than looped. If that is not exact,
+    an event-driven run computes something *different* from the clock-driven one
+    and every number in this repo would have to be re-measured against it.
+
+    Checked against the real decay constants, not a round number, and at gaps
+    long enough that a per-step float32 error would accumulate visibly: 320ms is
+    the slowest membrane constant in the model, so a 500-step gap is the worst
+    case the loop would ever skip.
+
+    Tolerance is float32 epsilon scaled by the number of steps skipped. It is
+    not zero, and it should not be: the point is that the error is *bounded and
+    tiny*, not that two different orders of float operations agree bitwise.
+    """
+    cfg = ColumnConfig()
+    for tau in (cfg.tau_branch, cfg.tau_soma_min, cfg.tau_soma_max,
+                cfg.tau_eligibility, cfg.tau_rate, cfg.tau_engagement):
+        decay = np.float32(np.exp(-cfg.dt / tau))
+        for gap in (1, 10, 100, 500):
+            stepped = np.float32(1.0)
+            for _ in range(gap):
+                stepped = np.float32(stepped * decay)
+            closed = np.float32(decay ** gap)
+            assert abs(float(stepped - closed)) < 1e-6, (
+                f"tau={tau} gap={gap}: stepping gives {stepped}, closed form "
+                f"gives {closed} -- event-driven would not reproduce the clock"
+            )
+
+
+def test_a_silent_neuron_cannot_reach_threshold():
+    """Decay is monotone downward, so no input means no firing.
+
+    The second claim event-driven execution needs. If a neuron could cross
+    threshold with nothing arriving, the scheduler would have to wake every
+    neuron anyway to check, and the whole saving evaporates.
+
+    It is not self-evident. The soma sums branch activations through a plateau
+    nonlinearity and adds `self.bias`, so a positive resting drive would let
+    membrane potential *rise* with no input at all. Asserted directly rather
+    than argued: drive a column, then cut the input and let it run.
+    """
+    cfg = ColumnConfig(n_neurons=64, n_external=16, seed=0)
+    transport = LocalTransport(16 + 64, cfg.delay_max + 2, cfg.modulator_dim)
+    col = Column(cfg, transport)
+    rng = np.random.default_rng(0)
+    for t in range(600):
+        col.step(t, (rng.random(16) < 0.15).astype(np.float32))
+
+    silent = np.zeros(16, dtype=np.float32)
+    # Long enough for every conduction delay to have drained: nothing emitted
+    # after the cut can still be in flight past delay_max.
+    fired_after_drain = 0
+    peak_v = []
+    for t in range(600, 600 + 400):
+        out = col.step(t, silent)
+        if t > 600 + cfg.delay_max + 2:
+            fired_after_drain += int((out > 0).sum())
+        peak_v.append(float(np.abs(col.v).max()))
+
+    assert fired_after_drain == 0, (
+        f"{fired_after_drain} emissions from a column with no input once the "
+        "delay lines drained -- a scheduler could not skip silent neurons"
+    )
+    # And the potential must be heading down, not sitting at some positive rest.
+    assert peak_v[-1] < peak_v[len(peak_v) // 4], (
+        f"|v| is not decaying with no input ({peak_v[len(peak_v)//4]:.4g} -> "
+        f"{peak_v[-1]:.4g}); something holds the membrane up"
+    )

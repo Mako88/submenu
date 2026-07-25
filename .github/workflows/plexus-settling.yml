@@ -10,6 +10,22 @@ name: plexus settling
 # that matrix already runs sixteen conditions per seed, and the two sweeps ask
 # unrelated questions with no shared baseline.
 
+
+# Only one sweep matrix at a time, across every plexus workflow.
+#
+# Without this they interleave badly. A 20-seed matrix takes all 20 runners, so
+# when a second sweep is pushed while the first is still running, the second's
+# seeds queue -- then grab every runner the moment the first's seeds finish, and
+# the first's `aggregate` job starves behind them. That happened three times
+# (021/022, 023/024, 026/027), each costing ~20 minutes of nothing.
+#
+# cancel-in-progress is deliberately false: these are 20-seed measurements, not
+# builds, and discarding one to start another wastes the runners rather than
+# saving them. The second run waits, which is what it should have been doing.
+concurrency:
+  group: plexus-sweeps
+  cancel-in-progress: false
+
 on:
   workflow_dispatch:
     inputs:

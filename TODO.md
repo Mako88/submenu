@@ -212,13 +212,38 @@ anything reached it. At a 3% firing rate that is ~97% waste, and it is the
 single largest lever available.
 
 It is *exact* for this model rather than an approximation, for two specific
-reasons: every filter is a pure exponential, so state can be caught up over a
-gap in closed form (`b *= decay**Δt`); and decay is monotone downward, so a
-neuron cannot cross threshold without input arriving. There is no "woke up and
-fired spontaneously" case to miss.
+reasons — and **both are now tested rather than argued**, because either being
+false would kill the design after it was written:
 
-Measured on this machine: ~64M synapse-updates/second/core, which is **~500
-neurons in real time per core**. Event-driven should move that to ~25,000.
+- Every filter is a pure exponential, so state can be caught up over a gap in
+  closed form (`b *= decay**Δt`). `test_filter_catchup_over_a_gap_equals_stepping_through_it`
+  checks this against every real time constant in the model at gaps up to 500
+  steps — the worst case a scheduler would skip, against the 320 ms membrane.
+- Decay is monotone downward, so a neuron cannot cross threshold without input.
+  Not self-evident: the soma adds `self.bias` and sums through a plateau
+  nonlinearity, so a positive resting drive would let potential rise with no
+  input at all. `test_a_silent_neuron_cannot_reach_threshold` cuts the input,
+  waits for the delay lines to drain, and asserts zero emissions and a falling
+  membrane.
+
+**Measured, and the case is stronger than it was stated.** Four column sizes on
+this container, 3000 steps each after warm-up:
+
+| neurons | synapses | steps/s | Msyn-upd/s | neurons at 1× real time | silent |
+|---|---|---|---|---|---|
+| 48 | 6,144 | 3,639 | 22.4 | 175 | 99.5% |
+| 96 | 12,288 | 2,567 | 31.5 | 246 | 99.4% |
+| 192 | 24,576 | 1,905 | 46.8 | 366 | 99.4% |
+| 384 | 49,152 | 1,217 | 59.8 | 467 | 99.5% |
+
+Throughput rises with column size — the per-step Python overhead amortises over
+a bigger tensor — so the earlier "~64M/s, ~500 neurons" figure was the *large*
+end of the range, not a constant. Quote the row, not a single number.
+
+**99.4% of neuron-updates are of units that did not fire**, against the ~97%
+previously written here. At a 0.6% firing rate the theoretical ceiling for
+event-driven is ~170×, though the real figure will be far lower once scheduling
+overhead is paid.
 
 Watch for: homeostasis runs on a slow clock and would need catching up lazily
 too, and `_steps` now counts learning steps only (see `column.py`), which an
