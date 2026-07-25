@@ -33,7 +33,31 @@ Three benchmarks would each open something currently invisible:
 - **Emergent structure.** The original motivation and still entirely
   unmeasured. Needs a metric before it needs an experiment.
 
-## 2. Event-driven execution
+## 2. Lateral inhibition, for local decorrelation
+
+Two independent results now point here. Sweep 011 found the RLS readout's gain
+requires a globally pooled correlation matrix that does not decompose into
+per-column pieces. Sweep 019 found the readout, not the mechanism, is what is
+slow: the representation gain is complete by episode 150 and the delta readout
+needs roughly 300 episodes against a settled column to use it.
+
+Decorrelating *inside* the column — which lateral inhibition does, locally and
+with obvious biological warrant — would let a cheap local readout extract what
+RLS extracts by pooling. That is the same +0.043 without breaking the design
+rule.
+
+## 3. Why does homeostatic settling alone buy +0.197?
+
+Surfaced by sweep 019 and never asked about. A frozen column climbs from 0.582
+to 0.779 decodability over its first fifty episodes with no learning rule of
+any kind running — threshold and knee adaptation alone. That is more than twice
+what salience-gated Hebbian binding adds on top, and nothing in this repo
+explains it or has tried to.
+
+If unsupervised homeostasis is doing most of the representational work, that is
+worth knowing before more effort goes into rules layered above it.
+
+## 4. Event-driven execution
 
 The loop is clock-driven: every neuron updates every millisecond whether or not
 anything reached it. At a 3% firing rate that is ~97% waste, and it is the
@@ -52,7 +76,7 @@ Watch for: homeostasis runs on a slow clock and would need catching up lazily
 too, and `_steps` now counts learning steps only (see `column.py`), which an
 event-driven rewrite must preserve rather than rediscover.
 
-## 3. `Column.add_inputs()` — growing the sensory space at runtime
+## 5. `Column.add_inputs()` — growing the sensory space at runtime
 
 Probed by hand and it works: a settled 96-neuron column grown from 16 to 24
 channels re-settled from sparsity 0.0099 to 0.0247 on its own, with both old
@@ -75,7 +99,7 @@ Untested and important: whether a *trained* model's accuracy survives the
 growth. The probe used a settled random column, and homeostasis recovering is
 not the same as the learned function surviving.
 
-## 4. The audit backlog
+## 6. The audit backlog
 
 From `experiments/sweeps/AUDIT.md`. These are live decisions resting on
 evidence that a later fix invalidated.
@@ -97,7 +121,7 @@ while experiments use `"graded"`; `lr` is 0.004 against a swept 0.005; and
 A constant zero, recorded in a test rather than deleted so no reader assumes a
 term in the soma equation is doing something.
 
-## 5. Distribution, for real
+## 7. Distribution, for real
 
 `NetworkTransport` does not exist. Everything distributed has been measured
 through `LocalTransport` with simulated delays, which is the right way to
@@ -121,7 +145,7 @@ develop it and not the same as having done it.
   crash. This falls out of having no synchronisation barrier and has never been
   tested, because nothing has ever actually left.
 
-## 6. The honest counter-argument
+## 8. The honest counter-argument
 
 The model is numpy on CPU and largely memory-bandwidth-bound on the `(N,B,S)`
 tensors. A single modern GPU would likely beat hundreds of CPU cores per
@@ -133,9 +157,11 @@ needs to be argued on grounds other than cost.
 
 ## Housekeeping
 
-- **Poll cadence from condition count.** Sweep wall clock scales at roughly a
-  minute per condition per seed (2 → 3.5 min, 4 → 8, 10 → 11). Fixed delays
-  fired early and produced redundant polls.
+- **Poll cadence from condition count.** Sweep wall clock per *seed*, measured:
+  2 conditions → 3.5 min, 4 → 8, 10 → 11, and 12 → **15-17 min** once the
+  trajectory probe was added. It is not a minute per condition — a condition
+  that trains 300 episodes costs far more than one that evaluates. Estimate
+  from what each condition *does*, not from how many there are.
 - **Workflow triggers are all sentinels now** (`experiments/run-*.txt`).
   Triggering on the sweep notes meant that *recording a result* re-ran the
   matrix that produced it — GitHub path filters cannot distinguish a file being

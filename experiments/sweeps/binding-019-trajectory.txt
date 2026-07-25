@@ -77,4 +77,102 @@ the endpoint is directly comparable.
 
 RESULT -- 20 seeds
 ------------------
-Pending.
+ episode     off      on     gap
+       0   0.582   0.582  +0.000     <- sanity condition, passes exactly
+      25   0.768   0.781  +0.013
+      50   0.779   0.801  +0.022
+      75   0.766   0.784  +0.018
+     100   0.755   0.816  +0.061
+     125   0.764   0.813  +0.048
+     150   0.744   0.841  +0.097
+     175   0.750   0.851  +0.101
+     200   0.771   0.849  +0.079
+     225   0.758   0.849  +0.091
+     250   0.759   0.861  +0.102
+     275   0.763   0.863  +0.100
+     300   0.772   0.852  +0.081
+
+Episode 0 agrees to the digit in both conditions, so the probe is measuring
+binding and nothing else. The run is valid.
+
+THE MAIN HYPOTHESIS IS REFUTED
+-------------------------------
+"Binding is slow" was called at 70/30. It is wrong. The gap reaches +0.097 by
+episode 150 and then goes flat, oscillating between +0.079 and +0.102 for the
+remaining half of training with no trend. **The representation gain is complete
+by episode 150.**
+
+The one number predicted precisely was right: `on` at episode 150 was called at
+0.835-0.855 and came in at 0.841. Being right about the level while wrong about
+the shape is worth noticing -- the arithmetic that produced 0.841 assumed the
+end-to-end gain scales with representation gain, and it does not.
+
+SO THE READOUT IS THE SLOW PART
+--------------------------------
+Line the three results up:
+
+  representation gain complete at episode 150          (this sweep)
+  phase   150 bind + 150 idle -> +0.023 end to end     (018)
+  catchup 300 bind + 150 idle -> +0.063 end to end     (017)
+
+At episode 150 the representation is as good as it will ever get. `phase`
+stopped binding exactly then, gave the readout 150 idle episodes, and still
+delivered a third of what `catchup` delivered. The difference is not what the
+column had learned -- that was identical -- it is how long the readout had to
+work against a settled column: 150 episodes for `phase`, roughly 300 for
+`catchup`, whose representation also stopped moving at 150 but which kept
+training for another 150 before its idle period began.
+
+**The delta readout needs roughly 300 episodes against a settled representation
+to exploit it.** That is a statement about the readout's sample efficiency, not
+about the mechanism's speed, and it means sweep 018's framing -- "binding needs
+its full 300 episodes" -- was the wrong reading of a correct measurement.
+
+TWO OTHER PREDICTIONS, BOTH WRONG
+----------------------------------
+Episode 0 was predicted at 0.80 in both conditions. It is 0.582. The 0.802
+figure from sweeps 014-018 is the frozen column *after 300 episodes*, and a
+frozen column is not an untrained one: `lr=0` disables the three-factor rule
+but homeostasis and synaptic scaling keep running. Confusing "frozen" with
+"untrained" is a mistake worth naming, because it is easy to make and the two
+words get used interchangeably in this repo.
+
+Which surfaces something nobody measured: **the `off` condition climbs from
+0.582 to 0.779 in the first fifty episodes, on unsupervised homeostatic
+settling alone.** That is +0.197 of decodability from threshold and knee
+adaptation with no learning rule of any kind -- more than twice what binding
+adds. It then plateaus and wanders in 0.744-0.779 for the rest of training.
+
+The prediction also said `off` would be flat throughout. It is flat only after
+episode 50.
+
+Absolute values here sit below sweeps 014-018 (on 0.852 against 0.876, off
+0.772 against 0.802) because this probe uses 300 probe episodes against
+binding.py's 500, with a different split. The *gap* is +0.081 against +0.074,
+which agrees. Compare gaps across sweeps, not levels.
+
+WHAT THIS CHANGES
+-----------------
+Sweep 018 concluded "binding needs roughly its full 300 episodes and the
+readout needs a static period after, and the two cannot come out of one
+budget". The first half of that is now wrong. Binding is done at 150. What
+cannot come out of one budget is the *readout's* 300 episodes against a settled
+column.
+
+The fix therefore is not a binding schedule -- 018 already showed every
+schedule inside the budget is null, and now it is clear why: rescheduling
+binding cannot help when binding was never the bottleneck. The fix is a readout
+that converges faster. RLS is exactly that and delivers +0.043 with no schedule
+change at all (017), but needs a globally pooled correlation matrix that sweep
+011 showed does not decompose.
+
+So the next thing to build is local decorrelation inside the column -- lateral
+inhibition -- which would let a cheap local readout extract what RLS extracts
+by pooling. That has been on the list since sweep 011 and this is the second
+independent result pointing at it.
+
+NEXT
+----
+1. Lateral inhibition for local decorrelation. Two sweeps now point here.
+2. Why does homeostatic settling alone buy +0.197? Unmeasured, larger than
+   anything the learning rules have produced, and nobody has asked.
