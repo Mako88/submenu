@@ -173,6 +173,20 @@ MUTATIONS = [
         "growing_the_event_buffer",
     ),
     (
+        COLUMN,
+        "reported sparsity returns the EMA seed instead of what was observed",
+        "        return self._debias(self.rate, self.cfg.target_rate, float(self.decay_rate))",
+        "        return float(self.rate.mean())",
+        "reported_sparsity_is_measured",
+    ),
+    (
+        COLUMN,
+        "an EMA loses the sample counter that lets its seed be divided out",
+        "            self._obs_steps += 1",
+        "            pass",
+        "reported_sparsity_is_measured or every_ema_either_debiases",
+    ),
+    (
         ROOT / "plexus" / "tasks.py",
         "task variants share a channel mapping, making the stream one task",
         "            else np.random.default_rng(channel_seed).permutation(self.n_inputs)",

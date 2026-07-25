@@ -965,6 +965,164 @@ def test_lateral_inhibition_step_is_scaled_to_the_weights():
     assert moved(ColumnConfig.lateral_lr * 4) > 2.0 * rel
 
 
+def test_reported_sparsity_is_measured_and_not_its_own_initialisation():
+    """A reporting property must not return the seed of the EMA behind it.
+
+    `rate` is seeded at exactly `target_rate` — deliberately, so the controller
+    starts with zero error and there is no startup transient. That makes the
+    naive property return "perfectly on target" before a single sample, which is
+    the most reassuring value available and completely uninformative.
+
+    It cost a measurement. Sweep 022's trajectory probe reported sparsity 0.0300
+    at checkpoint 0 for every condition including ones whose column was silent;
+    counted directly, the untrained column runs at 0.0022 — a fifteenth of
+    target. The sparsity column existed specifically to catch dead columns and
+    was reporting the one number that hides them.
+
+    The bound is tight on purpose: `raw_rate` reads 0.0254 at this point, so a
+    test admitting anything up to target would pass on the broken version.
+    """
+    cfg = ColumnConfig(n_neurons=64, n_external=16, seed=0)
+    transport = LocalTransport(16 + 64, cfg.delay_max + 2, cfg.modulator_dim)
+    col = Column(cfg, transport)
+
+    assert np.isnan(col.sparsity), "reported a rate before observing any step"
+    assert np.isnan(col.plateau_engagement), "reported engagement before any step"
+
+    rng = np.random.default_rng(0)
+    for t in range(50):
+        col.step(t, (rng.random(16) < 0.02).astype(np.float32))
+
+    assert col.sparsity < 0.2 * cfg.target_rate, (
+        f"reported {col.sparsity:.4f} for a column that has barely fired; the "
+        f"controller's raw EMA reads {col.raw_rate:.4f} and must not leak here"
+    )
+    assert col.raw_rate > 0.5 * cfg.target_rate, (
+        "the controller's own state should still be seed-dominated here — if "
+        "not, this test is no longer separating the two and proves nothing"
+    )
+
+
+def test_every_ema_either_debiases_or_is_named_as_controller_state():
+    """Third instance of one bug, so this asserts the class and not the case.
+
+    Twice before: `elig_rms` kept an EMA seeded far from its true value and ran
+    the effective learning rate ~5x high for thousands of episodes, and the
+    readout standardised with a variance that had not converged. Both were fixed
+    by bias-correcting the individual quantity. `rate` and `engagement` then
+    repeated it in the reporting path.
+
+    So this enumerates the EMAs instead of trusting the next one to be noticed.
+    Every decaying accumulator must either carry a sample counter that lets its
+    seed be divided out, or be reachable only through a name that says it is a
+    controller's internal state.
+    """
+    cfg = ColumnConfig(n_neurons=32, n_external=8, seed=0, hebbian=True)
+    transport = LocalTransport(8 + 32, cfg.delay_max + 2, cfg.modulator_dim)
+    col = Column(cfg, transport)
+
+    # (attribute, the counter that permits debiasing)
+    emas = {
+        "rate": "_obs_steps",
+        "engagement": "_obs_steps",
+        "act_slow": "n_samples",
+        "elig_rms": "n_updates",
+    }
+    for name, counter in emas.items():
+        assert hasattr(col, name), f"{name} is gone; update this test deliberately"
+        assert hasattr(col, counter), (
+            f"{name} has no sample counter ({counter}), so its seed cannot be "
+            "divided out and anything reading it gets the initialisation back"
+        )
+
+    # And the raw controller state stays reachable, under a name that says so —
+    # the fix must not hide what the homeostatic rules actually read.
+    assert col.raw_rate == float(col.rate.mean())
+    assert col.raw_engagement == float(col.engagement.mean())
+
+
+def test_a_frozen_column_is_identical_across_readout_rules():
+    """The README pairs two whole sweeps on this and nothing tested it.
+
+    Sweeps 006 and 010 differ only in the readout rule, and the +0.032 for RLS
+    is quoted as a *paired* comparison on the grounds that "a frozen column
+    ignores the modulator entirely, so it is bit-identical across the two". That
+    is the load-bearing assumption behind the first statistically significant
+    positive result in the project.
+
+    It is worth pinning now precisely because sweep 024 showed a frozen column
+    is not an unchanging one. The distinction this asserts is the right one: a
+    frozen column moves when its *input distribution* changes, and the readout
+    rule does not change the input distribution — nothing reaches the column
+    from the readout except the modulator, which `lr=0` ignores.
+    """
+    task = DelayedXOR()
+    states, readouts = {}, {}
+    for rule in ("delta", "rls"):
+        model = Plexus(
+            task.n_inputs, task.n_classes,
+            column=ColumnConfig(n_neurons=32, lr=0.0, seed=0),
+            readout_rule=rule, seed=0,
+        )
+        model.train(task, 4, rng=np.random.default_rng(1000), report_every=10**9)
+        states[rule] = (model.column.W.copy(), model.column.theta.copy(),
+                        model.column.knee.copy())
+        readouts[rule] = model.readout.W.copy()
+
+    # Non-vacuity: if the two rules produced the same readout the column being
+    # identical would prove nothing, because there would be nothing to differ.
+    assert not np.allclose(readouts["delta"], readouts["rls"]), (
+        "the two readout rules learned the same weights, so this test is "
+        "comparing one configuration with itself"
+    )
+    for name, a, b in zip(("W", "theta", "knee"), states["delta"], states["rls"]):
+        assert np.array_equal(a, b), (
+            f"the frozen column's {name} differs between readout rules, so the "
+            "cross-sweep pairing behind the RLS result is not valid"
+        )
+
+
+def test_a_frozen_column_still_changes_when_the_input_changes():
+    """"Frozen" means the learning rules are off, not that nothing moves.
+
+    This project has conflated the two twice. Sweep 019 found that a frozen
+    column is not an untrained one — homeostasis alone takes decodability from
+    0.582 to 0.779. Sweep 024's experiment then shipped a docstring asserting a
+    frozen column cannot forget, and lost 0.167 of task A at the first seed.
+
+    With `lr=0`, no binding and no lateral inhibition, threshold homeostasis,
+    knee adaptation and synaptic scaling all keep running. Two input
+    distributions that are statistically identical in aggregate still give each
+    neuron a different drive through its own fixed wiring, so its threshold
+    follows — which is why AUDIT's rule that "a frozen measurement is unaffected
+    by a learning-rule bug" is about *learning-rule* bugs specifically and does
+    not generalise to "frozen results are stable".
+    """
+    cfg = ColumnConfig(n_neurons=48, n_external=16, seed=0, lr=0.0)
+    transport = LocalTransport(16 + 48, cfg.delay_max + 2, cfg.modulator_dim)
+    col = Column(cfg, transport)
+    rng = np.random.default_rng(0)
+
+    # Settle on one input distribution, then switch to another with the same
+    # marginal rate but different per-channel structure.
+    for t in range(1500):
+        col.step(t, (rng.random(16) < 0.05).astype(np.float32))
+    theta_a, knee_a, w_a = col.theta.copy(), col.knee.copy(), col.W.copy()
+
+    biased = np.r_[np.full(8, 0.12), np.zeros(8)]
+    for t in range(1500, 3000):
+        col.step(t, (rng.random(16) < biased).astype(np.float32))
+
+    assert not np.allclose(theta_a, col.theta), (
+        "thresholds did not move when the input distribution changed, so the "
+        "forgetting mechanism sweep 024 measured cannot be threshold drift"
+    )
+    moved = float(np.abs(col.theta / theta_a - 1.0).mean())
+    assert moved > 0.05, f"thresholds moved only {moved:.3f} — too little to forget with"
+    assert not np.allclose(knee_a, col.knee), "the knee is inert under an input change"
+    assert not np.allclose(w_a, col.W), "synaptic scaling did not move W"
+
+
 def test_channel_permutation_is_a_relabelling_and_not_a_harder_task():
     """A task stream needs variants that differ in mapping, not in difficulty.
 

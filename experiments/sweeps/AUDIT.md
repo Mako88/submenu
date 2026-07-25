@@ -28,6 +28,24 @@ measured on the frozen column, on the task itself, or on the dynamics is
 unaffected by those two. Only `444f372` voids frozen results as well, because
 a column that ignores its own weights is a different column.
 
+**And the limit of that rule, because it has been over-read twice.** It says a
+frozen measurement is immune to *learning-rule* bugs. It does **not** say frozen
+results are stable. A frozen column runs threshold homeostasis, knee adaptation
+and synaptic scaling, so it moves whenever its input distribution moves — sweep
+013 lost a whole run to this (a frozen column shifted −0.062, p = 0.0011, when
+`modulator_lag` changed the length of the silent drain tail), sweep 019 found a
+frozen column is not an untrained one (+0.197 from settling alone), and sweep
+024 found a frozen column *forgets* (−0.167 of task A after training on task B).
+Three instances of one confusion.
+
+The distinction that actually holds is now tested rather than argued:
+`test_a_frozen_column_is_identical_across_readout_rules` pins the pairing behind
+the RLS result — the readout rule does not change the column's input, so the
+frozen column is bit-identical across sweeps 006 and 010 — and
+`test_a_frozen_column_still_changes_when_the_input_changes` pins the other side.
+Before a frozen measurement is called stable, ask whether the change under
+comparison alters what the column *sees*.
+
 ## Decisions still in force
 
 ### Valid — evidence survived, or was re-established after the fix

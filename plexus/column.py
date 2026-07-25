@@ -400,6 +400,10 @@ class Column:
         self.v = np.zeros(N, dtype=np.float32)
         self.out = np.zeros(N, dtype=np.float32)
         self.rate = np.full(N, cfg.target_rate, dtype=np.float32)
+        # How many steps the rate/engagement EMAs have actually seen. Used only
+        # to strip their seed contribution when reporting; the controllers read
+        # the raw EMAs and are unchanged.
+        self._obs_steps = 0
         self.knee = np.full((N, B), cfg.knee_init, dtype=np.float32)
         self.engagement = np.full((N, B), cfg.plateau_engagement, dtype=np.float32)
         self.decay_engage = np.float32(np.exp(-cfg.dt / cfg.tau_engagement))
@@ -681,6 +685,9 @@ class Column:
         # training; every experiment before it evaluated after training had
         # finished, so no recorded result is affected.
         if self.learning:
+            # Counted here and nowhere else, so it cannot drift from the EMAs it
+            # describes: both advance on exactly the steps this counts.
+            self._obs_steps += 1
             self.rate = (
                 self.decay_rate * self.rate + (1.0 - self.decay_rate) * fired
             ).astype(np.float32)
@@ -967,10 +974,49 @@ class Column:
             self.engagement.fill(self.cfg.plateau_engagement)
             self.act_slow.fill(0.0)
             self.n_samples = 0
+            self._obs_steps = 0
+
+    def _debias(self, ema: np.ndarray, seed: float, decay: float) -> float:
+        """Report what was observed, with the EMA's seed contribution removed.
+
+        `rate` and `engagement` are seeded at *exactly their own homeostatic
+        targets*. For the controllers that is deliberate and stays: a zero
+        initial error means no correction until evidence arrives, so there is no
+        startup transient. For anything *reading* them it is a trap, because
+        before samples accumulate they report "perfectly on target" -- the most
+        reassuring value available -- whatever the column is actually doing.
+
+        That cost a real measurement. Sweep 022's trajectory probe reported
+        sparsity 0.0300 at checkpoint 0 for every condition; counted directly,
+        the untrained column runs at 0.0022, a fifteenth of target. The number
+        was the initialisation of a variable and read as a measurement of the
+        thing that variable is named after.
+
+        With `r_n = d^n * seed + (1-d) * sum(d^(n-k) * x_k)`, the sample-only
+        mean is `(r_n - d^n * seed) / (1 - d^n)`. Exact, not an approximation.
+        NaN with no samples, because "unknown" is the honest answer and it
+        propagates visibly through any comparison rather than passing one.
+
+        The two bias-corrected EMAs in this file, `elig_rms` and `act_slow`, are
+        the same lesson learned twice already: one ran the effective learning
+        rate ~5x high for thousands of episodes, the other scored binding
+        against a baseline that had not converged.
+        """
+        if self._obs_steps == 0:
+            return float("nan")
+        residual = decay**self._obs_steps
+        return float((ema.mean() - residual * seed) / (1.0 - residual))
 
     @property
     def plateau_engagement(self) -> float:
-        """Fraction of branches with the plateau active, recently averaged."""
+        """Fraction of branches with the plateau active, over observed steps."""
+        return self._debias(
+            self.engagement, self.cfg.plateau_engagement, float(self.decay_engage)
+        )
+
+    @property
+    def raw_engagement(self) -> float:
+        """The controller's own state, seed included. What the knee rule reads."""
         return float(self.engagement.mean())
 
     def clear_eligibility(self) -> None:
@@ -979,7 +1025,12 @@ class Column:
 
     @property
     def sparsity(self) -> float:
-        """Fraction of neurons emitting, averaged over the recent past."""
+        """Fraction of neurons emitting, over the steps actually observed."""
+        return self._debias(self.rate, self.cfg.target_rate, float(self.decay_rate))
+
+    @property
+    def raw_rate(self) -> float:
+        """The controller's own state, seed included. What threshold homeostasis reads."""
         return float(self.rate.mean())
 
     @property
