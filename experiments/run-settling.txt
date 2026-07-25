@@ -47,3 +47,15 @@ run 4 -- sweep 027: what do theta and knee actually encode? Two explanations are
   seeds corrected (020's ordering, 023's sign, 024's magnitude), so it is 0-for-3
   and the mechanistic prior wins. Prediction in
   experiments/sweeps/binding-027-what-theta-encodes.txt.
+
+run 5 -- sweep 029: can theta be computed instead of found? A probe after 027
+  found theta is fitted to the neuron's own membrane tau and essentially nothing
+  else -- log-log r = -0.974 over 6 seeds and 576 neurons, with
+  theta = 5.927 * tau^-0.748 explaining 90% of the variance at a median error of
+  10.6%. Every other local property was flat.
+
+  That is the one form of "precomputable" sweep 027 did not refute: it preserves
+  the per-neuron assignment, since each neuron's threshold comes from its own
+  tau. Three conditions -- formula alone, formula plus a twin's knee, and formula
+  as a starting point with adaptation left on.
+  Prediction in experiments/sweeps/binding-029-theta-from-tau.txt.

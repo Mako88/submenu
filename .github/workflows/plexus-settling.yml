@@ -96,6 +96,7 @@ jobs:
           # matches `task`, the operating point is precomputable and fifty
           # episodes of every future run are free.
           frozen="--homeostatic-lr 0 --knee-lr 0 --scaling-lr 0 --preset-from 50"
+          frozen_noPreset="--homeostatic-lr 0 --knee-lr 0 --scaling-lr 0"
           python experiments/trajectory.py --tag preset-task \
             --preset-input task     $frozen $common
           python experiments/trajectory.py --tag preset-shuffled \
@@ -118,6 +119,21 @@ jobs:
           python experiments/trajectory.py --tag preset-permuted \
             --preset-shuffle 1 $shuf $common
 
+          # Sweep 029: theta is fitted to the neuron's own membrane tau and to
+          # essentially nothing else -- log-log r = -0.974 over 6 seeds, and
+          # theta = 5.927 * tau^-0.748 explains 90% of the variance. That is
+          # computable at construction AND preserves the per-neuron assignment
+          # that 027 showed is what matters, so it is the one form of
+          # "precomputable" 027 did not refute.
+          python experiments/trajectory.py --tag tau-init \
+            --theta-from-tau 1 $frozen_noPreset $common
+          python experiments/trajectory.py --tag tau-init-knee \
+            --theta-from-tau 1 --preset-what knee $shuf $common
+          # Formula as a starting point rather than an answer: if it is close,
+          # the remaining search should be much shorter than fifty episodes.
+          python experiments/trajectory.py --tag tau-init-adapt \
+            --theta-from-tau 1 $common
+
           # Sweep 022's ablations are answered and written up. Dropped, per the
           # housekeeping rule that CI is for open questions and the sweep notes
           # are the record.
@@ -126,7 +142,8 @@ jobs:
         if: steps.gate.outputs.run == 'yes'
         run: |
           for tag in all preset-task preset-shuffled preset-noise \
-                     preset-theta preset-knee preset-permuted; do
+                     preset-theta preset-knee preset-permuted \
+                     tau-init tau-init-knee tau-init-adapt; do
             grep -q "\"tag\": \"$tag\"" experiments/trajectory_results.jsonl \
               || { echo "no rows for condition '$tag'"; exit 1; }
           done
@@ -167,7 +184,9 @@ jobs:
           for pair in "preset-shuffled preset-task" "preset-shuffled all" \
                       "preset-task all" "preset-noise preset-task" \
                       "preset-permuted preset-shuffled" "preset-theta preset-shuffled" \
-                      "preset-knee preset-shuffled"; do
+                      "preset-knee preset-shuffled" \
+                      "tau-init preset-theta" "tau-init-knee preset-shuffled" \
+                      "tau-init-adapt all"; do
             set -- $pair
             for metric in final final_sparsity; do
               echo "" | tee -a summary.txt

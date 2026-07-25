@@ -1,0 +1,119 @@
+Sweep 029 -- can theta be computed instead of found?
+====================================================
+
+IN PLAIN TERMS
+--------------
+Each neuron has to discover its own sensitivity setting, and that discovery is
+worth more than every learning rule in this project combined. It takes about
+fifty rounds of practice, and the previous sweep showed you cannot shortcut it by
+copying settings between neurons -- each one genuinely needs its own.
+
+But a probe just found what the setting depends on, and it is almost embarrassing:
+**how fast that neuron forgets.** Neurons in this model are deliberately built
+with a wide range of memory spans, and a neuron's sensitivity turns out to be
+almost entirely predicted by its own span -- 90% of the variation, from one
+number that is fixed when the network is built.
+
+So the setting may not need to be discovered at all. It may just need to be
+calculated. This tests whether a network handed calculated settings performs like
+one that spent fifty rounds finding them.
+
+QUESTION
+--------
+Sweep 027 established the operating point is a per-neuron *fit*: permuting theta
+between neurons costs 0.130 on 0/20 seeds at p = 0.0000, and the permuted column
+fires at double target rate. So sampling from the settled distribution does not
+work -- the assignment is what matters.
+
+That leaves one form of "precomputable" standing, and a probe over 6 seeds and
+576 neurons found it. Correlating each neuron's settled theta against its own
+local properties:
+
+  membrane tau         -0.793 +/- 0.023
+  branch gain           0.077 +/- 0.162
+  excitatory fraction   0.037 +/- 0.102
+  total fan-in weight   0.029 +/- 0.112
+  mean conduction delay -0.022 +/- 0.038
+
+**Theta is fitted to the membrane time constant and to essentially nothing
+else.** In logs the relationship is tighter still: log theta against log tau
+gives r = -0.974, and
+
+    theta = 5.927 * tau^-0.748
+
+explains **90% of the variance** at a median error of 10.6%.
+
+Mechanically that is the right shape. A leaky integrator with unit DC gain
+driven by sparse input has membrane fluctuation falling as tau rises, so the
+threshold that produces a fixed firing rate must fall with tau. A white-noise
+argument predicts an exponent near -0.5; the measured -0.75 is steeper, which
+the branch filter and short-term plasticity could account for and which nothing
+here has derived. **The exponent is fitted, not explained.**
+
+Crucially this preserves what 027 showed matters: every neuron still gets a
+threshold computed from *its own* property, so the assignment is intact. It is
+the version of "precomputable" that 027 did not refute.
+
+CONDITIONS  (20 seeds, 100 episodes, 96 neurons, lr 0)
+--------------------------------------------------------
+  all              settle normally, everything adapting     0.755
+  preset-shuffled  settled twin's theta and knee            0.803
+  tau-init         theta computed from tau, nothing adapting, knee at init
+  tau-init-knee    theta computed from tau, knee preset from a twin
+  tau-init-adapt   theta computed from tau, then adaptation left ON
+
+The constants are frozen at the values fitted from the probe above and are not
+refitted per run. Refitting would let the initialiser peek at the answer it is
+supposed to predict.
+
+PREDICTION (recorded before the run)
+--------------------------------------
+  tau-init         0.72 to 0.78
+  tau-init-knee    0.76 to 0.80
+  tau-init-adapt   0.78 to 0.82, and reaching it in far fewer than 50 episodes
+
+**The central claim: `tau-init-knee` lands within 0.04 of `preset-shuffled`'s
+0.803, from a formula and a twin's knee rather than from settling theta.**
+
+The reasoning is arithmetic. The fit explains 90% of theta's variance, so a
+computed theta should recover most of what a settled one buys. Sweep 027 measured
+the knee's separate contribution at +0.041, which is why `tau-init` alone is
+predicted lower -- it leaves the knee at its initial value, and 027's
+`preset-theta` condition (theta right, knee at init) landed at 0.763.
+
+So `tau-init` should land near 0.763 if the formula is as good as a settled
+theta, and materially below it if the missing 10% of variance matters.
+
+WHAT EACH OUTCOME MEANS
+-------------------------
+  tau-init ~ 0.763    The formula is as good as settling, for theta. Fifty
+                      episodes of threshold search become a closed-form
+                      expression, at any column size, with no twin and no data.
+                      That is the practical result the project has been circling
+                      since sweep 022.
+
+  tau-init well below  The missing 10% of variance is load-bearing. Then theta
+                      depends on something per-neuron that tau does not capture,
+                      and the probe should be re-run against interaction terms
+                      rather than the marginals it tested.
+
+  tau-init-adapt fast  Even if the formula is imperfect, starting near the answer
+                      should cut the search short. Worth knowing separately,
+                      because it is useful even when the formula is not exact.
+
+WHAT THIS CANNOT SAY
+---------------------
+The exponent was fitted at 96 neurons on one task. Whether -0.748 is universal or
+a property of this configuration is untested, and the honest version of any
+claim here is "a power law in tau, with an exponent that must be refitted per
+configuration until something derives it".
+
+SETTINGS
+--------
+20 seeds, 100 episodes, checkpoints every 10, 300 probe episodes, 96 neurons,
+lr 0, binding and lateral off. THETA_A = 5.927, THETA_B = -0.748, frozen in
+experiments/trajectory.py.
+
+RESULT -- 20 seeds
+------------------
+Pending.

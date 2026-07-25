@@ -39,6 +39,11 @@ from probe import collect, logistic, logistic_score  # noqa: E402
 
 OUT = Path(__file__).resolve().parent / "trajectory_results.jsonl"
 
+# Fitted once, over 6 seeds x 96 neurons of settled columns, and then frozen.
+# Refitting per run would let the initialiser peek at the answer it is meant to
+# predict, which is the whole point of the condition.
+THETA_A, THETA_B = 5.927, -0.748
+
 
 class ShuffledInput:
     """The task's marginal input statistics with its timing destroyed.
@@ -185,6 +190,20 @@ def main() -> None:
     ap.add_argument("--preset-shuffle", type=int, default=0,
                     help="permute preset values across neurons: same "
                          "distribution, wrong owner")
+    # Sweep 029. A probe after 027 found what theta is fitted to: the neuron's
+    # own membrane time constant, and almost nothing else. Across 6 seeds and 576
+    # neurons, log theta against log tau gives r = -0.974, and the power law
+    # theta = 5.93 * tau^-0.748 explains 90% of the variance at a median error of
+    # 10.6%. Every other local property was flat -- excitatory fraction 0.04,
+    # total weight 0.03, mean delay -0.02, branch gain 0.08.
+    #
+    # That is computable at construction, from a quantity each neuron already
+    # knows about itself, and it preserves the per-neuron assignment that sweep
+    # 027 showed is what matters (permuting cost 0.130 at p = 0.0000). So it is
+    # the version of "precomputable" that 027 did not refute.
+    ap.add_argument("--theta-from-tau", type=int, default=0,
+                    help="initialise theta as a power law in the neuron's own "
+                         "membrane tau instead of settling for it")
     ap.add_argument("--report", action="store_true")
     args = ap.parse_args()
 
@@ -235,6 +254,9 @@ def main() -> None:
         )
 
     model = build()
+    if args.theta_from_tau:
+        col = model.column
+        col.theta[:] = (THETA_A * col.tau_soma ** THETA_B).astype(np.float32)
     if args.preset_from:
         # The twin adapts with every default in force -- the overrides apply
         # only to the column being measured, or the preset would inherit the
@@ -307,6 +329,7 @@ def main() -> None:
                episodes=args.episodes, every=args.every, curve=curve,
                sparsity=sparsity, preset_from=args.preset_from,
                preset_input=args.preset_input, preset_what=args.preset_what,
+               theta_from_tau=args.theta_from_tau,
                preset_shuffle=args.preset_shuffle,
                final=curve[str(done)], final_sparsity=sparsity[str(done)],
                **overrides)
