@@ -180,6 +180,13 @@ MUTATIONS = [
     ),
     (
         ROOT / "plexus" / "events.py",
+        "a never-delivered packet reads as a stale echo instead of silence",
+        "        return np.where(self._stamp[slots] == emitted_at, vals, 0.0)",
+        "        return vals",
+        "silence_for_unwritten or delivery_jitter",
+    ),
+    (
+        ROOT / "plexus" / "events.py",
         "buffer growth drops events already in flight",
         "        buf[:, : self.n_sources] = self._buf",
         "        pass",

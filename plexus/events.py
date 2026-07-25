@@ -14,6 +14,17 @@ Events are indexed by the timestep they were *emitted*, never by the timestep
 they arrived. That single decision is what makes network jitter benign: a
 packet that shows up late still lands in the correct slot of history, so a
 distributed run computes the same thing a local one does.
+
+Measured, and the bound is exact. `test_delivery_jitter_does_not_change_a_
+distributed_run` delays every published slice by a random 0-N steps and applies
+everything released on the same tick in shuffled order. A three-column model run
+that way is **bit-identical in its learned weights** to a punctual one for any
+lateness below `delay_min`, and differs once past it -- a packet emitted at `t`
+is first read at `t + delay_min`, so that is the whole tolerance and there is no
+margin beyond it. Both directions are asserted, because the first version of
+that test compared `col.out` after the episode, which is all zeros once the
+drain has run, and so passed at every jitter setting including ones far outside
+the bound.
 """
 
 from __future__ import annotations

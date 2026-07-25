@@ -11,7 +11,7 @@ question in plain language, with where it stands. Detail is below.
 | 4 | Can we skip the work that isn't doing anything? | **Measured.** Not at neuron level (81% are active) — at connection level. Worth ~2× now, ~5× at scale. Demoted from "biggest lever" |
 | 5 | Can we add new senses to a running network? | Built and tested. Open: does a *trained* model survive it |
 | 6 | Which old decisions rest on evidence a later fix destroyed? | Six items, tracked in AUDIT.md |
-| 7 | Does it actually work spread across machines? | Never tried. All delays so far are simulated inside one process |
+| 7 | Does it actually work spread across machines? | Still never tried on real machines. But the property it depends on is now **measured**: delivery jitter below `delay_min` leaves a distributed run bit-identical, and above it does not |
 | 8 | Would a single GPU just beat this? | Honest counter-argument, unmeasured |
 
 Ordered by what would change the most if it turned out differently, not by
@@ -450,6 +450,24 @@ delays. The make-or-break number is how much traffic crosses between machines.*
 `NetworkTransport` does not exist. Everything distributed has been measured
 through `LocalTransport` with simulated delays, which is the right way to
 develop it and not the same as having done it.
+
+**One thing a real transport would have had to get right is now pinned rather
+than argued.** `events.py` has always claimed that indexing by emission time
+makes jitter benign — a late packet lands in the correct slot of history, so a
+distributed run computes what a local one does. That was tested only at the
+primitive level: one buffer, two out-of-order events. It is now tested end to
+end. Delaying every published slice by a random 0–N steps, and applying
+everything released on the same tick in shuffled order, leaves a three-column
+run **bit-identical in its learned weights** for any lateness below `delay_min`
+— and changes them past it.
+
+So the tolerance is exactly `delay_min - 1` steps and not one more, because a
+packet emitted at `t` is first read at `t + delay_min`. A real transport does
+not need ordered delivery or bounded latency in general; it needs delivery
+inside that window, which is a much weaker requirement and now a stated number
+rather than a hope. It is also a **design lever nobody has used**: raising
+`delay_min` buys jitter tolerance directly, and what that costs the column has
+never been measured.
 
 - **Wiring locality is the make-or-break number.** Per machine, 33M neurons at
   2% and 1 kHz emit ~6.7×10⁸ events/second. At 1% of synapses crossing the

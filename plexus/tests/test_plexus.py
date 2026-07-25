@@ -39,10 +39,26 @@ def test_buffer_reads_by_emission_time():
 
 
 def test_buffer_returns_silence_for_unwritten_slots():
+    """A slot not written for this cycle must read as silence, not as an echo.
+
+    The ring buffer reuses each slot every `depth` steps, so a read of an
+    emission time nothing wrote lands on whatever occupied that slot one lap
+    earlier. In a distributed run that is a dropped packet reading as a stale
+    value from `depth` steps ago -- silently, and indistinguishably from real
+    activity.
+
+    **The stale value has to actually be there for this to test anything.** The
+    first version wrote only at t=10 and read t=11, whose slot had never been
+    touched and so held the constructor's zeros; it passed with the emission-time
+    mask deleted entirely, because there was no echo to leak. Slot 3 is loaded
+    here on purpose, one full lap before the read, so removing the mask returns
+    9.0 where 0.0 is required.
+    """
     buf = EventBuffer(n_sources=4, depth=8)
-    buf.write(10, np.ones(4, dtype=np.float32))
-    # Nothing was ever emitted at t=11, so a read of it must be zero rather
-    # than an echo of whatever occupied the slot 8 steps earlier.
+    buf.write(3, np.full(4, 9.0, dtype=np.float32))   # occupies slot 3
+    buf.write(10, np.ones(4, dtype=np.float32))       # occupies slot 2
+    # Nothing was emitted at t=11. Its slot is 11 % 8 == 3, still holding the
+    # t=3 values, so an unmasked read would return 9.0.
     assert np.allclose(buf.gather(12, np.array([0]), np.array([1])), [0.0])
 
 
@@ -483,6 +499,114 @@ def test_each_column_publishes_only_what_it_owns():
         for other in others:
             lo, hi = other.source_offset, other.source_offset + m.per_column
             assert not (lo <= col.source_offset < hi)
+
+
+class _Jittered:
+    """A transport that delivers every published slice *late*, and out of order.
+
+    Stands in for a real network. A slice published for emission time `t` is
+    queued and released some number of steps later, and everything released on
+    the same tick is applied in shuffled order -- so both lateness and
+    reordering are exercised at once.
+    """
+
+    def __init__(self, inner, max_jitter: int, rng: np.random.Generator):
+        self._inner = inner
+        self._max_jitter = max_jitter
+        self._rng = rng
+        self._pending: list[tuple[int, int, int, np.ndarray]] = []
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+    def publish_slice(self, t: int, start: int, values: np.ndarray) -> None:
+        release = t + int(self._rng.integers(0, self._max_jitter + 1))
+        self._pending.append((release, t, start, values.copy()))
+
+    def begin(self, t: int) -> None:
+        # Underlying `begin` first: it clears the slot for `t`, and a packet
+        # released this tick for emission time `t` must survive that.
+        self._inner.begin(t)
+        due = [p for p in self._pending if p[0] <= t]
+        self._pending = [p for p in self._pending if p[0] > t]
+        self._rng.shuffle(due)
+        for _release, emitted, start, values in due:
+            self._inner.publish_slice(emitted, start, values)
+
+    def reset(self) -> None:
+        self._pending.clear()
+        self._inner.reset()
+
+
+def test_delivery_jitter_does_not_change_a_distributed_run():
+    """Late, reordered packets must compute exactly what punctual ones do.
+
+    This is the architecture's headline claim and it has been tested only at
+    the primitive level. `test_buffer_late_scatter_matches_dense_write` shows
+    one `EventBuffer` handles two out-of-order events; nothing showed that a
+    *whole distributed run* is invariant to delivery jitter, which is what
+    `events.py` actually asserts:
+
+        "a packet that shows up late still lands in the correct slot of
+         history, so a distributed run computes the same thing a local one
+         does."
+
+    The bound is exact and worth stating, because "jitter is benign" is only
+    true up to it: a packet emitted at `t` is first read at `t + delay_min`, so
+    **any lateness strictly below `delay_min` steps is invisible, and lateness
+    at or above it is not.** `delay_min` is raised to 12 here so there is a real
+    window to jitter inside; at the default of 1 the tolerance is zero steps and
+    the property, while still true, has nothing to demonstrate.
+
+    What breaks if this stops holding: indexing events by arrival instead of
+    emission. That is the single decision the distribution thesis rests on, and
+    it would still pass every other test in this file -- the buffer test uses
+    one buffer and two events, the step-order test reverses column order without
+    delaying anything.
+
+    **The out-of-bound case is asserted too, and that is what stops this test
+    going vacuous.** Its first version compared `col.out` after the episode and
+    passed at every jitter setting including 40 -- because `out` is all zeros
+    once the drain has run, so `array_equal` on it is trivially true whatever
+    happened. `W` is the quantity that carries the run: identical at jitter 11,
+    and differing by 1.07e-2 at jitter 40. Asserting both directions means a
+    jitter wrapper that silently stopped delaying anything would fail here
+    rather than reporting invariance it never tested.
+    """
+    def build(jitter: int):
+        task = DelayedXOR()
+        m = DistributedPlexus(
+            task.n_inputs, task.n_classes, n_columns=3,
+            column=ColumnConfig(n_neurons=16, seed=0, delay_min=12),
+            peer_delay=30, seed=0,
+        )
+        if jitter:
+            m.transport = _Jittered(m.transport, jitter, np.random.default_rng(99))
+            for col in m.columns:
+                col.transport = m.transport
+        return task, m
+
+    def run(jitter: int):
+        task, m = build(jitter)
+        rng = np.random.default_rng(5)
+        for _ in range(3):
+            m.run_episode(task.episode(rng), learn=True)
+        return [c.W.copy() for c in m.columns]
+
+    punctual = run(0)
+    within = run(11)      # one step inside the delay_min bound
+    beyond = run(40)      # comfortably past it
+
+    for a, b in zip(punctual, within):
+        assert np.array_equal(a, b), (
+            "delivery jitter within delay_min changed the learned weights; "
+            "emission-time indexing is not holding, and a distributed run does "
+            "not compute what a local one does"
+        )
+    assert any(not np.array_equal(a, b) for a, b in zip(punctual, beyond)), (
+        "jitter of 40 steps against a delay_min of 12 changed nothing, so the "
+        "jitter is not reaching the model and the invariance above is vacuous"
+    )
 
 
 def test_step_order_does_not_change_the_result():
