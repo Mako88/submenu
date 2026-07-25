@@ -55,7 +55,12 @@ and constantly leaving*.
 
 ### The plan, in order — revised against the north star above
 
-1. Collect sweeps 035 / 036 / 037 (in flight).
+1. **Collect sweeps 035 / 036 / 037 — DONE RUNNING, NOT YET READ.** Run
+   `30177379556` (commit `70363cf`) completed successfully. Nobody has looked
+   at the numbers, no sweep notes are written, and until they are these are
+   three results the project paid for and does not have. **This is the first
+   thing to pick up, ahead of item 13.** 035 is delay_min/jitter cost, 036 is
+   heterogeneous τ, 037 is the dendritic plateau.
 2. **Defer 032 and 033.** Good questions about a substrate that already works;
    neither moves the learning problem.
 3. ~~Fix the measuring instrument — item 11.~~ **Done, and the premise was
