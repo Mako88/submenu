@@ -106,9 +106,22 @@ def test_homeostasis_holds_activity_sparse():
 
 
 def test_no_runaway_excitation():
+    """Membrane potential must stay on the scale the threshold defines.
+
+    The bound is stated relative to theta rather than as an absolute, because
+    an absolute one is unanchored: this asserted |v| < 50 while the settled
+    operating range is 0.49, i.e. a hundredfold margin that no realistic
+    failure could have crossed. Deliberately breaking homeostasis
+    (target_rate=0.9) still produced |v| of 0.31 and the test still passed.
+    A bound has to be tight enough that something can fail it.
+    """
     col = _settle()
     assert np.all(np.isfinite(col.v))
-    assert np.abs(col.v).max() < 50.0
+    ceiling = 10.0 * float(np.median(col.theta))
+    assert np.abs(col.v).max() < ceiling, (
+        f"|v| reached {np.abs(col.v).max():.2f} against a threshold scale of "
+        f"{np.median(col.theta):.2f}"
+    )
 
 
 def test_plateau_stays_engaged():
@@ -117,9 +130,22 @@ def test_plateau_stays_engaged():
     Regression test for a real bug: with an absolute knee the branch potential
     sat two orders of magnitude below it and the nonlinearity never fired at
     all, silently reducing every neuron to a linear summer.
+
+    The bounds used to be 0.01 to 0.5, which passed with knee homeostasis
+    *entirely disabled* -- knee_lr=0 settles at 0.074 across five seeds
+    [0.062, 0.084], comfortably inside them. A test guarding a
+    silent-disconnection bug that survives its own disconnection is worth
+    nothing, so the band is now tight enough to separate the two: adaptation
+    on gives 0.152 [0.141, 0.170], off gives 0.074 [0.062, 0.084].
+
+    The second assertion is the direct one. Engagement is a downstream
+    quantity that the input distribution could push around on its own; the
+    knee moving away from its initial value can only be the adaptation.
     """
     col = _settle()
-    assert 0.01 < col.plateau_engagement < 0.5, col.plateau_engagement
+    assert 0.10 < col.plateau_engagement < 0.25, col.plateau_engagement
+    drift = float(np.abs(col.knee / ColumnConfig.knee_init - 1.0).mean())
+    assert drift > 0.05, f"the knee never moved from its initial value ({drift:.3f})"
 
 
 def test_membrane_gain_is_independent_of_time_constant():
@@ -156,7 +182,42 @@ def test_dale_law_signs_are_preserved():
     assert np.all(m.column.W >= 0.0)
 
 
+def test_dale_signs_are_applied_to_the_input():
+    """Preserving the signs is worthless if nothing multiplies by them.
+
+    The test above checks only that `syn_sign` is not mutated and that W stays
+    non-negative. Both hold perfectly well if the forward pass never applies
+    the sign at all -- and a mutation that replaced `x * syn_sign` with
+    `x * |syn_sign|`, deleting inhibition from the model entirely, was caught
+    by nothing in the suite. E/I balance is a stated design property, so it
+    needs an assertion that inhibition reaches the output.
+    """
+    cfg = ColumnConfig(n_neurons=32, n_external=8, seed=0, inhibitory_frac=0.4)
+
+    def emissions(strip_inhibition):
+        transport = LocalTransport(8 + 32, cfg.delay_max + 2, cfg.modulator_dim)
+        col = Column(cfg, transport)
+        col.learning = False
+        if strip_inhibition:
+            col.syn_sign = np.abs(col.syn_sign)
+        rng = np.random.default_rng(3)
+        return np.array(
+            [col.step(t, (rng.random(8) < 0.2).astype(np.float32)) for t in range(400)]
+        )
+
+    mixed, excitatory_only = emissions(False), emissions(True)
+    assert not np.allclose(mixed, excitatory_only), "the Dale sign never reached the input"
+    # Homeostasis is off here (learning=False), so removing every inhibitory
+    # synapse must leave the population strictly more active. With homeostasis
+    # on, the thresholds would absorb the difference and hide the defect.
+    assert excitatory_only.mean() > mixed.mean(), (
+        "deleting all inhibition did not increase activity, so the sign is "
+        "reaching the input as something other than a sign"
+    )
+
+
 def test_weights_stay_bounded():
+    """Weights must stay finite and inside the clip under ordinary training."""
     task = DelayedXOR()
     cfg = ColumnConfig(n_neurons=48, lr=2e-2)
     m = Plexus(task.n_inputs, task.n_classes, column=cfg, seed=0)
@@ -165,6 +226,34 @@ def test_weights_stay_bounded():
         m.run_episode(task.episode(rng), learn=True)
     assert np.all(np.isfinite(m.column.W))
     assert m.column.W.max() <= cfg.weight_max + 1e-5
+
+
+def test_the_weight_clip_actually_binds():
+    """The clip must be exercised, not merely satisfied by something else.
+
+    The test above passes at settings where W tops out at 1.775 against a
+    weight_max of 4.0 -- synaptic scaling holds it there, so the clip does no
+    work and deleting it would change nothing. Raising weight_max to 1e9 left
+    W at exactly 1.775, which is the proof: that assertion was vacuous.
+
+    So this one puts the weights under real pressure -- scaling off, large
+    learning rate, sustained one-signed modulator -- and asserts the clip is
+    what stops them. Without it the update is unbounded.
+    """
+    cfg = ColumnConfig(n_neurons=16, n_external=4, lr=0.5, scaling_lr=0.0, weight_max=2.0)
+    transport = LocalTransport(4 + 16, cfg.delay_max + 2, cfg.modulator_dim)
+    col = Column(cfg, transport)
+    rng = np.random.default_rng(0)
+    col.feedback = np.ones_like(col.feedback)  # every neuron told "strengthen"
+    for t in range(400):
+        col.step(t, (rng.random(4) < 0.4).astype(np.float32))
+        transport.broadcast(t, np.ones(cfg.modulator_dim, dtype=np.float32))
+        col.apply_modulator(t)
+    assert np.isclose(col.W.max(), cfg.weight_max), (
+        f"W topped out at {col.W.max():.3f}, so the clip never bound and this "
+        "test is not measuring it"
+    )
+    assert np.all(np.isfinite(col.W))
 
 
 # --------------------------------------------------------------------------

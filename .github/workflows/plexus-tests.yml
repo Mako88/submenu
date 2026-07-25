@@ -29,6 +29,15 @@ jobs:
       - name: Run test suite
         run: python -m pytest plexus/tests/ -v
 
+      - name: Check the tests would notice if a mechanism broke
+        # A green suite proves nothing by itself. This breaks each mechanism on
+        # purpose and fails if the test that names it stays green. Three tests
+        # in this repo survived their own mutation when it was first run --
+        # including the one guarding the bug where the dendritic plateau was
+        # silently disconnected -- and a fourth mechanism, Dale's law, turned
+        # out to have no test that its sign was applied at all.
+        run: python experiments/mutation.py
+
       - name: Check the benchmarks still defeat trivial models
         # A benchmark is only worth reporting if simple things fail on it. If a
         # change ever makes delayed XOR solvable by a rate code or by a linear

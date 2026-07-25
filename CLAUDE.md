@@ -79,6 +79,64 @@ plausible-looking numbers.
    expensive mistake available here is to permanently discard an idea on the
    strength of a measurement that was never valid.
 
+9. **A test must fail when the thing it names is broken. Check that it does.**
+   Passing is not evidence; a test that cannot fail is decoration with a green
+   tick on it. Break the mechanism deliberately and confirm the test notices.
+   Three in this repo did not, and all three were found this way:
+
+   - `test_plateau_stays_engaged` passed with knee homeostasis *entirely
+     disabled*. Its bounds were wide enough to admit the broken case, while
+     guarding the exact bug where the plateau was silently disconnected.
+   - `test_no_runaway_excitation` asserted `|v| < 50` where the operating
+     range is 0.49. It would have caught nothing short of a catastrophe.
+   - `test_weights_stay_bounded` asserted `W.max() <= weight_max` at a
+     setting where synaptic scaling holds `W` far below the clip, so the clip
+     was never exercised and removing it would not have failed the test.
+
+   Watch especially for an assertion on a quantity that something *else*
+   pins. `test_hebbian_binding_only_touches_recruited_neurons` was nearly
+   written against `W.mean()`, which synaptic scaling holds at
+   `branch_budget / n_synapses` no matter what the binding does -- it would
+   have passed identically with the mechanism deleted.
+
+10. **A failing test is a claim about the production code until proven
+    otherwise.** Fix the code so the assertion holds. Do not widen a bound,
+    delete an assertion, or add a special case to make red go green -- that
+    converts a caught bug into a silent one and destroys the evidence that it
+    existed.
+
+    Changing a test is correct in exactly one case: the intended behaviour
+    genuinely changed. Then say so explicitly, say what measurement or
+    decision changed it, and prefer *splitting* over *loosening* -- keep an
+    assertion for the old path where it still applies and add one for the new.
+    `test_excitability_reaches_the_threshold_when_that_path_is_enabled` and
+    `test_default_keeps_excitability_out_of_the_threshold` are that split: the
+    default moved for a measured reason, so the old assertion was kept behind
+    the flag that still enables it rather than deleted.
+
+    A test that passes while being *vacuous* is a different problem and takes
+    the opposite treatment -- there the test is what is wrong, and
+    strengthening it is the fix. Rule 9 covers those.
+
+11. **Put the reasoning where the reader will be standing.** Test docstrings
+    carry what code comments cannot: the failed measurement, the number that
+    was wrong, the alternative that was tried. Someone about to change a
+    threshold reads the test that guards it, not the sweep note.
+
+    To stop the same rationale drifting across three files, they divide as:
+
+    - **Code comment** -- why the line is the way it is. Short, and only where
+      the code would otherwise read as arbitrary.
+    - **Test docstring** -- what breaks if this stops holding, with the
+      concrete number from when it broke. This is where the history goes.
+    - **`experiments/sweeps/*.txt`** -- the question, the prediction made
+      before the run, the result. One file per sweep, never edited afterwards
+      except to record the outcome.
+    - **`AUDIT.md`** -- what a later fix invalidated.
+
+    When a number appears in more than one of those, the test docstring is
+    canonical, because it is the one under continuous execution.
+
 ## Conventions
 
 - The design rule the whole architecture serves: **no operation may require
