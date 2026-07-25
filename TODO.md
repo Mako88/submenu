@@ -12,7 +12,7 @@ question in plain language, with where it stands. Detail is below.
 | 5 | Can we add new senses to a running network? | Built and tested. Open: does a *trained* model survive it |
 | 6 | Which old decisions rest on evidence a later fix destroyed? | Six items, tracked in AUDIT.md |
 | 7 | Does it actually work spread across machines? | Still never tried on real machines. But the property it depends on is now **measured**: delivery jitter below `delay_min` leaves a distributed run bit-identical, and above it does not |
-| 8 | Would a single GPU just beat this? | Honest counter-argument, unmeasured |
+| 8 | Would a single GPU just beat this? | **The premise was wrong.** Not bandwidth-bound — 17 % of DRAM peak at 96 neurons, working set fits in L2. It is overhead-bound, so the comparison cannot be made until the code is near *some* limit |
 
 Ordered by what would change the most if it turned out differently, not by
 effort. Each item says what it is, why it matters, and what would settle it —
@@ -323,7 +323,14 @@ removed.** It is a ~2× win at current size for a substantial rewrite.
 What keeps it worth doing is scale, which is the actual deployment target. The
 `(N,B,S)` share grows with column size as per-step Python overhead amortises —
 already visible in the throughput table above — so at 1024+ neurons the dense
-tensor dominates and the achievable factor approaches the full 5×. The item is
+tensor dominates and the achievable factor approaches the full 5×.
+
+Item 8's roofline measurement corroborates this from the other side and puts a
+number on it: memory-system utilisation rises from 17 % at 96 neurons to 29 % at
+1024, which is per-call overhead amortising rather than bandwidth saturating.
+The two items agree that **overhead, not memory, is what this implementation is
+currently spending its time on** — which is why a rewrite is worth more here than
+a faster machine. The item is
 re-scoped from "the big win" to "a 2–5× win that matters more the bigger the
 column gets", and it should be sequenced accordingly.
 
@@ -499,11 +506,47 @@ never been measured.
 outperforms hundreds of CPUs per dollar, then "no data centres" has to be
 argued on grounds other than cost. Worth measuring rather than avoiding.*
 
-The model is numpy on CPU and largely memory-bandwidth-bound on the `(N,B,S)`
-tensors. A single modern GPU would likely beat hundreds of CPU cores per
-dollar. That pulls directly against the distribution thesis, and it deserves a
-measurement rather than a preference — if a GPU wins by 50×, "no data centres"
-needs to be argued on grounds other than cost.
+**"Largely memory-bandwidth-bound" was wrong, and `experiments/roofline.py`
+measured it.** On this machine (4-core Xeon, 8 MiB L2, 260 MiB L3, **10.7 GB/s**
+sustained streaming bandwidth measured on 512 MB arrays):
+
+| neurons | µs/step | working set | achieved traffic | % of DRAM peak | steps/s | neurons at real time |
+|---|---|---|---|---|---|---|
+| 96 | 214 | 384 KB | 1.84 GB/s | **17.1 %** | 4684 | 450 |
+| 256 | 373 | 1024 KB | 2.81 GB/s | 26.2 % | 2682 | 687 |
+| 512 | 702 | 2048 KB | 2.99 GB/s | 27.8 % | 1424 | 729 |
+| 1024 | 1332 | 4096 KB | 3.15 GB/s | **29.3 %** | 751 | 769 |
+
+Two things follow, and the second is the one that matters.
+
+**It is not bandwidth-bound.** At the 96 neurons every result in this repo was
+measured at, the step uses 17 % of the memory system, and its entire working set
+— all eight `(N,B,S)` arrays — is 384 KB against an 8 MiB L2. Even at 1024
+neurons the working set is 4 MB and still fits, so the traffic figure above is
+mostly served by cache and the true DRAM pressure is lower still.
+
+**Efficiency rises with size, which is the signature of the opposite problem.**
+17 % → 29 % as N goes 96 → 1024. A bandwidth-bound program saturates and then
+degrades; one limited by per-call overhead amortises, which is independently
+what item 4 observed from the other direction.
+
+So the honest position on the GPU counter-argument is **not** "a GPU would win by
+50×". It is that **the comparison cannot be made from these numbers at all**,
+because the current implementation is nowhere near any hardware limit — it is
+spending most of its time in numpy call overhead, and a naive GPU port would
+have the same problem in a different language. The first several× is available
+on this CPU by fusing the per-step operations, and only after that does the
+question "CPU or accelerator" become a question about hardware rather than about
+this code.
+
+What *is* now measured, and is what the distribution argument actually needs:
+**one core of this machine sustains roughly 450–770 neurons at biological real
+time** (1 ms per step). That is the number to multiply by a machine count, and
+it is a floor rather than a ceiling given the overhead finding.
+
+(Recorded carefully because this exact quantity was once mis-derived here as
+`steps/s × neurons`, which is not neurons-at-real-time and is larger by a factor
+of a thousand.)
 
 ---
 
