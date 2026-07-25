@@ -1,6 +1,21 @@
 Sweep 024 -- does learning a second task cost what the column learned on the first?
 ===================================================================================
 
+IN PLAIN TERMS
+--------------
+Everything measured so far uses one task with one answer. That can't ask the
+question everyone actually cares about: does learning something new destroy what
+you already knew?
+
+So: teach it a task, check what it knows, teach it a second task, check the first
+one again. The two tasks are deliberately the *same puzzle wired to different
+input channels*, so neither is harder than the other -- otherwise "it forgot"
+and "the second one was just harder" would be impossible to tell apart.
+
+This is also the fair rematch for the memory-allocation mechanism that was
+deleted earlier. Its entire purpose was keeping separate memories on separate
+neurons, and no test so far has ever asked it to.
+
 QUESTION
 --------
 Every number in this repo is a number about one task with one answer and no

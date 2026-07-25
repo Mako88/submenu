@@ -1,6 +1,22 @@
 Sweep 022 -- what is the +0.197 that homeostasis alone buys?
 ============================================================
 
+IN PLAIN TERMS
+--------------
+An earlier measurement turned up something nobody went looking for: a network
+with **every learning rule switched off** still gets substantially better over
+its first fifty rounds. More than twice as much as the clever learning mechanism
+adds on top. Nothing in this project explains it.
+
+Only three things adjust themselves in that condition, so this switches each off
+in turn to see which one matters.
+
+The trick is that simply switching off the main one kills the network -- it goes
+silent, and a silent network scores badly for reasons that have nothing to do
+with the question. So there's a fairer version: let a twin network find the right
+settings, copy them across, *then* switch the adjusting off. That separates
+"finding the right setting" from "continuously readjusting".
+
 QUESTION
 --------
 Sweep 019 surfaced it as a side effect and nobody asked. A column with `lr=0`,

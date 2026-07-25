@@ -1,6 +1,23 @@
 Sweep 026 -- the architecture's headline claim, on a mechanism that works
 =========================================================================
 
+IN PLAIN TERMS
+--------------
+The whole point of this architecture is that it should survive being spread over
+the internet, where the "well done" signal arrives late. Nobody has ever tested
+that for a mechanism that actually does anything.
+
+This tests it on the one that works. When the late signal arrives, the neuron
+looks back at how active it just was -- through a window about 50ms wide. Arrive
+150ms late and that window has mostly emptied, so there should be nothing left
+to learn from.
+
+If the gain fades with delay exactly as that window empties, we know precisely
+what limits us. And the last condition widens the window on purpose: if that
+brings the gain back at intercontinental delay, then tolerating latency is a
+*setting we choose*, not a limit we're stuck with. That would be the useful
+answer.
+
 QUESTION
 --------
 AUDIT.md has carried this as the highest-value pending item since it was

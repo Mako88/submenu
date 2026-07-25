@@ -1,6 +1,22 @@
 Sweep 025 -- is the column self-organising toward criticality?
 ==============================================================
 
+IN PLAIN TERMS
+--------------
+Networks are thought to work best when poised between "activity dies out" and
+"activity explodes" -- the edge between order and chaos. If our thermostat
+(homeostasis) is quietly steering the network to that edge, that would explain
+the biggest unexplained effect in the project, and the goal would become "stay
+on the edge" rather than "learn better".
+
+So: measure how far one firing event spreads, and see whether the conditions
+that read out well are the ones nearest that edge.
+
+The catch is that our neurons are individually leaky, which makes activity look
+like it's spreading even when nothing is passing between them. So we also
+measure a version with the neurons disconnected from each other. Only the
+difference counts.
+
 QUESTION
 --------
 The project's own numbers point here and it took an outside framing to see it.

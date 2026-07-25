@@ -1,6 +1,20 @@
 Sweep 021 -- does lateral inhibition pay anything the model can actually use?
 =============================================================================
 
+IN PLAIN TERMS
+--------------
+Our best-performing readout cheats a little: it needs to look at all the neurons
+at once, which is exactly the thing this architecture is supposed to avoid,
+because it doesn't work when the network is spread across machines.
+
+Lateral inhibition was added to make that cheat unnecessary -- the idea being
+that if neurons tidy up their own signals locally, a simple readout could manage
+on its own.
+
+This measures whether that worked: does the simple readout with the new mechanism
+reach what the cheating readout reaches? If not, the cheat stays, and the idea
+gets closed rather than tinkered with.
+
 QUESTION
 --------
 Sweep 020 measured lateral inhibition offline and it helped: +0.028 alone and

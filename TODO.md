@@ -1,5 +1,19 @@
 # What is outstanding
 
+**Scan this table and stop, if that is all you have time for.** Every row is a
+question in plain language, with where it stands. Detail is below.
+
+| # | the question, plainly | where it stands |
+|---|---|---|
+| 1 | Does any of this survive a task that asks more than one puzzle? | **Forgetting: answered — nothing forgets, so there is nothing to fix.** Capacity: untouched. Emergent structure: criticality refuted, simpler answer standing |
+| 2 | What is lateral inhibition actually doing? | Works (+0.037), best result in the project with it — but the reason it was built is refuted and the real mechanism is unknown |
+| 3 | Is the "settling" the network does for free precomputable? | **Yes, and better from static than from the task.** Why, is open |
+| 4 | Can we stop simulating every neuron every millisecond? | Untouched. ~97% of current work is wasted; would be ~50× faster |
+| 5 | Can we add new senses to a running network? | Built and tested. Open: does a *trained* model survive it |
+| 6 | Which old decisions rest on evidence a later fix destroyed? | Six items, tracked in AUDIT.md |
+| 7 | Does it actually work spread across machines? | Never tried. All delays so far are simulated inside one process |
+| 8 | Would a single GPU just beat this? | Honest counter-argument, unmeasured |
+
 Ordered by what would change the most if it turned out differently, not by
 effort. Each item says what it is, why it matters, and what would settle it —
 because "improve the scheduler" is not a task and "does binding still pay when
@@ -99,6 +113,12 @@ Three benchmarks would each open something currently invisible:
 
 ## 2. What is lateral inhibition actually doing?
 
+*In plain terms: a mechanism was added on the theory that the neurons were all
+saying too-similar things and needed spreading out. It helps — it produced the
+best result in the project. But it turns out it does not spread them out at all,
+so nobody knows why it works. Keeping a mechanism whose explanation is wrong is
+fine; pretending to know why is not.*
+
 Built to decorrelate. Sweep 020 measured it not decorrelating — mean
 correlation moves −0.004 alone and not at all on top of binding, effective rank
 moves *down* rather than up — while raising linear decodability by +0.028 alone
@@ -181,6 +201,12 @@ matrix is how it stops being one.
 
 ## 4. Event-driven execution
 
+*In plain terms: right now every neuron is recalculated every millisecond, even
+though only about 3% of them are doing anything. It is like polling every house
+on a street each second to ask if anything happened. Switching to "tell me when
+something happens" should be exact here rather than an approximation, and worth
+roughly 50× — the single biggest speedup available.*
+
 The loop is clock-driven: every neuron updates every millisecond whether or not
 anything reached it. At a 3% firing rate that is ~97% waste, and it is the
 single largest lever available.
@@ -229,6 +255,12 @@ surviving. That needs a sweep, not a probe.
 
 ## 6. The audit backlog
 
+*In plain terms: several settings in this model were chosen based on
+measurements that a later bug fix invalidated. The settings never got revisited.
+This is the list of decisions currently resting on evidence that no longer
+holds — including a couple where a good idea may have been discarded for a bad
+reason.*
+
 From `experiments/sweeps/AUDIT.md`. These are live decisions resting on
 evidence that a later fix invalidated.
 
@@ -250,6 +282,11 @@ A constant zero, recorded in a test rather than deleted so no reader assumes a
 term in the soma equation is doing something.
 
 ## 7. Distribution, for real
+
+*In plain terms: the entire point of the project is running this spread across
+ordinary machines over the internet. That has never actually been done — every
+"distributed" measurement so far is one process pretending to have network
+delays. The make-or-break number is how much traffic crosses between machines.*
 
 `NetworkTransport` does not exist. Everything distributed has been measured
 through `LocalTransport` with simulated delays, which is the right way to
@@ -274,6 +311,10 @@ develop it and not the same as having done it.
   tested, because nothing has ever actually left.
 
 ## 8. The honest counter-argument
+
+*In plain terms: this might all be beaten by one graphics card. If a single GPU
+outperforms hundreds of CPUs per dollar, then "no data centres" has to be
+argued on grounds other than cost. Worth measuring rather than avoiding.*
 
 The model is numpy on CPU and largely memory-bandwidth-bound on the `(N,B,S)`
 tensors. A single modern GPU would likely beat hundreds of CPU cores per

@@ -1,6 +1,20 @@
 Sweep 023 -- is the settling operating point precomputable?
 ===========================================================
 
+IN PLAIN TERMS
+--------------
+The previous sweep found that most of what makes this network readable isn't
+learning at all -- it's each neuron finding the right sensitivity setting, a
+couple of numbers per neuron. Getting there takes about fifty rounds of practice.
+
+The question here: does it need to practise on the *real task* to find those
+settings, or would any input with roughly the right statistics do?
+
+If meaningless static works just as well, those fifty rounds are free forever --
+you'd compute the settings once and hand them over. If it genuinely needs the
+task, then those settings are storing something about the task itself, and the
+interesting question becomes what.
+
 QUESTION
 --------
 Sweep 022 established that the +0.197 from homeostatic settling is an operating

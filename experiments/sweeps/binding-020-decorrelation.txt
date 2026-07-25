@@ -1,6 +1,19 @@
 Sweep 020 -- lateral inhibition, and whether decorrelation was ever the problem
 ==============================================================================
 
+IN PLAIN TERMS
+--------------
+Two earlier findings suggested the network's neurons were too alike -- all
+saying similar things -- and that spreading them out would help.
+
+Before building on that assumption, this checks it. It measures how similar the
+neurons actually are, and how many genuinely independent things they collectively
+represent, under each mechanism.
+
+If the mechanism that *works* turns out to make neurons *more* alike rather than
+less, then the reasoning behind the whole direction is backwards, and it's much
+better to find that out now than after a month of building on it.
+
 QUESTION
 --------
 Lateral inhibition has been the top build item since sweep 011, on a chain of

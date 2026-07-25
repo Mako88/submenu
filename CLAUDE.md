@@ -210,6 +210,21 @@ one rationale from drifting across four files:
 When a number appears in more than one, **the test docstring is canonical** —
 it is the one under continuous execution.
 
+**And every sweep note and TODO item opens in plain language.** One short
+paragraph, headed `IN PLAIN TERMS`, before the technical body: what is being
+asked, why anyone should care, and what a yes or a no would mean. No jargon, no
+numbers that need a prior sweep to parse.
+
+This is not a courtesy. Someone scanning this repo — including whoever picks it
+up next, and including me after a context reset — needs to reconstruct *what
+question is live* without reading twenty files in order. A sweep note that can
+only be understood by someone who already followed the argument is a sweep note
+that will be misread the first time it is consulted under pressure.
+
+Write it before the prediction, not after the result. If the plain-language
+version cannot be written without the answer in hand, the question is not sharp
+enough to run yet.
+
 ---
 
 ## Adding to this document
