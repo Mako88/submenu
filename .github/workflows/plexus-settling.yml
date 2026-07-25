@@ -73,28 +73,28 @@ jobs:
           # Baseline: reproduces sweep 019's `off` condition at finer resolution.
           python experiments/trajectory.py --tag all $common
 
-          # One adapting quantity removed at a time.
-          python experiments/trajectory.py --tag no-knee    --knee-lr 0    $common
-          python experiments/trajectory.py --tag no-scaling --scaling-lr 0 $common
+          # Sweep 023. The column being measured always runs the real task --
+          # only the *twin* that finds the operating point sees different input.
+          # `shuffled` permutes each channel's time series independently, so the
+          # marginals are preserved exactly and only timing is destroyed. If it
+          # matches `task`, the operating point is precomputable and fifty
+          # episodes of every future run are free.
+          frozen="--homeostatic-lr 0 --knee-lr 0 --scaling-lr 0 --preset-from 50"
+          python experiments/trajectory.py --tag preset-task \
+            --preset-input task     $frozen $common
+          python experiments/trajectory.py --tag preset-shuffled \
+            --preset-input shuffled $frozen $common
+          python experiments/trajectory.py --tag preset-noise \
+            --preset-input noise    $frozen $common
 
-          # Recorded as an uninterpretable condition rather than omitted. One
-          # seed puts sparsity at 0.004 against a target of 0.03 -- the column is
-          # silent, so its flat curve is about a dead column and not about
-          # threshold homeostasis. Kept so that is on the record where someone
-          # would otherwise re-derive it.
-          python experiments/trajectory.py --tag no-theta --homeostatic-lr 0 $common
-
-          # The interpretable version: operating point preserved, adaptation
-          # removed. `preset-frozen` flat at a high value is the finding.
-          python experiments/trajectory.py --tag theta-preset --preset-from 50 \
-            --homeostatic-lr 0 $common
-          python experiments/trajectory.py --tag preset-frozen --preset-from 50 \
-            --homeostatic-lr 0 --knee-lr 0 --scaling-lr 0 $common
+          # Sweep 022's ablations are answered and written up. Dropped, per the
+          # housekeeping rule that CI is for open questions and the sweep notes
+          # are the record.
 
       - name: Fail loudly if a condition produced nothing
         if: steps.gate.outputs.run == 'yes'
         run: |
-          for tag in all no-knee no-scaling no-theta theta-preset preset-frozen; do
+          for tag in all preset-task preset-shuffled preset-noise; do
             grep -q "\"tag\": \"$tag\"" experiments/trajectory_results.jsonl \
               || { echo "no rows for condition '$tag'"; exit 1; }
           done

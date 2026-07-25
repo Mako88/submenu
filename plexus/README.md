@@ -443,7 +443,7 @@ adapting: settle a twin — same seed, same weights, same wiring — copy its
 threshold and knee across, then switch adaptation off. Twenty seeds, 100
 episodes:
 
-| condition | ep 0 | ep 100 | sparsity | |
+| condition | ep 0 | ep 100 | sparsity @100 | |
 |---|---|---|---|---|
 | everything adapting | 0.582 | 0.755 | 0.031 | |
 | **preset, nothing adapting** | **0.752** | 0.752 | 0.023 | |
@@ -456,6 +456,16 @@ episodes:
 all** — +0.170 of the +0.197, 86% of the way to where full adaptation plateaus.
 The fifty episodes are a *search* for an operating point, not an accumulation.
 Ongoing adaptation on top of a correct one adds nothing measurable.
+
+What the operating point mostly *is* became clear only after fixing a
+measurement bug in the probe. The sparsity column read the firing-rate EMA,
+which advances only while learning is on, so at checkpoint 0 it returned
+`target_rate` unchanged from initialisation — 0.0300 for every condition,
+looking like a measurement. Counted directly, **the untrained column runs at
+0.0022, a fifteenth of target.** So the 0.582 baseline that every mechanism in
+this project is measured against is a column that is barely firing, and
+homeostasis's first job is lifting it to target. Presetting θ and knee supplies
+that immediately.
 
 Not yet established: that the operating point is *free*. The twin had fifty
 episodes of task exposure to find it — unsupervised, `lr=0`, no labels, but

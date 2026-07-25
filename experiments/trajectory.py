@@ -40,13 +40,94 @@ from probe import collect, logistic, logistic_score  # noqa: E402
 OUT = Path(__file__).resolve().parent / "trajectory_results.jsonl"
 
 
-def decodability(model, task, episodes: int, seed: int) -> float:
-    """Linear decodability of the column state, without touching training."""
-    X, y = collect(model, task, episodes, np.random.default_rng(seed))
+class ShuffledInput:
+    """The task's marginal input statistics with its timing destroyed.
+
+    Sweep 023. Used only for the *twin* that finds an operating point, never for
+    the column being measured. Each channel's time series is permuted
+    independently, so per-channel event count and amplitude distribution are
+    preserved exactly while cue timing, the cue-to-go relationship and
+    cross-channel synchrony are gone.
+
+    Exact preservation is the point. A Bernoulli stream at a matched rate would
+    confound "homeostasis does not need timing" with "the rate was not matched
+    closely enough"; shuffling makes the marginals identical by construction, so
+    a difference can only be timing.
+    """
+
+    def __init__(self, task):
+        self.task = task
+        self.n_inputs = task.n_inputs
+        self.n_classes = task.n_classes
+
+    def episode(self, rng):
+        ep = self.task.episode(rng)
+        x = ep.inputs.copy()
+        for c in range(x.shape[1]):
+            rng.shuffle(x[:, c])
+        # The label is meaningless once timing is gone, and it is never read:
+        # the twin runs at lr=0 with no binding, so nothing it does depends on
+        # being right. Kept only so the training loop has the shape it expects.
+        return type(ep)(inputs=x, label=ep.label, response=ep.response, bits=None)
+
+
+class NoiseInput:
+    """Bernoulli events at the task's overall rate, and nothing else.
+
+    The weakest input that still has the right amount of activity. If an
+    operating point found on this matches one found on the task, homeostasis
+    needs only "how much drive arrives", which is a number that could be
+    supplied rather than discovered.
+    """
+
+    def __init__(self, task, rng):
+        self.task = task
+        self.n_inputs = task.n_inputs
+        self.n_classes = task.n_classes
+        probe = task.episode(rng)
+        self.shape = probe.inputs.shape
+        self.rate = float((probe.inputs > 0).mean())
+        nz = probe.inputs[probe.inputs > 0]
+        self.lo, self.hi = float(nz.min()), float(nz.max())
+        self.response = probe.response
+        self._episode_cls = type(probe)
+
+    def episode(self, rng):
+        x = np.zeros(self.shape, dtype=np.float32)
+        mask = rng.random(self.shape) < self.rate
+        x[mask] = rng.uniform(self.lo, self.hi, size=int(mask.sum())).astype(np.float32)
+        return self._episode_cls(inputs=x, label=0, response=self.response, bits=None)
+
+
+def decodability(model, task, episodes: int, seed: int) -> tuple[float, float]:
+    """Linear decodability of the column state, and the firing rate it ran at.
+
+    Sparsity is measured *here*, during the probe, rather than read off
+    `column.sparsity`. That property returns the rate EMA, which only advances
+    while `learning` is True -- so at checkpoint 0, before any training episode,
+    it reports `target_rate` unchanged from initialisation. Reading it there
+    gives 0.0300 for every condition including ones whose column is silent: a
+    number that looks like a measurement, is not, and would hide exactly the
+    dead-column case the sparsity column exists to catch.
+    """
+    fired = []
+    hook = model.column.step
+
+    def counting_step(t, external=None):
+        out = hook(t, external)
+        fired.append(float((out > 0).mean()))
+        return out
+
+    model.column.step = counting_step
+    try:
+        X, y = collect(model, task, episodes, np.random.default_rng(seed))
+    finally:
+        model.column.step = hook
     split = int(0.7 * len(X))
     Xtr, Xte, ytr, yte = X[:split], X[split:], y[:split], y[split:]
     mu, sd = Xtr.mean(0), Xtr.std(0) + 1e-8
-    return logistic_score(logistic((Xtr - mu) / sd, ytr), (Xte - mu) / sd, yte)
+    score = logistic_score(logistic((Xtr - mu) / sd, ytr), (Xte - mu) / sd, yte)
+    return score, float(np.mean(fired))
 
 
 def main() -> None:
@@ -84,6 +165,11 @@ def main() -> None:
     ap.add_argument("--preset-from", type=int, default=0,
                     help="settle a twin column for N episodes and adopt its "
                          "threshold and knee before measuring")
+    # Sweep 023. What the twin must see to find the operating point: the task,
+    # the task's marginals with timing destroyed, or matched-rate noise. The
+    # column being measured always runs the real task.
+    ap.add_argument("--preset-input", default="task",
+                    choices=["task", "shuffled", "noise"])
     ap.add_argument("--report", action="store_true")
     args = ap.parse_args()
 
@@ -141,8 +227,13 @@ def main() -> None:
         twin = build(homeostatic_lr=ColumnConfig.homeostatic_lr,
                      knee_lr=ColumnConfig.knee_lr,
                      scaling_lr=ColumnConfig.scaling_lr)
-        twin.train(task, args.preset_from,
-                   rng=np.random.default_rng(7000 + args.seed), report_every=10**9)
+        twin_rng = np.random.default_rng(7000 + args.seed)
+        twin_task = {
+            "task": lambda: task,
+            "shuffled": lambda: ShuffledInput(task),
+            "noise": lambda: NoiseInput(task, np.random.default_rng(500 + args.seed)),
+        }[args.preset_input]()
+        twin.train(twin_task, args.preset_from, rng=twin_rng, report_every=10**9)
         # Assert the preset landed, in the run rather than in a unit test. The
         # whole condition's meaning depends on it: a preset that silently failed
         # would reproduce the `none` condition -- a dead column at its starting
@@ -167,23 +258,24 @@ def main() -> None:
     done = 0
     # Checkpoint at 0 as well: it is the frozen column, and both conditions must
     # agree there or the probe is measuring something other than binding.
-    curve[str(done)] = decodability(model, task, args.probe, 11 + args.seed)
+    curve[str(done)], sparsity[str(done)] = decodability(
+        model, task, args.probe, 11 + args.seed)
     # Recorded alongside, because the sweep 022 ablations can kill the column
     # rather than merely fail to help it. A silent or saturated column decodes
     # at chance for a reason that has nothing to do with the mechanism under
     # test, and "homeostasis contributes nothing" read off a dead column is a
     # conclusion drawn from a disconnected quantity.
-    sparsity[str(done)] = float(model.column.sparsity)
     while done < args.episodes:
         step = min(args.every, args.episodes - done)
         model.train(task, step, rng=rng, report_every=10**9)
         done += step
-        curve[str(done)] = decodability(model, task, args.probe, 11 + args.seed)
-        sparsity[str(done)] = float(model.column.sparsity)
+        curve[str(done)], sparsity[str(done)] = decodability(
+            model, task, args.probe, 11 + args.seed)
 
     row = dict(tag=args.tag, seed=args.seed, hebbian=args.hebbian,
                episodes=args.episodes, every=args.every, curve=curve,
-               sparsity=sparsity, preset_from=args.preset_from, **overrides)
+               sparsity=sparsity, preset_from=args.preset_from,
+               preset_input=args.preset_input, **overrides)
     with OUT.open("a") as fh:
         fh.write(json.dumps(row) + "\n")
     pts = " ".join(f"{k}:{v:.3f}" for k, v in sorted(curve.items(), key=lambda kv: int(kv[0])))

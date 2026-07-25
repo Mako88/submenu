@@ -1,0 +1,115 @@
+Sweep 023 -- is the settling operating point precomputable?
+===========================================================
+
+QUESTION
+--------
+Sweep 022 established that the +0.197 from homeostatic settling is an operating
+point rather than a learned trajectory: a column handed a settled twin's
+threshold and knee, with nothing adapting and `lr=0`, reads 0.752 against 0.582.
+
+What it did not establish is that the operating point is *free*. The twin had
+fifty episodes of exposure to the task to find it -- unsupervised, no labels,
+`lr=0` throughout, but derived from data.
+
+If the values depend only on the input's marginal statistics, they are
+precomputable and fifty episodes of every future run are free. If they depend on
+the task's temporal structure, they are not, and the more interesting question
+becomes what about timing a per-neuron threshold can encode.
+
+CONDITIONS  (20 seeds, 100 episodes, checkpoints every 10, 96 neurons, lr 0)
+-----------------------------------------------------------------------------
+The column being measured always runs the real task. Only the *twin* that finds
+the operating point sees different input.
+
+  all               no preset, everything adapting          (the 022 baseline)
+  preset-task       twin on the real task                   (= 022's preset-frozen)
+  preset-shuffled   twin on the task's marginals with timing destroyed
+  preset-noise      twin on Bernoulli events at the task's overall rate
+
+`shuffled` permutes each channel's time series independently, so per-channel
+event count and amplitude distribution are preserved *exactly* while cue timing,
+the cue-to-go relationship and cross-channel synchrony are gone. Exactness is
+the point: a matched-rate Bernoulli stream alone would confound "homeostasis
+does not need timing" with "the rate was not matched closely enough". `noise` is
+kept as the weaker version, to show how far down the ladder the answer holds.
+
+A MEASUREMENT BUG THIS SWEEP FOUND, AND WHAT IT COSTS SWEEP 022
+----------------------------------------------------------------
+The sparsity column reported `column.sparsity`, which returns the firing-rate
+EMA. That EMA only advances while `learning` is True, so **at checkpoint 0,
+before any training episode has run, it returns `target_rate` unchanged from
+initialisation.** Every condition read 0.0300 there. It looked like a
+measurement, and it was the initial value of a variable.
+
+Sparsity is now measured during the probe itself, by counting emissions. The
+first thing that showed:
+
+  all, episode 0     sparsity 0.0022, not 0.0300
+
+**The untrained column is nearly silent** -- a fifteenth of target rate. So
+sweep 022's episode-0 row concealed the largest fact in it: the 0.582 baseline
+every mechanism in this project is measured against is a column that is barely
+firing.
+
+That does not overturn sweep 022's conclusion, it sharpens it. "The +0.197 is an
+operating point" becomes something more specific and more testable: **the
+operating point is largely a firing rate, and homeostasis's first job is to
+bring a silent column up to target.** Presetting theta and knee supplies that
+immediately.
+
+What it does invalidate is any reading of sweep 022's episode-0 sparsity row.
+Recorded in AUDIT.md. The rows from episode 10 onward were measured after
+training episodes, where the EMA does advance, so they stand.
+
+PREDICTION (recorded before the 20-seed run)
+----------------------------------------------
+One seed is in hand, as it was for sweeps 020 and 022, and the prediction is
+informed by it. Stating that rather than pretending otherwise.
+
+  all               0.582 at episode 0 rising to ~0.76; sparsity 0.002 -> 0.031
+  preset-task       0.74 to 0.77, flat            sparsity ~0.020
+  preset-shuffled   0.70 to 0.74, flat            sparsity 0.026 to 0.031
+  preset-noise      0.62 to 0.68, flat            sparsity 0.010 to 0.018
+
+**The central claim: `preset-shuffled` lands below `preset-task` by 0.02 to
+0.06, while running at a firing rate at least as close to target.** That is the
+combination that decides it, and the one seed already shows it: shuffled sits at
+sparsity 0.0288 against task's 0.0204 -- *better* calibrated -- and decodes
+0.722 against 0.833. If it held only at worse sparsity the result would be about
+activity level and not about the operating point.
+
+So: **if shuffled is below task at equal-or-better sparsity, the operating point
+is not precomputable from marginal input statistics.** It encodes something
+about the task's temporal structure, and the "fifty free episodes" idea is dead.
+
+WHAT WOULD REFUTE IT
+---------------------
+`preset-shuffled` within 0.02 of `preset-task`. Then the operating point depends
+only on marginals, the twin can be settled on synthetic input, and every run
+starts fifty episodes ahead. That is the outcome I would prefer and the one I
+am predicting against.
+
+A CONFOUND NAMED IN ADVANCE
+----------------------------
+`preset-noise` is expected to run under-active (one seed: 0.0125 against a 0.03
+target). If it decodes worst, that is **not** clean evidence about operating
+points, because a column at 40% of target rate decodes badly for reasons that
+have nothing to do with what its threshold encodes. It is reported as a ladder
+rung, not as a third data point, and the argument rests on `shuffled`, where the
+sparsity confound runs the *wrong way* for the conclusion.
+
+WHAT THIS SWEEP CANNOT SAY
+---------------------------
+Nothing here identifies *what* about timing the threshold encodes. A refuted
+"precomputable" leaves that wide open, and the honest next step would be to ask
+which of theta and knee carries it -- preset one from the task and the other
+from shuffled input. Not folded in here.
+
+SETTINGS
+--------
+20 seeds, 100 episodes, checkpoints every 10, 300 probe episodes, 96 neurons,
+column lr 0, binding off, lateral off, `--preset-from 50`.
+
+RESULT -- 20 seeds
+------------------
+Pending.

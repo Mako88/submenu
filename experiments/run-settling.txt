@@ -13,3 +13,12 @@ run 1 -- sweep 022: what is the +0.197 that homeostatic settling alone buys?
   from "homeostasis kept adapting". One seed says it is the operating point:
   a preset column starts at 0.767 against 0.567 and does not move.
   Prediction in experiments/sweeps/binding-022-settling.txt.
+
+run 2 -- sweep 023: is the settling operating point precomputable? Four
+  conditions. The twin that finds the operating point is settled on the task, on
+  the task's marginals with timing destroyed (per-channel time shuffle), or on
+  matched-rate Bernoulli noise; the measured column always runs the real task.
+  If shuffled matches task, the operating point depends only on marginals and
+  fifty episodes of every future run are free. One seed says it does not.
+  Sweep 022's ablations are dropped -- answered and written up.
+  Prediction in experiments/sweeps/binding-023-precomputable.txt.
