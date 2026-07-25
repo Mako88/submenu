@@ -1,0 +1,129 @@
+name: plexus criticality
+
+# Sweep 025. The designed learning rule is worth -0.003; homeostasis, which is
+# not a learning rule, is worth +0.197, and sweep 023 found that benefit comes
+# out better from structureless input than from the task. That is learning as a
+# property of the system operating rather than of a designated mechanism, and
+# self-organised criticality is the version of that idea with a measurement
+# attached. This asks whether the branching ratio tracks decodability.
+
+on:
+  workflow_dispatch:
+    inputs:
+      seeds:
+        description: 'Number of seeds'
+        required: false
+        default: '20'
+      episodes:
+        description: 'Settling episodes before measuring'
+        required: false
+        default: '100'
+      record:
+        description: 'Episodes of activity recorded per estimate'
+        required: false
+        default: '40'
+  push:
+    paths:
+      - 'experiments/run-criticality.txt'
+
+env:
+  SEEDS: ${{ github.event.inputs.seeds || '20' }}
+  EPISODES: ${{ github.event.inputs.episodes || '100' }}
+  RECORD: ${{ github.event.inputs.record || '40' }}
+
+jobs:
+  seeds:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install numpy
+
+      - name: Skip seeds beyond the requested count
+        id: gate
+        run: |
+          if [ "${{ matrix.seed }}" -lt "$SEEDS" ]; then
+            echo "run=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=no" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run every condition for this seed
+        if: steps.gate.outputs.run == 'yes'
+        run: |
+          common="--seed ${{ matrix.seed }} --episodes $EPISODES --record $RECORD --neurons 96"
+          python experiments/criticality.py --tag all      $common
+          python experiments/criticality.py --tag no-knee  --knee-lr 0 $common
+          # Known to go silent (sparsity ~0.001). Kept so that is on the record
+          # rather than re-derived, and `sparsity_control` makes it visible.
+          python experiments/criticality.py --tag no-theta --homeostatic-lr 0 $common
+          python experiments/criticality.py --tag on       --hebbian 1 $common
+          python experiments/criticality.py --tag both     --hebbian 1 --lateral 1 $common
+
+      - name: Fail loudly if a condition produced nothing
+        if: steps.gate.outputs.run == 'yes'
+        run: |
+          for tag in all no-knee no-theta on both; do
+            grep -q "\"tag\": \"$tag\"" experiments/criticality_results.jsonl \
+              || { echo "no rows for condition '$tag'"; exit 1; }
+          done
+
+      - uses: actions/upload-artifact@v4
+        if: steps.gate.outputs.run == 'yes'
+        with:
+          name: criticality-seed-${{ matrix.seed }}
+          path: experiments/criticality_results.jsonl
+          retention-days: 14
+
+  aggregate:
+    needs: seeds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install numpy
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: criticality-seed-*
+          path: collected
+
+      - name: Combine, report, and run the paired tests
+        run: |
+          cat collected/*/criticality_results.jsonl > experiments/criticality_results.jsonl
+          python experiments/criticality.py --report | tee summary.txt
+          # The question is whether m_excess orders the conditions the way
+          # decodability does. Both metrics are tested on every pair so the two
+          # orderings can be compared rather than eyeballed.
+          for pair in "on all" "both all" "no-knee all" "both on"; do
+            set -- $pair
+            for metric in m_excess linear m; do
+              echo "" | tee -a summary.txt
+              python experiments/paired_test.py --file experiments/criticality_results.jsonl \
+                --metric $metric --a "$1" --b "$2" | tee -a summary.txt
+            done
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: criticality-combined
+          path: |
+            experiments/criticality_results.jsonl
+            summary.txt
+          retention-days: 30
+
+      - name: Put the summary in the run page
+        run: |
+          {
+            echo '## plexus: does branching ratio track decodability?'
+            echo '```'
+            cat summary.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

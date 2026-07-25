@@ -43,8 +43,36 @@ Three benchmarks would each open something currently invisible:
   mapping does. Sweep 022 found that operating point carrying most of the
   representation quality, so it is exactly what moves. Second time this project
   has conflated frozen with unchanging; sweep 019 caught frozen-vs-untrained.
-- **Emergent structure.** The original motivation and still entirely
-  unmeasured. Needs a metric before it needs an experiment.
+- **Emergent structure.** The original motivation, and it now has a metric —
+  which is what this bullet was blocked on. Sweep 025.
+
+  The framing that unblocked it: maybe learning here is not a mechanism to be
+  designed but a property of the system running. The evidence for that is
+  already on the board and was not being read that way. The designed
+  three-factor rule is worth −0.003; homeostasis, which is a thermostat rather
+  than a learning rule, is worth +0.197; and sweep 023 found that benefit comes
+  out *better* from structureless input than from the task, so it is not
+  acquiring the task at all.
+
+  **Self-organised criticality** is the version of that idea with a number
+  attached: a branching process turns one event into `m` further events, and at
+  `m = 1` a network holds and combines information over the longest timescales
+  available to it. The measurement is local, so asking the question does not
+  break the design rule.
+
+  One seed says be careful. Raw `m` reads 0.9246 — but with recurrence silenced
+  and activity re-matched, the control reads **0.9145**, so ~99% of the apparent
+  branching is membrane leakiness. Reporting "this column sits near critical"
+  would have been a statement about `tau_soma`. Only the excess is evidence, and
+  it is +0.010. Sweep 025 predicts, against the hypothesis, that it does not
+  track decodability.
+
+  A negative there closes this measurement, not the idea. Two cheaper
+  formalisations stay open: whether the *wiring* self-organises (structural
+  rather than synaptic plasticity — `Column.add_inputs` already does the
+  mechanics), and whether the operating point from sweeps 022–023 simply *is*
+  the emergent structure, in which case the answer is that emergence is real and
+  much simpler than criticality.
 
 ## 2. What is lateral inhibition actually doing?
 

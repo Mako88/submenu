@@ -201,6 +201,20 @@ MUTATIONS = [
         "channel_permutation_is_off_by_default",
     ),
     (
+        ROOT / "experiments" / "criticality.py",
+        "branching fit cuts on positivity, biasing m upward toward critical",
+        "    FLOOR = 0.02",
+        "    FLOOR = 1e-6",
+        "branching_estimator_recovers",
+    ),
+    (
+        ROOT / "experiments" / "criticality.py",
+        "branching ratio read off the intercept instead of the decay slope",
+        "    slope = np.polyfit(np.array(ks, dtype=np.float64), np.log(rs), 1)[0]",
+        "    slope = np.polyfit(np.array(ks, dtype=np.float64), np.log(rs), 1)[1]",
+        "branching_estimator_recovers",
+    ),
+    (
         READOUT,
         "readout standardisation reduced to centering",
         "z = ((state - mean) / (std + 1e-12)).astype(np.float32)",

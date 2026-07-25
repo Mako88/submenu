@@ -1,0 +1,17 @@
+Sentinel for .github/workflows/plexus-criticality.yml.
+
+Editing this file starts a 20-seed run. It exists so that writing a *result*
+into experiments/sweeps/ does not re-run the matrix that produced it.
+
+run 1 -- sweep 025: is the column self-organising toward criticality, and does
+  the branching ratio explain the +0.197 that homeostasis alone buys? Five
+  conditions. The measurement is not `m` but `m_excess` -- m minus a control
+  with the recurrent synapses silenced and homeostasis re-settled to matched
+  activity -- because at one seed the control reads 0.9145 against a raw 0.9246,
+  so ~99% of the apparent branching is membrane leakiness rather than
+  propagation. Reporting the raw number would have been a statement about
+  tau_soma.
+
+  Prediction in experiments/sweeps/binding-025-criticality.txt, recorded against
+  my own hypothesis: m_excess stays under 0.03 everywhere and does not track
+  decodability.

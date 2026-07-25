@@ -965,6 +965,57 @@ def test_lateral_inhibition_step_is_scaled_to_the_weights():
     assert moved(ColumnConfig.lateral_lr * 4) > 2.0 * rel
 
 
+def test_branching_estimator_recovers_a_known_branching_ratio():
+    """Ground truth, not a connection test — the estimator has an exact answer.
+
+    A branching process with immigration, `n[t+1] ~ Poisson(m*n[t]) + Poisson(h)`,
+    satisfies `Cov(n_t, n_t+k) = m^k * Var(n_t)` exactly, so the lag-k
+    correlation *is* `m^k` and a correct estimator must return `m`. That makes
+    this stronger than anything the criticality probe could assert about the
+    column itself: a number that claims to be a branching ratio can be checked
+    against a process whose branching ratio is known by construction.
+
+    Worth having before the probe is used on anything. The failure this guards
+    is the one this project keeps finding — a quantity that runs, produces
+    plausible numbers, and is measuring something other than what it is named
+    after. An `m` near 1 from a subcritical process would read as "the column is
+    critical" and there would be nothing to catch it.
+
+    Tested near 1 as well as away from it, because that is the regime the whole
+    question is about and estimators are least reliable there.
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "experiments"))
+    from criticality import branching_ratio
+
+    for true_m in (0.70, 0.90, 0.98):
+        rng = np.random.default_rng(0)
+        n, counts = 5.0, []
+        for _ in range(200_000):
+            n = rng.poisson(true_m * n) + rng.poisson(2.0)
+            counts.append(n)
+        got = branching_ratio(np.array(counts, dtype=np.float64))
+        assert abs(got - true_m) < 0.03, (
+            f"estimator returned m={got:.4f} for a process with m={true_m}"
+        )
+
+
+def test_branching_estimator_refuses_to_guess_on_signal_free_input():
+    """It must return NaN rather than a plausible number when there is nothing.
+
+    White noise has no branching structure and no exponential correlation decay.
+    An estimator that fits a slope to that anyway would report some `m`, and a
+    condition whose column had collapsed would come back with a number the sweep
+    would then interpret. NaN propagates visibly through a mean; a wrong 0.9 does
+    not.
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "experiments"))
+    from criticality import branching_ratio
+
+    rng = np.random.default_rng(1)
+    assert np.isnan(branching_ratio(rng.poisson(3.0, size=50_000).astype(float)))
+    assert np.isnan(branching_ratio(np.zeros(1000)))
+
+
 def test_reported_sparsity_is_measured_and_not_its_own_initialisation():
     """A reporting property must not return the seed of the EMA behind it.
 

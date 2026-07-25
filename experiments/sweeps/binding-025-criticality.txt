@@ -1,0 +1,139 @@
+Sweep 025 -- is the column self-organising toward criticality?
+==============================================================
+
+QUESTION
+--------
+The project's own numbers point here and it took an outside framing to see it.
+The designed three-factor learning rule is worth -0.003 (p = 0.79). Homeostasis
+-- which is not a learning rule but each neuron holding its own activity near a
+setpoint -- is worth +0.197. Sweep 023 then found that benefit comes out *better*
+from structureless input than from the task, so it is not acquiring the task; it
+is finding a regime in which the column becomes readable.
+
+That is learning as a property of the system operating rather than of a
+mechanism designated to produce it. It has a name -- self-organised criticality
+-- and, unlike "emergent structure", it has a measurement.
+
+A branching process turns one event into `m` further events on average. Below 1
+activity dies out; above 1 it explodes; at `m = 1` a network holds and combines
+information over the longest timescales available to it. If homeostasis drives
+the column toward m = 1, criticality is the mechanism behind the +0.197, and the
+thing to optimise becomes "stay critical" rather than "learn well".
+
+This also unblocks TODO item 1's third bullet, which has read "emergent
+structure needs a metric before it needs an experiment" since it was written.
+`m` is the metric.
+
+TWO WAYS TO GET THIS WRONG, BOTH HANDLED BEFORE ANY CONDITION RAN
+-------------------------------------------------------------------
+**1. The textbook signature does not apply.** Avalanche-size power laws need
+avalanches, and an avalanche is a run of activity bounded by silence. At 96
+neurons and 3% sparsity this column emits ~2.9 events per millisecond, so
+silence is rare and the entire recording is one avalanche. An exponent computed
+from that would be a number produced by a definition that does not hold. The
+estimate is therefore the multistep regression of Wilting & Priesemann (2018),
+which reads `m` off the decay of the activity autocorrelation and needs no
+silent bins.
+
+**2. The estimator measures the wrong thing by default, and by a lot.** It
+assumes the autocorrelation comes from propagation. In this model it mostly does
+not: membrane time constants run to 320ms, so activity is autocorrelated whether
+or not events cause events.
+
+Measured at one seed: raw m = 0.9246. With the recurrent synapses silenced --
+same membrane constants, same external drive -- the control reads **0.9145**.
+So roughly 99% of the apparent branching is single-neuron leakiness.
+
+**Reporting "this column sits near critical at m = 0.92" would have been a
+statement about `tau_soma` and not about the network.** Only the excess over the
+control is evidence, and it is +0.0101.
+
+The control has its own confound and it is handled too: silencing recurrence
+removes drive, so a naive control runs at a lower rate and its `m` would differ
+for that reason as much as for the missing propagation. Homeostasis is therefore
+allowed to re-settle afterwards, which restores activity while the recurrence
+stays dead -- synaptic scaling is multiplicative, so a zeroed weight stays
+zeroed. `sparsity_control` is recorded so the match is checked rather than
+assumed, and at one seed it reads 0.0180 against 0.0196.
+
+A BIAS THE ESTIMATOR HAD, CAUGHT BY GROUND TRUTH
+--------------------------------------------------
+The first version cut the fit at the first non-positive correlation. That is a
+selection effect: it keeps only the lags where sampling noise landed above zero,
+flattening the tail and shallowing the slope. Against a synthetic process with a
+known m of 0.70 it returned **0.7856** -- an 8.5% overestimate, in the direction
+that makes any network look closer to critical than it is.
+
+Caught because `test_branching_estimator_recovers_a_known_branching_ratio`
+generates a branching process with immigration, whose lag-k correlation is
+exactly `m^k`, so the estimator has a right answer to be checked against. That
+is stronger than any assertion about the column, where there is no ground truth
+and a plausible number would have passed. Now recovers 0.70 -> 0.710,
+0.90 -> 0.894, 0.95 -> 0.948, 0.99 -> 0.9901.
+
+CONDITIONS  (20 seeds, 100 settling episodes, 96 neurons, column lr 0)
+------------------------------------------------------------------------
+  all            everything adapting
+  no-theta       threshold homeostasis off  -- known to go silent
+  no-knee        knee adaptation off
+  on             salience-gated Hebbian binding
+  both           binding + lateral inhibition
+
+The question is not "what is m" but **does `m_excess` track decodability across
+conditions that differ in decodability**. A criticality account requires that it
+does.
+
+PREDICTION (recorded before the run)
+--------------------------------------
+Against my own hypothesis, on the strength of the control.
+
+  all        m_excess +0.005 to +0.020, linear ~0.76
+  no-theta   uninterpretable -- sparsity ~0.001, a dead column, recorded as such
+  no-knee    m_excess within 0.01 of `all`, linear ~0.70
+  on         m_excess within 0.01 of `all`, linear ~0.85
+  both       m_excess within 0.01 of `all`, linear ~0.90
+
+**The central claim: `m_excess` stays under 0.03 in every live condition and
+does NOT track decodability.** Specifically, `both` should decode ~0.14 higher
+than `all` while its branching excess sits within 0.01 of it. If that holds,
+criticality is *not* the mechanism behind the +0.197, and the correct reading of
+sweeps 022-023 stands unchanged: the emergence is real, but it is an operating
+point -- a firing rate per neuron -- and not a critical propagation regime.
+
+The reasoning: at one seed the entire branching contribution is +0.010 against a
+membrane contribution of 0.914. A quantity that small has very little room to
+explain a +0.197 effect, and the +0.197 was already shown to be reproducible by
+copying two per-neuron vectors, which is not what a dynamical regime looks like.
+
+WHAT WOULD CONFIRM THE HYPOTHESIS INSTEAD
+-------------------------------------------
+`m_excess` ordering the conditions the same way decodability does, with a spread
+wide enough to matter -- say `both` at +0.04 against `all` at +0.01. That would
+mean the mechanisms this project has been building are working by pushing the
+network toward critical propagation, which would reframe the whole programme:
+the target becomes a dynamical regime, homeostasis stops being infrastructure
+and becomes the main mechanism, and "add another learning rule" stops being the
+default move.
+
+I am predicting against it and would find it the more interesting result. Saying
+so in advance because it is my own hypothesis and this is exactly the situation
+where a sweep gets read generously.
+
+WHAT THIS CANNOT SAY EITHER WAY
+--------------------------------
+Criticality is one formalisation of "structure emerges from operating" and a
+negative here does not close the broader idea -- it closes this measurement of
+it. Two other formalisations stay open and are cheap from where this leaves us:
+whether the *wiring* self-organises (structural rather than synaptic plasticity,
+which `Column.add_inputs` already does mechanically), and whether the operating
+point sweeps 022-023 found is itself the emergent structure, in which case the
+finding is that the emergence is real and much simpler than criticality.
+
+SETTINGS
+--------
+20 seeds, 100 settling episodes, 40 episodes of recorded activity, 40 re-settle
+episodes for the control, 300 probe episodes, 96 neurons, column lr 0.
+
+RESULT -- 20 seeds
+------------------
+Pending.
