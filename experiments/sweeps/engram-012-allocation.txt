@@ -1,0 +1,103 @@
+Sweep 012 -- engram allocation
+==============================
+
+QUESTION
+--------
+Eleven sweeps have failed to show the three-factor rule beating a frozen
+column. Sweep 009 stated the gap sharpest: a frozen column gives linear 0.639
+against MLP 0.891, and closing a +0.25 gap like that is exactly a learning
+rule's job. So the question here is not "can the modulator be tuned" -- it is
+whether a *different kind* of rule, one that does not depend on the error
+signal being right, writes structure the linear decoder can use.
+
+The candidate comes from the memory-allocation literature (Han et al. 2007;
+Yiu et al. 2014; Cai et al. 2016; Josselyn & Tonegawa 2020). Biology does not
+smear a memory over whoever was active. Excitability drifts apart beforehand,
+the most excitable ~15% win a competition to be recruited, winning costs
+excitability so the next memory lands elsewhere, and Hebbian plasticity binds
+the winners into an assembly.
+
+Our homeostasis was doing the opposite of step one: driving every neuron to an
+identical firing rate, which destroys the excitability differences allocation
+needs. That is why this is not an additive change.
+
+PREDICTION (recorded before the 20-seed run)
+--------------------------------------------
+Moderate confidence the mechanism improves linear decodability over a frozen
+column, because the binding term writes input-correlated structure into W
+without routing through the modulator. Low confidence it survives 20 seeds at
+the magnitude seen at 1-2 seeds (+0.10), because two previous "breakthroughs"
+in this project decayed to zero between 3 seeds and 20.
+
+Specific prediction: alloc+hebb > off on `linear`, p < 0.05, effect between
++0.02 and +0.06. And `alloc` alone (no binding) shows no gain, because
+recruitment by itself changes no weights.
+
+WHAT WAS BUILT WRONG FIRST (three attempts)
+-------------------------------------------
+Recorded because each failure was invisible end-to-end and only a direct
+measurement of the mechanism's parts found it.
+
+1. Recruitment on `act_fast > margin * act_slow`. Self-normalising: a neuron
+   made more excitable raises its own baseline along with its activity, so the
+   criterion cancels exactly the variable meant to drive it. Excitability
+   correlated with recruitment at -0.40 -- backwards. Consecutive engrams
+   overlapped at 3.8x chance, i.e. no allocation was happening at all.
+
+2. Scoring against statistics accumulated every timestep. That compares a
+   neuron's activity at recruitment time against the distribution of all
+   timesteps, most of which are nothing like it, so units that reliably answer
+   the go cue look extraordinary at every allocation. The criterion measured
+   which neurons are phasic, not what the episode engaged. Identical in form to
+   the readout bug where an episode-level decision vector was standardised with
+   per-timestep variance. Fixing it: rotate 3.83 -> 1.87, separate 0.011 ->
+   0.021.
+
+3. Excitability routed through the firing threshold. Measured
+   corr(excitability, activity z-score) = -0.41, structural and identical at
+   every setting: driving a neuron harder depletes its short-term synaptic
+   resources, and the emitted value is scaled by what remains, so a more
+   excitable neuron reports *less* activity per event. The two ingredients of
+   allocation were cancelling. Decoupling them (excite_threshold=0,
+   excite_gain=2) flips recruitment from anti-predicting excitability (-0.22)
+   to predicting it (+0.20), and is the only setting measured where the
+   mechanism does what it is described as doing.
+
+   Worth stating plainly: biology has no reason to separate those two paths.
+   We do, and the reason is a property of our emission model, not of neurons.
+
+MEASURED ALONG THE WAY
+----------------------
+99.7% of the column's state vector at answer time is an episode-independent
+common mode. The part that identifies which cues occurred is a small residual
+on top of it -- pairwise correlation +0.23 within a cue pattern, -0.08 across.
+Any criterion scaled by a neuron's magnitude rather than its variability is
+blind to that residual. This is the fourth appearance of the same bug family in
+this project (readout mean/variance, elig_rms, recruitment baseline, statistics
+timescale) and is now written into CLAUDE.md as a standing check.
+
+PRELIMINARY (1-2 seeds -- NOT a result)
+---------------------------------------
+condition      rotate  separate   linear    MLP
+off              --       --       0.837   0.990
+alloc           0.66    +0.039     0.757   0.987
+alloc+hebb      0.89    +0.060     0.933   1.000
+no-refract      1.60    +0.076     0.927   0.993
+
+rotate below 1.0 is genuine rotation -- successive engrams overlapping *less*
+than independent sampling would give, which is the allocation refractory
+working as designed for the first time. no-refract at 1.60 confirms the drop
+is what causes it.
+
+The tension the two metrics were built to expose is real and visible:
+removing the refractory raises separation (+0.060 -> +0.076) while destroying
+rotation (0.89 -> 1.60). Neither number alone would have shown that.
+
+Note also that the frozen baseline here reads 0.837 linear, well above the
+0.639 recorded in sweep 009. Different harness settings (300 episodes, 500
+collection episodes, 96 neurons), so these are not comparable across sweeps --
+only within this table, where every condition shares a seed and a harness.
+
+RESULT (20 seeds)
+-----------------
+Pending: .github/workflows/plexus-engram.yml, triggered by this file.

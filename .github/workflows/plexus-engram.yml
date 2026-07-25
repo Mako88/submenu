@@ -1,0 +1,126 @@
+name: plexus engram
+
+# Same reason as the plasticity sweep: this project has twice produced a
+# "breakthrough" at three seeds that decayed to nothing by twenty. The engram
+# mechanism currently shows +0.10 linear decodability at one seed, which is
+# exactly the size of effect that has evaporated before.
+
+on:
+  workflow_dispatch:
+    inputs:
+      seeds:
+        description: 'Number of seeds (each runs every condition)'
+        required: false
+        default: '20'
+      episodes:
+        description: 'Training episodes per run'
+        required: false
+        default: '300'
+      neurons:
+        description: 'Neurons in the column'
+        required: false
+        default: '96'
+      collect:
+        description: 'Episodes captured for the offline decoder'
+        required: false
+        default: '500'
+  push:
+    paths:
+      - 'experiments/sweeps/engram-**'
+
+env:
+  SEEDS: ${{ github.event.inputs.seeds || '20' }}
+  EPISODES: ${{ github.event.inputs.episodes || '300' }}
+  NEURONS: ${{ github.event.inputs.neurons || '96' }}
+  COLLECT: ${{ github.event.inputs.collect || '500' }}
+
+jobs:
+  seeds:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install numpy
+
+      - name: Skip seeds beyond the requested count
+        id: gate
+        run: |
+          if [ "${{ matrix.seed }}" -lt "$SEEDS" ]; then
+            echo "run=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=no" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Four conditions, chosen so each isolates one claim:
+      #   off        -- the frozen reservoir this has to beat
+      #   alloc      -- recruitment and refractoriness, no weight change
+      #   alloc+hebb -- the full mechanism
+      #   no-refract -- binding without the allocation refractory, which is the
+      #                 ablation that tells us whether rotation is worth what it
+      #                 costs in content-addressing
+      - name: Run all conditions for this seed
+        if: steps.gate.outputs.run == 'yes'
+        run: |
+          common="--seed ${{ matrix.seed }} --episodes $EPISODES --neurons $NEURONS --collect $COLLECT"
+          python experiments/engram.py --tag off        --engram 0 $common
+          python experiments/engram.py --tag alloc      --hebb-lr 0 $common
+          python experiments/engram.py --tag alloc+hebb $common
+          python experiments/engram.py --tag no-refract --alloc-drop 0 $common
+
+      - uses: actions/upload-artifact@v4
+        if: steps.gate.outputs.run == 'yes'
+        with:
+          name: engram-seed-${{ matrix.seed }}
+          path: experiments/engram_results.jsonl
+          retention-days: 14
+
+  aggregate:
+    needs: seeds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install numpy
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: engram-seed-*
+          path: collected
+
+      - name: Combine, report, and test the pairs that matter
+        run: |
+          cat collected/*/engram_results.jsonl > experiments/engram_results.jsonl
+          python experiments/engram.py --report | tee summary.txt
+          # Paired permutation on the two contrasts the mechanism stands or
+          # falls on: does the full mechanism beat the frozen column, and does
+          # the refractory earn its cost.
+          for pair in "alloc+hebb off" "alloc+hebb no-refract" "alloc off"; do
+            set -- $pair
+            echo "" | tee -a summary.txt
+            python experiments/paired_test.py --file experiments/engram_results.jsonl \
+              --metric linear --a "$1" --b "$2" | tee -a summary.txt
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: engram-combined
+          path: |
+            experiments/engram_results.jsonl
+            summary.txt
+          retention-days: 30
+
+      - name: Put the summary in the run page
+        run: |
+          {
+            echo '## plexus: engram allocation'
+            echo '```'
+            cat summary.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

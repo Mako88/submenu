@@ -123,6 +123,9 @@ def main() -> None:
     ap.add_argument("--tag", default="on")
     ap.add_argument("--engram", type=int, default=1)
     ap.add_argument("--excite-setpoint", type=float, default=1.0)
+    ap.add_argument("--excite-threshold", type=float,
+                    default=ColumnConfig.excite_threshold)
+    ap.add_argument("--excite-gain", type=float, default=ColumnConfig.excite_gain)
     ap.add_argument("--hebb-lr", type=float, default=0.02)
     ap.add_argument("--alloc-drop", type=float, default=0.6)
     ap.add_argument("--excite-drift", type=float, default=0.35)
@@ -154,6 +157,8 @@ def main() -> None:
             seed=args.seed,
             engram=bool(args.engram),
             excite_setpoint=args.excite_setpoint,
+            excite_threshold=args.excite_threshold,
+            excite_gain=args.excite_gain,
             hebb_lr=args.hebb_lr,
             alloc_drop=args.alloc_drop,
             excite_drift=args.excite_drift,

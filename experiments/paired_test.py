@@ -45,6 +45,11 @@ def main() -> None:
     ap.add_argument("--file", default=str(DEFAULT))
     ap.add_argument("--metric", default="acc",
                     help="acc for end-to-end, linear/mlp for representation quality")
+    # Which two conditions to pair. Defaults keep the plastic-vs-frozen
+    # comparison the eleven recorded sweeps used, so those stay reproducible
+    # with no arguments at all.
+    ap.add_argument("--a", default="plastic", help="the condition under test")
+    ap.add_argument("--b", default="frozen", help="the control it must beat")
     args = ap.parse_args()
     results = Path(args.file)
     if not results.exists():
@@ -52,8 +57,8 @@ def main() -> None:
     rows = [json.loads(x) for x in results.read_text().splitlines() if x.strip()]
     for r in rows:
         r["acc"] = r[args.metric]
-    frozen = {r["seed"]: r["acc"] for r in rows if r["tag"] == "frozen"}
-    plastic = {r["seed"]: r["acc"] for r in rows if r["tag"] == "plastic"}
+    frozen = {r["seed"]: r["acc"] for r in rows if r["tag"] == args.b}
+    plastic = {r["seed"]: r["acc"] for r in rows if r["tag"] == args.a}
     seeds = sorted(set(frozen) & set(plastic))
     if not seeds:
         sys.exit("no seeds have both conditions")
@@ -62,21 +67,22 @@ def main() -> None:
     f = np.array([frozen[s] for s in seeds])
     p = np.array([plastic[s] for s in seeds])
 
+    print(f"metric                : {args.metric}")
     print(f"seeds paired          : {len(seeds)}")
-    print(f"frozen                : {f.mean():.3f} +/- {f.std():.3f}")
-    print(f"plastic               : {p.mean():.3f} +/- {p.std():.3f}")
+    print(f"{args.b:22s}: {f.mean():.3f} +/- {f.std():.3f}")
+    print(f"{args.a:22s}: {p.mean():.3f} +/- {p.std():.3f}")
     print(f"mean paired difference: {d.mean():+.3f}")
     print(f"improved on           : {int((d > 0).sum())}/{len(d)} seeds")
     pval = permutation_p(d)
     print(f"permutation p (2-sided): {pval:.4f}")
     print()
     if pval < 0.05 and d.mean() > 0:
-        print("=> Plasticity beats the frozen reservoir.")
+        print(f"=> {args.a} beats {args.b}.")
     elif pval < 0.05:
-        print("=> Plasticity is reliably WORSE than the frozen reservoir.")
+        print(f"=> {args.a} is reliably WORSE than {args.b}.")
     else:
-        print("=> No detectable difference. The three-factor rule is not")
-        print("   earning its place on this task at this sample size.")
+        print(f"=> No detectable difference between {args.a} and {args.b}")
+        print("   at this sample size.")
 
 
 if __name__ == "__main__":

@@ -147,7 +147,19 @@ class ColumnConfig:
     # activity, and a criterion measured against that baseline cancels exactly
     # the effect it was supposed to detect. Measured at -0.40 correlation
     # between excitability and recruitment -- backwards -- before this existed.
-    excite_gain: float = 1.0
+    excite_gain: float = 2.0
+    # How much excitability tilts the firing threshold, as opposed to entering
+    # the recruitment competition directly. These are separate knobs because
+    # measurement showed the two paths *oppose* each other: making a neuron
+    # more excitable raised its firing but *lowered* the activity z-score the
+    # competition reads, correlation -0.41, so the two ingredients of
+    # allocation were cancelling. Defaulting this to 0 keeps excitability as a
+    # pure allocation bias, which is the only setting measured in which the
+    # bias correctly predicts recruitment (+0.20) instead of anti-predicting
+    # it (-0.22). Biology has no reason to separate them; we do, because our
+    # emitted value is scaled by short-term depression and a neuron driven
+    # harder therefore reports *less* activity per event.
+    excite_threshold: float = 0.0
 
     # Homeostasis. Threshold adaptation is multiplicative so that its step size
     # tracks the neuron's own operating scale rather than a fixed absolute
@@ -371,6 +383,8 @@ class Column:
         # others, but each can see how often it has been winning.
         self.tag_margin = np.full(N, 1.0, dtype=np.float32)
         self.tag = np.zeros(N, dtype=bool)
+        self.tag_z = np.zeros(N, dtype=np.float32)
+        self.tag_xi = np.zeros(N, dtype=np.float32)
         self.n_allocations = 0
 
         # Presynaptic terminal state: utilisation (facilitation) and available
@@ -568,8 +582,10 @@ class Column:
         #    The threshold a neuron actually uses is its homeostatic setpoint
         #    scaled by its current excitability bias; with allocation off the
         #    two are the same array and nothing changes.
-        if cfg.engram:
-            self.theta_eff = (self.theta * np.exp(-self.xi)).astype(np.float32)
+        if cfg.engram and cfg.excite_threshold:
+            self.theta_eff = (
+                self.theta * np.exp(-cfg.excite_threshold * self.xi)
+            ).astype(np.float32)
         else:
             self.theta_eff = self.theta
         value, h = self._emit(self.v)
@@ -762,8 +778,16 @@ class Column:
         # homeostatic setpoint uses it: what should win an allocation is a
         # neuron that is more excitable *than it usually is*, not one that
         # happens to sit high all the time.
-        drive = z + cfg.excite_gain * (self.xi - self.xi_slow)
+        xi_dev = self.xi - self.xi_slow
+        drive = z + cfg.excite_gain * xi_dev
         tagged = drive > self.tag_margin
+        # The two terms of the competition, captured exactly as the criterion
+        # saw them. Reconstructing them from outside the column means guessing
+        # how much the state moved between the sample and the allocation, and a
+        # diagnostic that has to guess is a diagnostic that can be wrong about
+        # the sign of the thing it is measuring.
+        self.tag_z = z.astype(np.float32)
+        self.tag_xi = xi_dev.astype(np.float32)
         # Additive, because the margin is now a z-score and can legitimately be
         # negative; a multiplicative step could never cross zero.
         self.tag_margin += (cfg.tag_lr * (tagged - cfg.alloc_frac)).astype(np.float32)

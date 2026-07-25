@@ -613,28 +613,56 @@ def test_engram_off_leaves_the_column_untouched():
     assert np.array_equal(m.column.W, outs[0]), "the default path is no longer the old path"
 
 
-def test_excitability_reaches_the_threshold():
-    """xi must actually change what the column emits.
+def test_excitability_reaches_the_threshold_when_that_path_is_enabled():
+    """excite_threshold > 0 must actually change what the column emits.
 
     The disconnected-quantity check, in the form that caught the forward-pass
-    bug: perturb the input, assert the output moves. An excitability variable
-    that every diagnostic reports on but nothing downstream reads would look
-    entirely healthy.
+    bug: perturb the input, assert the output moves. The path is off by default
+    -- see the test below for why -- and code that never executes is exactly
+    where that bug lived, so it gets exercised explicitly.
     """
     task = DelayedXOR()
 
     def emissions(bump):
-        cfg = ColumnConfig(n_neurons=32, lr=0.0, seed=0, engram=True, excite_drift=0.0)
+        cfg = ColumnConfig(
+            n_neurons=32, lr=0.0, seed=0, engram=True, excite_drift=0.0,
+            excite_threshold=1.0,
+        )
         m = Plexus(task.n_inputs, task.n_classes, column=cfg, seed=0)
         m.column.xi[:16] = bump
         rng = np.random.default_rng(5)
-        ep = task.episode(rng)
-        m.run_episode(ep, learn=False)
+        m.run_episode(task.episode(rng), learn=False)
         return m.column.rate.copy()
 
     quiet, excited = emissions(0.0), emissions(1.0)
     assert not np.allclose(quiet, excited), "excitability never reached the threshold"
     assert excited[:16].mean() > quiet[:16].mean(), "raising xi did not raise activity"
+
+
+def test_default_keeps_excitability_out_of_the_threshold():
+    """Excitability must not tilt the threshold by default, and here is why.
+
+    Driving a neuron harder depletes its short-term synaptic resources, and the
+    emitted value is scaled by what remains. So a neuron made more excitable
+    fires more often but reports *less* activity per event, and the activity
+    z-score the recruitment competition reads goes the wrong way: measured
+    correlation between the excitability bias and that z-score was -0.41. The
+    two ingredients of allocation were cancelling each other, and recruitment
+    anti-predicted excitability at -0.22. Routing excitability only into the
+    competition flips that to +0.20.
+
+    Biology has no reason to separate the two paths. We do, and the reason is a
+    property of our emission model rather than of neurons.
+    """
+    assert ColumnConfig.excite_threshold == 0.0
+    task = DelayedXOR()
+    cfg = ColumnConfig(n_neurons=32, lr=0.0, seed=0, engram=True)
+    m = Plexus(task.n_inputs, task.n_classes, column=cfg, seed=0)
+    m.column.xi[:16] = 2.0
+    m.run_episode(task.episode(np.random.default_rng(5)), learn=False)
+    assert np.array_equal(m.column.theta_eff, m.column.theta), (
+        "excitability is still reaching the threshold at the default setting"
+    )
 
 
 def test_recruitment_is_biased_by_excitability():
@@ -736,3 +764,227 @@ def test_recruitment_statistics_advance_once_per_allocation():
         f"{col.n_samples} statistics updates for {col.n_allocations} allocations"
     )
     assert col.n_samples < steps, "statistics are advancing per timestep, not per allocation"
+
+
+# --------------------------------------------------------------------------
+# Connection tests for every remaining parameter that could be silently
+# disconnected. The rule these serve: a mechanism is not tested by running
+# without raising, it is tested by perturbing its input and seeing the output
+# move. W was read by two subsystems and used by none for the whole first half
+# of this project's history.
+# --------------------------------------------------------------------------
+def _emissions(steps=300, seed=3, n_ext=8, **cfg_kw):
+    cfg = ColumnConfig(n_neurons=32, n_external=n_ext, seed=0, **cfg_kw)
+    transport = LocalTransport(n_ext + 32, max(cfg.delay_max, 1) + 2, cfg.modulator_dim)
+    col = Column(cfg, transport)
+    col.learning = False
+    rng = np.random.default_rng(seed)
+    return np.array(
+        [col.step(t, (rng.random(n_ext) < 0.1).astype(np.float32)) for t in range(steps)]
+    )
+
+
+def _weights_after(episodes=6, seed=0, **cfg_kw):
+    task = DelayedXOR()
+    cfg = ColumnConfig(n_neurons=32, lr=4e-3, seed=seed, **cfg_kw)
+    m = Plexus(task.n_inputs, task.n_classes, column=cfg, seed=seed)
+    rng = np.random.default_rng(7)
+    for _ in range(episodes):
+        m.run_episode(task.episode(rng), learn=True)
+    return m.column.W.copy()
+
+
+def test_output_depends_on_branch_gains():
+    """G must reach the output, exactly as W must.
+
+    The soma sums branches through G. Nothing else reads it, so if the sum
+    dropped the factor the model would run identically and no existing test
+    would notice -- which is precisely the shape of the forward-pass bug.
+    """
+    cfg = ColumnConfig(n_neurons=32, n_external=8, seed=0)
+
+    def run(scale):
+        transport = LocalTransport(8 + 32, cfg.delay_max + 2, cfg.modulator_dim)
+        col = Column(cfg, transport)
+        col.learning = False
+        col.G = col.G * scale
+        rng = np.random.default_rng(3)
+        return np.array(
+            [col.step(t, (rng.random(8) < 0.1).astype(np.float32)) for t in range(300)]
+        )
+
+    assert not np.allclose(run(1.0), run(0.5)), "branch gains never reached the soma"
+
+
+def test_somatic_bias_is_inert():
+    """`bias` is allocated, added to the drive, and never written by anything.
+
+    Recorded rather than removed, because a reader can reasonably assume a term
+    in the soma equation does something. It does not: no rule updates it, so it
+    contributes a constant zero. If it is ever wired up, this test should fail
+    and be replaced by one that checks it reaches the output.
+    """
+    task = DelayedXOR()
+    m = Plexus(task.n_inputs, task.n_classes, column=ColumnConfig(n_neurons=32), seed=0)
+    rng = np.random.default_rng(0)
+    for _ in range(4):
+        m.run_episode(task.episode(rng), learn=True)
+    assert np.array_equal(m.column.bias, np.zeros_like(m.column.bias))
+
+
+def test_plateau_nonlinearity_reaches_the_output():
+    """The dendritic plateau is the model's main departure from a summing unit.
+
+    It has already been disconnected once in a way no test caught: the knee sat
+    an order of magnitude above the branch potentials, so phi was linear
+    everywhere the column actually operated and the whole nonlinearity was
+    decorative.
+    """
+    assert not np.allclose(_emissions(plateau=0.0), _emissions(plateau=1.2)), (
+        "removing the plateau changed nothing -- the nonlinearity is not engaged"
+    )
+
+
+def test_conduction_delays_reach_the_output():
+    """Delays are the parameter distribution actually costs, so they must bite."""
+    near = _emissions(delay_min=1, delay_max=2)
+    far = _emissions(delay_min=20, delay_max=24)
+    assert not np.allclose(near, far), "conduction delays do not affect the dynamics"
+
+
+@pytest.mark.parametrize("mode", ["window", "graded", "hybrid"])
+def test_every_surrogate_mode_changes_the_update(mode):
+    """Each surrogate must produce a different weight trajectory.
+
+    Three named options that all computed the same thing would be three ways of
+    running one experiment while believing they were three.
+    """
+    baseline = _weights_after(surrogate="window")
+    other = _weights_after(surrogate=mode)
+    if mode == "window":
+        assert np.array_equal(baseline, other)
+    else:
+        assert not np.allclose(baseline, other), f"surrogate={mode} matches window exactly"
+
+
+def test_eligibility_modes_change_the_update():
+    """sign-only updates must actually differ from magnitude updates."""
+    assert not np.allclose(
+        _weights_after(elig_mode="magnitude"), _weights_after(elig_mode="sign")
+    )
+
+
+@pytest.mark.parametrize("norm", ["neuron", "none"])
+def test_eligibility_normalisers_change_the_update(norm):
+    """The normaliser choice is documented as consequential; verify that it is.
+
+    It is also the knob whose miscalibration ran the effective learning rate
+    ~5x high for thousands of episodes, so a silent no-op here would be
+    expensive.
+    """
+    assert not np.allclose(_weights_after(elig_norm="column"), _weights_after(elig_norm=norm))
+
+
+def test_dfa_feedback_leaves_the_columns_own_projection_alone():
+    """The two feedback modes must genuinely differ in what crosses the wire.
+
+    `symmetric` broadcasts the readout matrix and overwrites each neuron's
+    projection; `dfa` sends only the error and the column keeps the random
+    projection it was born with. If feedback_matrix() returned the same thing
+    either way, the cheaper mode would be a fiction.
+    """
+    task = DelayedXOR()
+    models = {}
+    for mode in ("symmetric", "dfa"):
+        cfg = ColumnConfig(n_neurons=32, seed=0)
+        m = Plexus(task.n_inputs, task.n_classes, column=cfg, feedback_mode=mode, seed=0)
+        models[mode] = (m, m.column.feedback.copy())
+        m.run_episode(task.episode(np.random.default_rng(0)), learn=True)
+
+    sym, sym_born = models["symmetric"]
+    dfa, dfa_born = models["dfa"]
+    assert dfa.readout.feedback_matrix() is None
+    assert np.array_equal(dfa.column.feedback, dfa_born), "dfa overwrote the column's projection"
+    assert not np.allclose(sym.column.feedback, sym_born), "symmetric never sent the matrix"
+
+
+@pytest.mark.parametrize("rule", ["delta", "rls", "rls_block", "rls_diag"])
+def test_every_readout_rule_reduces_loss(rule):
+    """All four rules are selectable; all four must actually learn.
+
+    rls_diag reads plausibly and measured at chance (0.500) on the end-to-end
+    task, which is the kind of result that could mean 'this variant is weak' or
+    'this variant is broken'. A rule that cannot fit trivially separable data
+    is broken, and that is worth being able to tell apart.
+    """
+    rng = np.random.default_rng(0)
+    n_in = 24
+    W_true = rng.normal(size=n_in)
+    readout = LinearReadout(n_in, 2, lr=0.5, rule=rule, rls_block=6, seed=0)
+    losses = []
+    for i in range(400):
+        x = rng.normal(size=n_in).astype(np.float32)
+        target = int(x @ W_true > 0)
+        logits, z = readout.decide(x)
+        err, loss = readout.error(logits, target)
+        losses.append(loss)
+        readout.update(err, z, target)
+    early, late = float(np.mean(losses[:100])), float(np.mean(losses[-100:]))
+    assert late < early, f"rule={rule} did not reduce loss ({early:.3f} -> {late:.3f})"
+
+
+def test_synaptic_scaling_converges_to_the_branch_budget():
+    """Scaling advertises a per-branch L1 target; check it is actually reached."""
+    cfg = ColumnConfig(n_neurons=32, n_external=8, branch_budget=6.0, scaling_lr=5e-2)
+    transport = LocalTransport(8 + 32, cfg.delay_max + 2, cfg.modulator_dim)
+    col = Column(cfg, transport)
+    rng = np.random.default_rng(1)
+    for t in range(2000):
+        col.step(t, (rng.random(8) < 0.1).astype(np.float32))
+    norms = np.abs(col.W).sum(axis=2)
+    assert np.allclose(norms, cfg.branch_budget, rtol=0.05), (
+        f"branch L1 norms span {norms.min():.2f}-{norms.max():.2f}, budget {cfg.branch_budget}"
+    )
+
+
+def test_inhibitory_fraction_matches_the_config():
+    """E/I balance is a stated design parameter, so it should be the stated value."""
+    cfg = ColumnConfig(n_neurons=100, n_external=8, inhibitory_frac=0.2)
+    transport = LocalTransport(8 + 100, cfg.delay_max + 2, cfg.modulator_dim)
+    col = Column(cfg, transport)
+    units = col.source_sign[cfg.n_external :]
+    assert np.isclose((units < 0).mean(), 0.2)
+
+
+def test_peer_fraction_matches_the_config():
+    """`peer_frac` sets how much traffic crosses the network; verify the wiring.
+
+    This is the parameter the whole distribution argument rests on -- bandwidth
+    per machine scales with it directly -- so it should be the number it says
+    it is, not merely nonzero.
+    """
+    model = DistributedPlexus(
+        n_inputs=8, n_classes=2, n_columns=4,
+        column=ColumnConfig(n_neurons=16, peer_frac=0.5, fanin_recurrent_frac=1.0),
+        peer_delay=5, seed=0,
+    )
+    col = model.columns[1]
+    lo, hi = col.source_offset, col.source_offset + col.cfg.n_neurons
+    recurrent = col.src >= 8
+    remote = recurrent & ((col.src < lo) | (col.src >= hi))
+    share = remote.sum() / recurrent.sum()
+    assert 0.3 < share < 0.6, f"{share:.2f} of recurrent synapses are remote, expected ~0.5"
+
+
+def test_modulator_actually_arrives_late_when_lagged():
+    """modulator_lag must delay delivery, not merely be accepted as an argument.
+
+    Latency tolerance is the project's headline claim and this is the knob that
+    tests it. A lag that was silently ignored would make every latency result a
+    measurement of zero delay.
+    """
+    transport = LocalTransport(n_sources=4, depth=8, modulator_dim=2, modulator_lag=3)
+    transport.broadcast(10, np.array([1.0, -1.0], dtype=np.float32))
+    assert not np.any(transport.modulator(10)), "modulator arrived on the step it was sent"
+    assert not np.any(transport.modulator(12)), "modulator arrived before its lag elapsed"
+    assert np.allclose(transport.modulator(13), [1.0, -1.0]), "modulator never arrived"
