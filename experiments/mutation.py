@@ -124,6 +124,20 @@ MUTATIONS = [
         "probing_does_not_perturb or advance_the_scaling_schedule",
     ),
     (
+        COLUMN,
+        "lateral inhibition potentiates excitatory synapses too",
+        "self.W += (step * post * (pre_raw / scale) * inhibitory).astype(np.float32)",
+        "self.W += (step * post * (pre_raw / scale)).astype(np.float32)",
+        "lateral_inhibition_only_moves",
+    ),
+    (
+        COLUMN,
+        "lateral inhibition rate left unnormalised",
+        "step = cfg.lateral_lr * (cfg.branch_budget / cfg.n_synapses)",
+        "step = cfg.lateral_lr * 1e-4",
+        "lateral_inhibition_step_is_scaled",
+    ),
+    (
         READOUT,
         "readout standardisation reduced to centering",
         "z = ((state - mean) / (std + 1e-12)).astype(np.float32)",

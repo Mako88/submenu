@@ -1,0 +1,94 @@
+Sweep 020 -- lateral inhibition, and whether decorrelation was ever the problem
+==============================================================================
+
+QUESTION
+--------
+Lateral inhibition has been the top build item since sweep 011, on a chain of
+reasoning: the RLS readout gains +0.032 by carrying an inverse correlation
+matrix; sweep 011 showed that gain does not decompose into per-column pieces,
+so it costs the locality rule; sweep 019 showed the readout rather than the
+mechanism is the bottleneck. Decorrelating *inside* the column, locally, should
+therefore let a cheap readout extract what RLS extracts by pooling.
+
+The mechanism built for it is the Vogels-Sprekeler rule (Vogels et al. 2011):
+anti-Hebbian plasticity on the inhibitory synapses that already exist, so that
+units firing together strengthen the inhibition between them. Every quantity is
+one synapse's own presynaptic trace and its own postsynaptic unit, and the
+`- target_rate` term makes it self-limiting rather than runaway.
+
+It is also worth stating plainly that this sweep exists to check a premise, not
+to tune a mechanism. Nothing has ever measured whether the representation is
+*redundant* in the first place.
+
+ONE SEED, WHICH IS WHY THIS SWEEP EXISTS
+-----------------------------------------
+Measured in the space decodability actually lives in -- the answer-time readout
+trace, not per-step output -- at seed 0 only:
+
+  condition   |corr|   eff.rank   linear    MLP
+  off          0.183    16.1/96    0.775   0.975
+  lateral      0.172    17.0/96    0.792   0.983
+  hebbian      0.255     9.3/96    0.933   0.992
+
+Lateral inhibition does decorrelate, mildly, and buys +0.017 -- within noise at
+one seed. Salience-gated Hebbian binding does the *opposite*: correlation rises
+from 0.183 to 0.255 and the effective rank nearly halves, from 16.1 to 9.3 of
+96. And it is binding that gains +0.158.
+
+If that holds, the premise behind this entire direction is backwards. Binding
+does not decorrelate; it **consolidates** -- collapsing the state onto fewer,
+more strongly co-varying directions, and that is what makes it linearly
+readable. Decorrelation would undo it.
+
+PREDICTION (recorded before the 20-seed run)
+---------------------------------------------
+High confidence, because the one-seed effect is large and structural rather
+than marginal:
+
+  on vs off        corr UP by +0.05 to +0.09, eff_rank DOWN by 5 to 8,
+                   linear up by ~+0.07 (already established at +0.074)
+  lateral vs off   corr down slightly, eff_rank up slightly, linear null
+                   (predicted |diff| < 0.02, p > 0.05)
+  lateral+on vs on linear NEGATIVE or null. If consolidation is the mechanism,
+                   adding a rule that fights it should not help and may hurt.
+
+The third is the one that decides the direction. Naming the consequence in
+advance: **if lateral is null against off and does not improve on binding, the
+lateral-inhibition item comes off the TODO and the decorrelation reasoning
+behind it is recorded as refuted** -- not parked, not "needs tuning". A premise
+that survives its own disconfirming measurement by acquiring hyperparameters is
+how a project spends a month on nothing.
+
+What would save it: lateral+on beating on. That would mean the two mechanisms
+are complementary -- consolidate the signal, decorrelate the residue -- and the
+reasoning was right about the destination while wrong about the route.
+
+WHAT THIS DOES NOT SETTLE
+--------------------------
+Whether *some* decorrelating mechanism would help. This tests one rule at one
+rate. But the correlation and effective-rank columns are the useful part
+regardless of which condition wins: they say what shape the representation has,
+which nothing in this project has measured before, and they are what any future
+mechanism should be aimed at rather than at decodability alone.
+
+A CALIBRATION BUG, FOUND AND FIXED BEFORE THE RUN
+--------------------------------------------------
+The rule was disconnected on first implementation -- not absent, but four
+orders of magnitude too weak. `pre` sits around 0.016, so the raw product moved
+inhibitory weights by 2.2e-5 against a weight scale of 0.375. Normalised
+against the neuron's own mean presynaptic magnitude, `lateral_lr` now means a
+fraction of the weight scale and the weights move by 26% at the default rate.
+
+Identical in form to the eligibility-normaliser bug, where the three-factor
+rule moved weights by 0.1% while synaptic scaling moved them by 21% and the
+rule was measurably decorative. A test asserts on the *size* of the change
+rather than its existence, since a bare connection test passes on 2.2e-5.
+
+SETTINGS
+--------
+20 seeds, 300 episodes, 96 neurons, 500 collection episodes, column lr 0.
+Four conditions: off, on, lateral, lateral+on.
+
+RESULT -- 20 paired seeds
+-------------------------
+Pending.

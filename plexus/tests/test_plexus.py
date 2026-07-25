@@ -907,6 +907,59 @@ def test_evaluation_does_not_advance_the_scaling_schedule():
     assert col._steps == learned + 1, "learning steps stopped being counted"
 
 
+def test_lateral_inhibition_only_moves_inhibitory_synapses():
+    """Anti-Hebbian decorrelation is an inhibitory mechanism.
+
+    Moving an excitatory weight here would make co-active units drive each
+    other *harder*, which is the opposite of the rule's purpose and would look
+    like a decorrelation mechanism while doing correlation.
+    """
+    cfg = ColumnConfig(n_neurons=32, n_external=8, seed=0, lateral=True, scaling_lr=0.0)
+    transport = LocalTransport(8 + 32, cfg.delay_max + 2, cfg.modulator_dim)
+    col = Column(cfg, transport)
+    before = col.W.copy()
+    rng = np.random.default_rng(0)
+    for t in range(600):
+        col.step(t, (rng.random(8) < 0.2).astype(np.float32))
+    delta = col.W - before
+    inhibitory = col.syn_sign < 0.0
+    assert np.allclose(delta[~inhibitory], 0.0), "an excitatory synapse was moved"
+    assert np.abs(delta[inhibitory]).max() > 0.0, "no inhibitory synapse moved"
+
+
+def test_lateral_inhibition_step_is_scaled_to_the_weights():
+    """`lateral_lr` must mean a fraction of the weight scale, not of `pre`.
+
+    Unnormalised, this rule was four orders of magnitude too weak to matter:
+    `pre` sits around 0.016, so the raw product moved W by 2.2e-5 against a
+    weight scale of 0.375 -- present in the code, absent from the dynamics.
+    Exactly the defect the eligibility trace had, where the three-factor rule
+    moved weights by 0.1% while synaptic scaling moved them by 21%.
+
+    Asserting on the *size* of the change rather than its existence, because a
+    connection test alone passes on 2.2e-5.
+    """
+    def moved(lr):
+        cfg = ColumnConfig(n_neurons=32, n_external=8, seed=0, lateral=True,
+                           lateral_lr=lr, scaling_lr=0.0)
+        transport = LocalTransport(8 + 32, cfg.delay_max + 2, cfg.modulator_dim)
+        col = Column(cfg, transport)
+        before = col.W.copy()
+        rng = np.random.default_rng(0)
+        for t in range(600):
+            col.step(t, (rng.random(8) < 0.2).astype(np.float32))
+        inhibitory = col.syn_sign < 0.0
+        return float(np.abs(col.W - before)[inhibitory].mean() / before[inhibitory].mean())
+
+    rel = moved(ColumnConfig.lateral_lr)
+    assert rel > 0.01, (
+        f"the default rate moves inhibitory weights by {rel:.2%} of their own "
+        "scale, which is too small to change the dynamics"
+    )
+    # And it must track the rate, not sit at some floor set by something else.
+    assert moved(ColumnConfig.lateral_lr * 4) > 2.0 * rel
+
+
 def test_binding_statistics_advance_once_per_event():
     """The baseline binding is scored against must match what is scored.
 

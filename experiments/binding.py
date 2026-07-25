@@ -34,13 +34,15 @@ from plexus import ColumnConfig, DelayedXOR, Plexus  # noqa: E402
 from probe import collect, logistic, logistic_score, mlp  # noqa: E402
 
 OUT = Path(__file__).resolve().parent / "binding_results.jsonl"
-FIELDS = ["linear", "mlp", "sparsity", "bound"]
+FIELDS = ["linear", "mlp", "corr", "eff_rank", "sparsity"]
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--tag", default="on")
     ap.add_argument("--hebbian", type=int, default=1)
+    ap.add_argument("--lateral", type=int, default=0)
+    ap.add_argument("--lateral-lr", type=float, default=ColumnConfig.lateral_lr)
     ap.add_argument("--hebb-lr", type=float, default=ColumnConfig.hebb_lr)
     ap.add_argument("--bind-scale", type=float, default=ColumnConfig.bind_scale)
     ap.add_argument("--lr", type=float, default=0.0)
@@ -70,6 +72,8 @@ def main() -> None:
             lr=args.lr,
             seed=args.seed,
             hebbian=bool(args.hebbian),
+            lateral=bool(args.lateral),
+            lateral_lr=args.lateral_lr,
             hebb_lr=args.hebb_lr,
             bind_scale=args.bind_scale,
         ),
@@ -84,12 +88,24 @@ def main() -> None:
     mu, sd = Xtr.mean(0), Xtr.std(0) + 1e-8
     Xtr, Xte = (Xtr - mu) / sd, (Xte - mu) / sd
 
+    # What shape the representation has, not just how well it reads. Sweep 020
+    # exists because these two disagree with the reason lateral inhibition was
+    # proposed: the mechanism that works makes the state *more* correlated and
+    # *lower* dimensional, not less.
+    Xz = (X - X.mean(0)) / (X.std(0) + 1e-9)
+    C = (Xz.T @ Xz) / len(Xz)
+    offdiag = np.abs(C[np.triu_indices(C.shape[0], 1)])
+    ev = np.clip(np.linalg.eigvalsh(C)[::-1], 0.0, None)
+    # Participation ratio: how many directions the variance actually occupies.
+    eff_rank = float(ev.sum() ** 2 / max((ev ** 2).sum(), 1e-12))
+
     row = dict(
         tag=args.tag, seed=args.seed, episodes=args.episodes, neurons=args.neurons,
         linear=logistic_score(logistic(Xtr, ytr), Xte, yte),
         mlp=mlp(Xtr, ytr, Xte, yte),
+        corr=float(offdiag.mean()),
+        eff_rank=eff_rank,
         sparsity=model.column.sparsity,
-        bound=model.column.bound_fraction,
     )
     with OUT.open("a") as fh:
         fh.write(json.dumps(row) + "\n")

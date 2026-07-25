@@ -70,6 +70,11 @@ jobs:
           common="--seed ${{ matrix.seed }} --episodes $EPISODES --neurons $NEURONS --collect $COLLECT"
           python experiments/binding.py --tag off --hebbian 0 $common
           python experiments/binding.py --tag on  --hebbian 1 $common
+          # Sweep 020: lateral inhibition was proposed to decorrelate. One seed
+          # says the mechanism that works does the opposite, so both get
+          # measured against the same correlation and effective-rank columns.
+          python experiments/binding.py --tag lateral     --hebbian 0 --lateral 1 $common
+          python experiments/binding.py --tag lateral+on  --hebbian 1 --lateral 1 $common
 
           # Sweep 016: the same two conditions scored end to end, by the online
           # readout, rather than by an offline decoder. Everything measured so
@@ -156,10 +161,13 @@ jobs:
           cat collected/*/e2e_results.jsonl > experiments/e2e_results.jsonl
           cat collected/*/trajectory_results.jsonl > experiments/trajectory_results.jsonl
           python experiments/binding.py --report | tee summary.txt
-          for metric in linear mlp; do
-            echo "" | tee -a summary.txt
-            python experiments/paired_test.py --file experiments/binding_results.jsonl \
-              --metric $metric --a on --b off | tee -a summary.txt
+          for pair in "on off" "lateral off" "lateral+on on"; do
+            set -- $pair
+            for metric in linear corr eff_rank; do
+              echo "" | tee -a summary.txt
+              python experiments/paired_test.py --file experiments/binding_results.jsonl \
+                --metric $metric --a "$1" --b "$2" | tee -a summary.txt
+            done
           done
           echo "" | tee -a summary.txt
           python experiments/e2e.py --report | tee -a summary.txt

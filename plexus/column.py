@@ -157,6 +157,40 @@ class ColumnConfig:
     # 014 numbers stay on one scale.
     bind_scale: float = 0.15
 
+    # --- Lateral inhibition (decorrelation) ---------------------------------
+    # Anti-Hebbian plasticity on the inhibitory synapses that already exist:
+    # when a presynaptic unit is active and its target fires above target rate,
+    # the inhibitory synapse between them strengthens. Neurons that fire
+    # together get pushed apart.
+    #
+    # This is the Vogels-Sprekeler rule (Vogels et al. 2011), and the reason it
+    # is worth trying here is specific. Sweep 010 found a readout with a pooled
+    # correlation matrix gains +0.032; sweep 011 found that gain does not
+    # decompose into per-column pieces, so it costs the locality rule. Sweep 019
+    # found the readout, not the mechanism, is the bottleneck -- the
+    # representation is finished by episode 150 and the delta rule needs ~300
+    # episodes to use it. Decorrelating *inside* the column would let a cheap
+    # local readout extract what RLS extracts by pooling.
+    #
+    # Every quantity is one synapse's own: `pre` is its presynaptic trace,
+    # `fired` is its own postsynaptic unit. Nothing is pooled, so unlike the RLS
+    # matrix this does not break the rule. The `- target_rate` term is what
+    # makes it self-limiting rather than runaway: inhibition grows only while
+    # the target fires above its homeostatic setpoint.
+    #
+    # Off by default. The claim that it decorrelates is a claim about mean
+    # pairwise correlation, and that is what experiments/binding.py measures --
+    # not decodability, which is downstream and would not say which part worked.
+    lateral: bool = False
+    # Normalised, so that `lateral_lr` means "this fraction of the weight scale
+    # per event" rather than being hostage to how large `pre` happens to be.
+    # Unnormalised it was four orders of magnitude too weak to matter: `pre`
+    # sits around 0.016, so the raw product moved W by 2.2e-5 against a weight
+    # scale of 0.375. That is the same defect the eligibility trace had, where
+    # the three-factor rule moved weights by 0.1% while synaptic scaling moved
+    # them by 21%, and the rule was measurably decorative.
+    lateral_lr: float = 0.02
+
     # Homeostasis. Threshold adaptation is multiplicative so that its step size
     # tracks the neuron's own operating scale rather than a fixed absolute
     # amount, which converges far faster across a heterogeneous population.
@@ -549,6 +583,13 @@ class Column:
         self.out = value
         self.v = (self.v - self.theta * fired).astype(np.float32)
 
+        # 5b. Lateral inhibition. Uses last step's `pre` deliberately -- the
+        #     trace is updated below, so this reads presynaptic activity that
+        #     arrived strictly before this neuron fired, which is the causal
+        #     order the rule is about.
+        if cfg.lateral and self.learning:
+            self._decorrelate(fired)
+
         # 6. Trace updates (all local: pre-activity, post-state, nothing else).
         self.pre *= self.decay_branch
         self.pre += self.gain_branch * x
@@ -715,6 +756,32 @@ class Column:
         self.W += (
             rate * post[:, None, None] * (self.pre * self.syn_sign) * excitatory
         ).astype(np.float32)
+        np.clip(self.W, 0.0, cfg.weight_max, out=self.W)
+
+    def _decorrelate(self, fired: np.ndarray) -> None:
+        """Strengthen inhibition between units that fire together.
+
+        Only inhibitory synapses, and only in proportion to how far the
+        postsynaptic unit is above its homeostatic setpoint. Below the setpoint
+        the term goes negative and inhibition relaxes, which is what stops this
+        running away -- an unconditioned anti-Hebbian rule grows without bound.
+
+        `pre` carries the Dale sign, so multiplying it back out recovers the
+        presynaptic activity itself. Everything read here belongs to the synapse
+        or to its own postsynaptic unit; nothing is pooled across the
+        population, which is what separates this from the RLS readout whose
+        equivalent gain sweep 011 showed cannot be decomposed.
+        """
+        cfg = self.cfg
+        inhibitory = self.syn_sign < 0.0
+        pre_raw = self.pre * self.syn_sign
+        # Per-neuron normaliser, over that neuron's own synapses only. Keeps the
+        # step size meaningful whatever the input statistics are, and stays
+        # local -- a neuron reading its own fan-in is not a population average.
+        scale = np.maximum(np.abs(pre_raw).mean(axis=(1, 2)), 1e-9)[:, None, None]
+        post = (fired.astype(np.float32) - cfg.target_rate)[:, None, None]
+        step = cfg.lateral_lr * (cfg.branch_budget / cfg.n_synapses)
+        self.W += (step * post * (pre_raw / scale) * inhibitory).astype(np.float32)
         np.clip(self.W, 0.0, cfg.weight_max, out=self.W)
 
     def _synaptic_scaling(self) -> None:

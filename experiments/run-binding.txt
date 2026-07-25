@@ -15,3 +15,9 @@ run 1 -- sweeps 015/016/017/018, ten conditions per seed.
 run 2 -- adds sweep 019: linear decodability every 25 episodes across training,
   binding on vs off, to separate "binding is slow" from "the readout is slow".
   Prediction recorded in experiments/sweeps/binding-019-trajectory.txt.
+
+run 3 -- adds sweep 020: lateral inhibition (Vogels-Sprekeler anti-Hebbian rule
+  on the existing inhibitory synapses), plus correlation and effective-rank
+  columns on every condition. Tests the premise behind the whole
+  decorrelation direction, which one seed says is backwards.
+  Prediction in experiments/sweeps/binding-020-decorrelation.txt.
