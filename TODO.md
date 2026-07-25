@@ -106,10 +106,19 @@ Three benchmarks would each open something currently invisible:
   - **Structural.** Does the *wiring* self-organise? `Column.add_inputs` already
     does the mechanics of rewiring; nothing has asked whether rewiring on a local
     rule beats the fixed random graph.
-  - **The simple answer.** Characterise what θ and the knee actually encode. Two
-    explanations are now eliminated — it is not criticality (025) and not rate
-    calibration (023's sparsity column) — and the quantity is two vectors long.
-    This is the obvious next move.
+  - **The simple answer.** Characterise what θ and the knee actually encode.
+    Sweep 027 answered half of it: **the operating point is a per-neuron fit,
+    not a recipe.** Permuting the values between neurons — same distribution,
+    wrong owners — costs 0.130 on 0/20 seeds at p = 0.0000, and the permuted
+    column fires at double target rate. So it cannot be sampled at
+    initialisation, and 023's "precomputable" means *from any input*, not
+    *without the column*. θ carries +0.181 of the +0.221; the knee adds +0.041.
+
+    Still open: **what is θ fitted to?** Not criticality (025), not rate alone
+    (023). The direct test is to correlate each neuron's settled θ against its
+    own properties — membrane τ, fan-in, excitatory fraction of its sources,
+    mean drive — and see which predicts it. **A probe, not a sweep; needs no
+    CI.** This is the next thing to build.
 
 ## 2. What is lateral inhibition actually doing?
 

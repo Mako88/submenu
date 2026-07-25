@@ -118,4 +118,79 @@ lucky one.
 
 RESULT -- 20 seeds
 ------------------
-Pending.
+condition          final   sparsity
+all                0.755    0.030
+preset-shuffled    0.803    0.027     (sweep 023)
+preset-theta       0.763    0.028
+preset-permuted    0.673    0.060
+preset-knee        0.566    0.002     <- dead column, uninterpretable
+
+  preset-permuted vs preset-shuffled  final    -0.130   0/20  p = 0.0000
+                                      sparsity +0.032  20/20  p = 0.0000
+  preset-theta    vs preset-shuffled  final    -0.041   2/20  p = 0.0005
+                                      sparsity +0.000  20/20  p = 0.0000
+  preset-knee     vs preset-shuffled  final    -0.237   0/20  p = 0.0000
+                                      sparsity -0.025   0/20  p = 0.0000
+
+THE SETTLING IS A PER-NEURON FIT, NOT A RECIPE
+------------------------------------------------
+**Permuting costs 0.130, on 0 of 20 seeds, at p = 0.0000.** The prediction said
+"at least 0.04" and it is three times that. Same numbers, wrong owners, and most
+of the benefit is gone -- from 0.803 down to 0.673, against a no-preset baseline
+of 0.755 and an unsettled column at 0.582.
+
+So the operating point cannot be generated. It is not a distribution to sample
+at initialisation; each neuron needs the threshold that was fitted to *its own*
+inputs. Sweep 023's "precomputable" is therefore narrower than it sounded:
+precomputable from **any input**, including structureless noise, but not without
+running the column it belongs to.
+
+And the sparsity column says why, in exactly the way the mechanism predicted.
+The permuted column fires at **0.060 against a 0.030 target** -- double rate, on
+20 of 20 seeds. Membrane constants are drawn log-uniformly across 12-320ms and
+fan-in is sampled per neuron, so a threshold correct for a slow, heavily-driven
+unit is badly wrong on a fast, lightly-driven one. Handing each neuron someone
+else's threshold does not preserve the population's operating point; it destroys
+per-unit rate control while leaving the distribution of values intact.
+
+THE PILOT WAS WRONG AGAIN, AND THE PREDICTION SAID SO IN ADVANCE
+------------------------------------------------------------------
+One seed said permuting was **free** -- 0.806 permuted against 0.722 unpermuted,
+pointing the opposite way. At 20 seeds it is -0.130 on every single seed.
+
+The prediction bet against it explicitly, on mechanism, and recorded the reason:
+a single seed had produced three claims that twenty seeds corrected (020's
+ordering, 023's sign, 024's magnitude), so it was 0-for-3. **It is now 0-for-4**,
+and this is the first time the mechanistic prior was written down in advance and
+won. That is the practice working rather than luck: the argument from
+log-uniform membrane constants and per-neuron fan-in was available before the
+run, and it was right about both the direction and the reason.
+
+WHICH VECTOR CARRIES IT
+------------------------
+`preset-theta` reaches 0.763 with the knee left at `knee_init`, against 0.803
+for both and 0.582 unsettled. So **theta carries +0.181 of the +0.221 and the
+knee adds the last +0.041** (p = 0.0005). Sparsity is healthy at 0.028, so that
+is a real comparison.
+
+`preset-knee` is **uninterpretable and recorded as such**: with theta left at
+`threshold_init` and never adapting, the column sits at sparsity 0.002 -- silent.
+Its 0.566 is a fact about a dead column, not about the knee. Third time the
+sparsity column has caught this pattern (sweeps 022, 023, now here), which is
+why it is printed beside decodability rather than on request.
+
+WHAT THIS SETTLES AND WHAT IT OPENS
+-------------------------------------
+Settled: the operating point is a per-neuron fit, dominated by the somatic
+threshold, and it cannot be sampled or transplanted. The cheap-initialisation
+idea is dead -- and it is worth having killed it in one 20-seed sweep rather
+than after building it.
+
+Open, and now sharper: **what is theta fitted to?** It is not the firing rate
+alone -- sweep 023 showed the condition sitting exactly on target decodes worst
+of three, and here the permuted column's rate is *double* target while its
+decodability drops, which is consistent but does not identify the quantity. The
+direct test is to correlate each neuron's settled theta against its own
+measurable properties -- membrane tau, fan-in size, excitatory fraction of its
+sources, mean drive -- and see which one predicts it. That is a probe, not a
+sweep, and it needs no CI.
