@@ -285,7 +285,33 @@ def run(k: str) -> bool:
     return proc.returncode != 0
 
 
+# Where an in-flight mutation's original source is parked, so a run that is
+# killed rather than finished can be undone by the next one.
+#
+# `try/finally` is not enough on its own. It restores the file when the process
+# raises, and does nothing at all when the process is killed -- and this script
+# gets killed: it was once invoked as a subprocess by `check_workflows.py`
+# probing `--help`, hit a two-minute timeout, and left `column.py` carrying
+# `self.bind_pre *= self.decay_branch`. That was committed. The test written for
+# exactly that mutation failed on the committed tree, which is the system
+# working, but nothing had to make it that far.
+BACKUP = ROOT / ".mutation-backup"
+
+
+def restore_any_interrupted_run() -> None:
+    """Undo a mutation left behind by a run that was killed."""
+    if not BACKUP.exists():
+        return
+    target, _, original = BACKUP.read_text().partition("\n")
+    path = Path(target)
+    if path.read_text() != original:
+        path.write_text(original)
+        print(f"  restored {path.name} from an interrupted run")
+    BACKUP.unlink()
+
+
 def main() -> None:
+    restore_any_interrupted_run()
     escaped = []
     for path, name, find, repl, k in MUTATIONS:
         original = path.read_text()
@@ -294,10 +320,12 @@ def main() -> None:
             escaped.append(name + " (stale mutation)")
             continue
         try:
+            BACKUP.write_text(f"{path}\n{original}")
             path.write_text(original.replace(find, repl, 1))
             caught = run(k)
         finally:
             path.write_text(original)
+            BACKUP.unlink(missing_ok=True)
         print(f"  {'caught ' if caught else 'ESCAPED'} {name}")
         if not caught:
             escaped.append(name)

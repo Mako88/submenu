@@ -3,3 +3,7 @@ __pycache__/
 .pytest_cache/
 
 experiments/*_results.jsonl
+
+# Parked source from an in-flight mutation run; see experiments/mutation.py.
+# Present only while a run is mid-flight, or after one was killed.
+.mutation-backup
