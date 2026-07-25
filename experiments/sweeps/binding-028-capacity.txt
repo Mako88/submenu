@@ -1,0 +1,129 @@
+Sweep 028 -- does the binding gain survive a bigger column?
+===========================================================
+
+IN PLAIN TERMS
+--------------
+Every number in this project comes from a column of 96 neurons. If the one
+mechanism that works only works at that size, it is a curiosity rather than a
+result, and everything built on top of it has to be re-examined.
+
+So: run the same comparison at 48, 96, 192 and 384 neurons and see whether the
+gain grows, holds, or vanishes.
+
+There is a trap, and it is the reason this sweep has a second half. The way the
+gain is measured is by fitting a simple decoder to the network's state. A bigger
+network means more numbers to fit, and with a fixed amount of data a decoder
+given more numbers starts memorising rather than generalising. That would make
+the gain look like it grows for a reason that has nothing to do with the
+network. The second half holds the data-per-neuron ratio constant so the two
+explanations can be told apart.
+
+QUESTION
+--------
+TODO item 1: "Does the binding gain grow, hold or vanish with column size?
+Measured only at 96 neurons. If it vanishes at 1024, the mechanism is a
+small-column artefact and everything downstream of it changes."
+
+Nothing has tested it. `binding.py` has taken `--neurons` since it was written.
+
+THE CONFOUND, WHICH THE PILOT MADE VISIBLE
+--------------------------------------------
+A one-seed pilot at 120 episodes and 250 collection episodes:
+
+  neurons     off      on     gain
+       48   0.800   0.827   +0.027
+       96   0.800   0.840   +0.040
+      192   0.747   0.947   +0.200
+
+The gain appears to grow sharply. It cannot be reported that way, for two
+reasons visible in the same table.
+
+**The decoder is unregularised and runs out of samples.** `probe.logistic` uses
+`l2 = 1e-4`, which is nearly none. At 250 collection episodes a 70/30 split
+leaves 175 training samples. Against 192 features that is p > n, so `off-192`
+falling to 0.747 while smaller columns hold 0.800 is what decoder overfitting
+looks like, not what a worse representation looks like.
+
+**And binding changes exactly the quantity that determines overfitting.** Sweep
+020 measured binding *halving* effective rank -- 17.4 to 9.6 at 96 neurons. A
+representation living in fewer effective dimensions is intrinsically less prone
+to overfitting a small sample. So at large N the measured "gain" conflates
+
+  binding makes the representation better
+  binding makes the representation lower-dimensional, so the decoder copes
+
+and the second grows with column size *by construction*. This would produce a
+rising gain with no improvement in the representation at all.
+
+CONDITIONS  (20 seeds, 300 episodes, column lr 0)
+---------------------------------------------------
+  off-48   on-48     |
+  off-96   on-96     |  collect 1200 for every size
+  off-192  on-192    |  samples/feature: 17.5, 8.8, 4.4, 2.2
+  off-384  on-384    |
+
+  off-48-thin  on-48-thin    collect 150 -- samples/feature 2.2, matching 384
+
+`*-thin` is the control and the sweep turns on it. It runs the **smallest**
+column at the **same samples-per-feature as the largest**. If the rising gain is
+decoder overfitting, `48-thin` should show a large gain too, because it has the
+same starved decoder. If the gain at 48 stays small when starved, overfitting is
+not what produces the gain at 384, and the growth is real.
+
+PREDICTION (recorded before the run)
+--------------------------------------
+Made on mechanism, not on the pilot. A single seed has produced three claims
+that twenty seeds corrected in this project (020's ordering, 023's sign, 024's
+magnitude), so the pilot is treated as evidence the plumbing works and nothing
+more.
+
+  gain at 48     +0.03 to +0.07
+  gain at 96     +0.074   (established, sweeps 015-025)
+  gain at 192    +0.06 to +0.11
+  gain at 384    +0.05 to +0.12
+  gain at 48-thin  +0.03 to +0.08 -- i.e. **the same as 48**, not inflated
+
+**The central claim: the gain holds roughly constant across a factor of 8 in
+column size, and `48-thin` matches `48`.** The +0.200 in the pilot is expected
+to shrink to something near the standing +0.074.
+
+The reasoning: binding strengthens the excitatory synapses that were driving a
+neuron, and fan-in is fixed at 8 branches x 16 synapses regardless of column
+size. Each neuron's local computation is therefore *identical* at every size --
+only the number of neurons and the pool of sources change. A mechanism whose
+per-neuron operation does not change with N should not have an N-dependent
+effect, so a flat gain is what the architecture predicts.
+
+WHAT EACH OUTCOME MEANS
+-------------------------
+  flat gain          The mechanism is size-independent, which is what it should
+                     be, and the 96-neuron results generalise. Boring and
+                     important.
+
+  gain vanishes      The mechanism is a small-column artefact. Sweeps 015-027
+                     describe a regime nothing would ever be deployed in, and
+                     the binding results need re-stating as size-specific.
+
+  gain grows, and    Something about a larger source pool makes binding more
+  48-thin is small   effective. Genuinely interesting and unexplained, and the
+                     next question is whether it keeps growing or saturates.
+
+  gain grows, and    Decoder overfitting. Not a result about the model at all,
+  48-thin is large   and every cross-size comparison in this sweep is void --
+                     including, uncomfortably, the possibility that some of the
+                     standing +0.074 at 96 neurons is the same effect at 8.8
+                     samples per feature. That would need its own sweep.
+
+The last one is the reason the control exists, and it is the outcome that would
+cost the most to discover later.
+
+SETTINGS
+--------
+20 seeds, 300 episodes, column lr 0, binding on/off at 48/96/192/384 neurons
+with 1200 collection episodes, plus 48 at 150 collection episodes. Fan-in fixed
+at the default 8 branches x 16 synapses everywhere, so per-neuron computation is
+identical across sizes and only N varies.
+
+RESULT -- 20 paired seeds
+-------------------------
+Pending.

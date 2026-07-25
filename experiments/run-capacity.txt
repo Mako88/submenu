@@ -1,0 +1,23 @@
+Sentinel for .github/workflows/plexus-capacity.yml.
+
+Editing this file starts a 20-seed run. It exists so that writing a *result*
+into experiments/sweeps/ does not re-run the matrix that produced it.
+
+run 1 -- sweep 028: does the binding gain survive a bigger column? Every number
+  in this project comes from 96 neurons, and TODO item 1 says that if the gain
+  vanishes at 1024 the mechanism is a small-column artefact and everything
+  downstream changes. Ten conditions: binding on/off at 48/96/192/384, plus the
+  smallest column run at the largest column's samples-per-feature.
+
+  That last pair is the control and the sweep turns on it. probe.logistic uses
+  l2=1e-4, essentially unregularised, so a bigger column starves the decoder --
+  and binding *halves effective rank* (sweep 020), which is exactly the property
+  that decides whether a decoder overfits. So a rising gain could be the
+  representation improving, or binding making the decoder's job easier at high
+  dimension, and those grow apart with N by construction. Running 48 neurons at
+  384's samples-per-feature separates them.
+
+  A one-seed pilot shows the gain rising steeply (+0.027, +0.040, +0.200 at
+  48/96/192). The prediction bets on a flat gain instead, from mechanism: fan-in
+  is fixed at 8x16 at every size, so each neuron's computation is identical and
+  only N varies. Prediction in experiments/sweeps/binding-028-capacity.txt.

@@ -1,0 +1,147 @@
+name: plexus capacity
+
+# Sweep 028. Every number in this project comes from a 96-neuron column. If the
+# one mechanism that works only works at that size it is a curiosity, and
+# everything downstream needs re-examining. This runs the same comparison across
+# a factor of 8 in column size, with a control for the decoder confound that a
+# pilot exposed: `probe.logistic` is nearly unregularised, so a larger column
+# starves it of samples per feature, and binding *halves effective rank* (sweep
+# 020) which is exactly the quantity that determines whether it overfits.
+
+# Only one sweep matrix at a time -- see plexus-binding.yml for what interleaving
+# cost three times before this was added.
+concurrency:
+  group: plexus-sweeps
+  cancel-in-progress: false
+
+on:
+  workflow_dispatch:
+    inputs:
+      seeds:
+        description: 'Number of seeds'
+        required: false
+        default: '20'
+      episodes:
+        description: 'Training episodes per run'
+        required: false
+        default: '300'
+      collect:
+        description: 'Collection episodes for the offline decoder'
+        required: false
+        default: '1200'
+  push:
+    paths:
+      - 'experiments/run-capacity.txt'
+
+env:
+  SEEDS: ${{ github.event.inputs.seeds || '20' }}
+  EPISODES: ${{ github.event.inputs.episodes || '300' }}
+  COLLECT: ${{ github.event.inputs.collect || '1200' }}
+
+jobs:
+  seeds:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install numpy
+
+      - name: Skip seeds beyond the requested count
+        id: gate
+        run: |
+          if [ "${{ matrix.seed }}" -lt "$SEEDS" ]; then
+            echo "run=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=no" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run every condition for this seed
+        if: steps.gate.outputs.run == 'yes'
+        run: |
+          common="--seed ${{ matrix.seed }} --episodes $EPISODES"
+          # Fan-in is fixed at 8 branches x 16 synapses at every size, so each
+          # neuron's computation is identical and only N varies. That is what
+          # makes a flat gain the architecture's own prediction.
+          for n in 48 96 192 384; do
+            python experiments/binding.py --tag off-$n --hebbian 0 \
+              --neurons $n --collect $COLLECT $common
+            python experiments/binding.py --tag on-$n  --hebbian 1 \
+              --neurons $n --collect $COLLECT $common
+          done
+
+          # The control the sweep turns on: the SMALLEST column at the SAME
+          # samples-per-feature as the largest (150 collection episodes -> 105
+          # training samples against 48 features, matching 384's 2.2). If the
+          # rising gain is decoder overfitting, this shows a large gain too.
+          python experiments/binding.py --tag off-48-thin --hebbian 0 \
+            --neurons 48 --collect 150 $common
+          python experiments/binding.py --tag on-48-thin  --hebbian 1 \
+            --neurons 48 --collect 150 $common
+
+      - name: Fail loudly if a condition produced nothing
+        if: steps.gate.outputs.run == 'yes'
+        run: |
+          for tag in off-48 on-48 off-96 on-96 off-192 on-192 off-384 on-384 \
+                     off-48-thin on-48-thin; do
+            grep -q "\"tag\": \"$tag\"" experiments/binding_results.jsonl \
+              || { echo "no rows for condition '$tag'"; exit 1; }
+          done
+
+      - uses: actions/upload-artifact@v4
+        if: steps.gate.outputs.run == 'yes'
+        with:
+          name: capacity-seed-${{ matrix.seed }}
+          path: experiments/binding_results.jsonl
+          retention-days: 14
+
+  aggregate:
+    needs: seeds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install numpy
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: capacity-seed-*
+          path: collected
+
+      - name: Combine, report, and run the paired tests
+        run: |
+          cat collected/*/binding_results.jsonl > experiments/binding_results.jsonl
+          python experiments/binding.py --report | tee summary.txt
+          # eff_rank is tested alongside linear at every size, because it is the
+          # quantity that would produce a spurious rising gain: binding halves
+          # it, and a lower-dimensional representation resists overfitting.
+          for n in 48 96 192 384 48-thin; do
+            for metric in linear eff_rank; do
+              echo "" | tee -a summary.txt
+              python experiments/paired_test.py --file experiments/binding_results.jsonl \
+                --metric $metric --a "on-$n" --b "off-$n" | tee -a summary.txt
+            done
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: capacity-combined
+          path: |
+            experiments/binding_results.jsonl
+            summary.txt
+          retention-days: 30
+
+      - name: Put the summary in the run page
+        run: |
+          {
+            echo '## plexus: does the binding gain survive a bigger column?'
+            echo '```'
+            cat summary.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
