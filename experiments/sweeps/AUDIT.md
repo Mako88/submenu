@@ -35,8 +35,11 @@ and synaptic scaling, so it moves whenever its input distribution moves — swee
 013 lost a whole run to this (a frozen column shifted −0.062, p = 0.0011, when
 `modulator_lag` changed the length of the silent drain tail), sweep 019 found a
 frozen column is not an untrained one (+0.197 from settling alone), and sweep
-024 found a frozen column *forgets* (−0.167 of task A after training on task B).
-Three instances of one confusion.
+024 found a frozen column *forgets* — at 20 seeds, −0.015 of task A after
+training on task B. Three instances of one confusion.
+
+(The −0.167 first written here was a single seed and is corrected: 20 seeds put
+it at −0.015. The mechanism stands, the magnitude did not. See sweep 024.)
 
 The distinction that actually holds is now tested rather than argued:
 `test_a_frozen_column_is_identical_across_readout_rules` pins the pairing behind
@@ -52,6 +55,9 @@ comparison alters what the column *sees*.
 
 | decision | where | rests on | why it stands |
 |---|---|---|---|
+| The settling operating point is precomputable, and better computed from structureless input | sweep 023 | 20 paired seeds | +0.051 over a task-settled twin (p = 0.0032) and +0.048 over 100 episodes of settling (p = 0.0049). Frozen column, `lr=0`, so no learning-path fix can reach it. Not explained: the firing-rate ordering does not match the decodability ordering, so it is not calibration |
+| Binding and lateral inhibition replicate on a second channel mapping | sweep 024 | 20 paired seeds | Every prior number for these mechanisms came from one sensory mapping. On a permuted one: binding +0.069 on task A over nothing, 20/20 seeds, p = 0.0000; acquisition off 0.269 → both 0.353 |
+| No mechanism forgets differently from any other | sweep 024 | 20 paired seeds | All four retention comparisons null (p = 0.32–0.81), every condition between −0.015 and −0.030. **At two tasks and 96 neurons there is no interference to study**, which is why the engram rematch did not trigger — and a narrower statement than "binding does not interfere" |
 | `NEURONS=24` for plasticity sweeps | `plexus-experiment.yml` | sweep 002 | The *choice* of 24 came from a frozen-column headroom measurement (linear 0.689 vs MLP 0.881), which no learning-rule bug can touch. Its null result predates `ac364c0`, but sweeps 006/007/008 re-established the same null at the same size after both fixes. |
 | `elig_mode="magnitude"` | `ColumnConfig` | sweeps 006, 007 | Ran after `ac364c0`; sweep 008 re-ran magnitude together with the fixed surrogate and found the same null. Post-both-fixes. |
 | `readout_rule="delta"` | `network.py`, `distributed.py`, workflow | sweep 011 | Most recent decision in the project. Post-everything. |
@@ -125,7 +131,7 @@ does not cover what it is cited for.
 | item | how | status |
 |---|---|---|
 | What lateral inhibition is actually doing | principal-direction projection | Built to decorrelate; sweep 020 measured it not decorrelating while helping, and sweep 021 found its gain fully recoverable by RLS (ratio 1.08) and not at all by a catch-up phase (0.14) — the inverse of binding's ordering. The hypothesis is that it adds information in correlated directions, readable by whitening and not by time. **Unmeasured, and the mechanism is kept on its measurement rather than on any of this** |
-| Is the settling operating point precomputable? | sweep 023, two conditions | Sweep 022 established the +0.197 is an operating point, not a trajectory (0.752 from preset alone against 0.582). What remains is whether a twin settled on *random* input with matching statistics finds the same values — if so, fifty episodes of every run are free |
+| What theta and knee actually carry | new probe | **Answered in the wrong direction and now wide open.** Sweep 023: an operating point found on timing-destroyed input beats one found on the real task (+0.051, p = 0.0032) and beats 100 episodes of ordinary settling (+0.048, p = 0.0049). Presetting from the task is null against ordinary settling (p = 0.91), so the whole gain is *what the twin saw*. The obvious mechanism — better rate calibration — is refuted by the sweep's own sparsity column: `all` sits exactly on target and decodes 0.048 worse |
 | `scaling_lr=2e-2` now has evidence against it | paired test | Sweep 022: removing synaptic scaling gives 0.780 against 0.755 with identical sparsity. Previously untuned-with-no-evidence (below); now untuned-with-evidence-pointing-at-off. Needs a paired test before acting — the curve comparison is not one |
 | The residual 0.770-vs-0.876 gap after catch-up | offline probe on the catchup condition | not yet run |
 | `modulator_lag` at 20 seeds -- the learning half of latency tolerance | `plexus-experiment.yml`, `modulator_lag=200` | **not yet run; highest value of the three** |

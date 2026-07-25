@@ -467,11 +467,30 @@ this project is measured against is a column that is barely firing, and
 homeostasis's first job is lifting it to target. Presetting θ and knee supplies
 that immediately.
 
-Not yet established: that the operating point is *free*. The twin had fifty
-episodes of task exposure to find it — unsupervised, `lr=0`, no labels, but
-still derived from data. Whether random input with matching statistics would do
-is the next measurement, and if it would, fifty episodes of every future run are
-free.
+**And it is better found from input with no task structure at all.** Sweep 023
+settled the twin three ways — on the real task, on the task's marginals with
+timing destroyed (each channel's time series permuted, so per-channel event
+count and amplitude are preserved exactly), and on matched-rate noise:
+
+| twin settled on | decodability | firing rate |
+|---|---|---|
+| **timing destroyed** | **0.803** | 0.027 |
+| the real task | 0.752 | 0.022 |
+| matched-rate noise | 0.691 | 0.017 |
+| *(no preset, 100 episodes of settling)* | *0.755* | *0.030* |
+
+Timing-destroyed beats the task-settled twin by **+0.051 (p = 0.0032)** and
+beats a hundred episodes of ordinary settling by **+0.048 (p = 0.0049)**, on 20
+paired seeds. Presetting *from the task* is null against ordinary settling
+(p = 0.91) — so the entire gain comes from what the twin was shown, not from
+presetting itself.
+
+The obvious explanation is refuted by the sweep's own control column. If the
+advantage were better rate calibration, the condition closest to the 0.03 target
+would decode best. It does not: ordinary settling sits exactly on target and
+decodes 0.048 *worse*. **The firing-rate ordering and the decodability ordering
+do not match**, which rules out the confound in the strongest available form and
+leaves what θ and the knee actually carry unexplained.
 
 Two things fell out that nobody was looking for. **Removing synaptic scaling
 costs nothing** — 0.780 against 0.755, sparsity identical — which is the first

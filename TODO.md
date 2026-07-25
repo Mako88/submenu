@@ -24,25 +24,36 @@ Three benchmarks would each open something currently invisible:
 - **Capacity scaling.** Does the binding gain grow, hold or vanish with column
   size? Measured only at 96 neurons. If it vanishes at 1024, the mechanism is
   a small-column artefact and everything downstream of it changes.
-- **Continual learning.** Built, and running as sweep 024. Two tasks that are
-  the same computation over a permuted sensory mapping — identical difficulty
-  and statistics, disjoint in what they ask the fixed wiring to do — measuring
-  what training on B costs task A. This is where the deleted engram allocator
-  could earn its way back: the allocation refractory demonstrably produced
-  engrams overlapping *less* than independent sampling (`engram-012`, rotate
-  0.815 against 1.661), and delayed XOR never asks for that. Sweep 014 refuted
-  allocation *on that benchmark*, which is not the same as refuting it. The
-  sweep names binding-retains-worse-than-off as the outcome that triggers the
-  rematch.
+- **Continual learning.** Built and measured — sweep 024, and the answer is that
+  **there is no forgetting here to study.** Two tasks that are the same
+  computation over a permuted sensory mapping, 20 seeds: every condition loses
+  between 0.015 and 0.030 of task A, and **all four retention comparisons are
+  null** (p = 0.32 to 0.81). Binding does not retain better or worse than
+  nothing.
 
-  It has already refuted a claim I had written into its own docstring: **a
-  column with `lr=0` and no binding lost 0.167 of task A** when trained on task
-  B, at one seed. "Frozen" is not "unchanging" — homeostasis, knee adaptation
-  and synaptic scaling keep running, and each neuron sees a different subset of
-  channels through its fixed wiring, so its drive distribution changes when the
-  mapping does. Sweep 022 found that operating point carrying most of the
-  representation quality, so it is exactly what moves. Second time this project
-  has conflated frozen with unchanging; sweep 019 caught frozen-vs-untrained.
+  So the engram rematch does not trigger — for the opposite reason to the one
+  the prediction named. Not because binding retained well, but because an
+  undifferentiated Hebbian store shows no detectable interference at this scale.
+  Allocation stays deleted, and the reason is now better than it was: sweep 014
+  refuted it on a task that could not ask, and this one asked.
+
+  What the benchmark does resolve is **acquisition**: off 0.269 → lateral 0.310
+  → binding 0.325 → both 0.353, all at p ≤ 0.0007, plus binding beating off on
+  20/20 seeds for task A itself. That is an independent replication of the
+  standing results on a channel mapping no previous sweep used.
+
+  **To make it bite** (re-run, do not stretch the conclusion): a longer stream
+  than two tasks, a smaller column — 96 neurons for one delayed-XOR variant is
+  not obviously capacity-limited — and more episodes per task so there is more
+  to overwrite.
+
+  One correction worth carrying: while building this I wrote that a frozen
+  column "forgets 0.167", from one seed, into four files. At 20 seeds it is
+  **0.015**. The mechanism is real and now tested — a frozen column does change
+  when its input changes, since homeostasis and scaling keep running — but the
+  magnitude was wrong by an order of magnitude. Third time a single seed has
+  produced a claim twenty seeds corrected, and the first time one reached the
+  record as a statement of fact rather than a prediction.
 - **Emergent structure.** The original motivation, and it now has a metric —
   which is what this bullet was blocked on. Sweep 025.
 

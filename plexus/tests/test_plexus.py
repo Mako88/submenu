@@ -1139,7 +1139,9 @@ def test_a_frozen_column_still_changes_when_the_input_changes():
     This project has conflated the two twice. Sweep 019 found that a frozen
     column is not an untrained one — homeostasis alone takes decodability from
     0.582 to 0.779. Sweep 024's experiment then shipped a docstring asserting a
-    frozen column cannot forget, and lost 0.167 of task A at the first seed.
+    frozen column cannot forget, and it lost task A when trained on task B --
+    0.015 at 20 seeds, though the single seed that prompted this said 0.167 and
+    that number reached four files before it was measured.
 
     With `lr=0`, no binding and no lateral inhibition, threshold homeostasis,
     knee adaptation and synaptic scaling all keep running. Two input

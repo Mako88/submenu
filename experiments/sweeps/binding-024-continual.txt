@@ -121,4 +121,110 @@ variance.
 
 RESULT -- 20 paired seeds
 -------------------------
-Pending.
+condition   a_before  a_after  b_after  retention  acquisition
+off           0.793    0.778    0.769     -0.015      0.269
+on            0.862    0.835    0.825     -0.027      0.325
+lateral       0.839    0.809    0.810     -0.030      0.310
+both          0.870    0.847    0.852     -0.023      0.353
+
+  on      vs off   retention   -0.012  10/20  p = 0.3456
+                   acquisition +0.056  17/20  p = 0.0001
+                   a_before    +0.069  20/20  p = 0.0000
+  lateral vs off   retention   -0.015   5/20  p = 0.3186
+                   acquisition +0.041  16/20  p = 0.0007
+                   a_before    +0.045  15/20  p = 0.0004
+  both    vs off   retention   -0.008   9/20  p = 0.6445
+                   acquisition +0.083  17/20  p = 0.0001
+                   a_before    +0.077  17/20  p = 0.0001
+  both    vs on    retention   +0.004   9/20  p = 0.8071
+                   acquisition +0.027  13/20  p = 0.0551
+                   a_before    +0.008  11/20  p = 0.4010
+
+A CLAIM I PROPAGATED FROM ONE SEED, AND IT IS WRONG
+-----------------------------------------------------
+This sweep's own write-up said, in bold, that the first run "refuted a claim I
+had written into the experiment's own docstring" -- that a frozen column cannot
+forget -- because `off` lost **0.167** at seed 0. That number went into the
+experiment docstring, TODO.md, AUDIT.md and a commit message.
+
+At 20 seeds `off` loses **0.015**. An order of magnitude smaller.
+
+Two separate things were bundled together and only one survives:
+
+  the mechanism   A frozen column *does* change when its input changes.
+                  Homeostasis, knee adaptation and synaptic scaling keep
+                  running, each neuron's drive distribution shifts when the
+                  channel mapping does, and its threshold follows. Still true,
+                  and now pinned by
+                  `test_a_frozen_column_still_changes_when_the_input_changes`.
+
+  the magnitude   "A frozen column forgets 0.167." **False.** One seed.
+
+Corrected everywhere it was written. This is the third time in this project a
+single seed has produced a confident claim that twenty seeds reversed or
+shrank -- sweep 020's ordering, sweep 023's sign, and now this one's size. The
+first two were predictions, which is survivable. This one got into four files as
+a statement of fact, which is the failure rule 1 exists to prevent.
+
+**Nothing is measured until it is measured at twenty seeds, including the
+observations made while building the instrument.**
+
+EVERY RETENTION COMPARISON IS NULL, AND THE PREDICTION IS REFUTED
+-------------------------------------------------------------------
+The central claim was that binding retains better than `off` by +0.08 to +0.15
+at p < 0.05. It retains -0.012 *worse*, at p = 0.35. Lateral: -0.015, p = 0.32.
+Both: -0.008, p = 0.64. Binding against both: +0.004, p = 0.81.
+
+**No condition forgets differently from any other.** Forgetting is small and
+uniform: every condition lands between -0.015 and -0.030.
+
+THE ENGRAM REMATCH DOES NOT TRIGGER, FOR THE OPPOSITE REASON TO THE ONE NAMED
+-------------------------------------------------------------------------------
+The prediction named binding-retains-worse-than-off as the outcome that would
+give engram allocation its rematch, on the reasoning that an undifferentiated
+Hebbian store should show catastrophic interference and separating which neurons
+carry which memory is the textbook fix.
+
+That is not what happened. Binding does not interfere catastrophically -- it
+does not interfere detectably at all. **There is no forgetting here for
+allocation to fix.** Two tasks, 150 episodes each, 96 neurons: the benchmark
+finds no interference to study.
+
+So allocation stays deleted, and the reason it stays deleted is now better than
+it was. Sweep 014 refuted it on a task that could not ask; this one asked and
+found the question does not bite at this scale.
+
+WHAT THE BENCHMARK DID FIND, AND IT IS NOT NOTHING
+----------------------------------------------------
+The instrument works -- it resolves large differences at p = 0.0001. They are
+all in **acquisition**, not retention:
+
+  off 0.269  ->  lateral 0.310  ->  on 0.325  ->  both 0.353
+
+and in `a_before`, where binding beats off on **20 of 20 seeds** at p = 0.0000.
+That is an independent replication of the standing binding and lateral results
+on a task variant no previous sweep used, which is worth having: every prior
+number for those mechanisms came from one channel mapping.
+
+WHY THERE IS NO FORGETTING, STATED AS A HYPOTHESIS
+----------------------------------------------------
+Sweeps 022-023 found the column's representation quality is carried by an
+operating point -- per-neuron threshold and knee -- and that the *best* such
+point is found on input with no task structure at all. If what the column holds
+is largely task-independent, then switching tasks has little to disturb, and
+that is exactly what this sweep measures.
+
+That reading is consistent with both sweeps and is **not tested here**. The
+direct test: correlate per-neuron |dtheta| across the task switch against each
+neuron's weight in task A's decoder. If forgetting is threshold drift, the
+neurons that moved most should be the ones A depended on.
+
+WHAT WOULD MAKE THIS BENCHMARK BITE
+-------------------------------------
+Not a fix -- a harder setting, and the sweep should be re-run rather than the
+conclusion stretched. Candidates, in order of how much they would sharpen it:
+a longer stream than two tasks; a smaller column, since 96 neurons for one
+delayed-XOR variant is not obviously capacity-limited; and more episodes per
+task so there is more to overwrite. Sweep 014's caveat still stands and now has
+a number attached: allocation is refuted on benchmarks that do not create
+interference, and nothing here has created any.

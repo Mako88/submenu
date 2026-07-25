@@ -21,17 +21,23 @@ The quantity is retention: A's decodability after B, against A's decodability
 before B.
 
 The first version of this docstring asserted that `off` cannot forget, "because
-nothing about a frozen column changes". That is false and the first run said so
--- `off` lost 0.167 at one seed. A column with `lr=0` and no binding still runs
-threshold homeostasis, knee adaptation and synaptic scaling, and although A and
-B have *identical* marginal statistics by construction, each neuron sees a
-different subset of channels through its fixed wiring, so its own drive
-distribution changes and its threshold follows. Sweep 022 found that operating
-point carrying most of the column's representation quality, which is exactly the
-thing that then moves.
+nothing about a frozen column changes". The mechanism half of that is wrong: a
+column with `lr=0` and no binding still runs threshold homeostasis, knee
+adaptation and synaptic scaling, and although A and B have *identical* marginal
+statistics by construction, each neuron sees a different subset of channels
+through its fixed wiring, so its drive distribution changes and its threshold
+follows. Pinned by `test_a_frozen_column_still_changes_when_the_input_changes`.
 
-So `off` is not a ceiling on retention. It is a condition that forgets by a
-mechanism nobody had named, and the question is what binding does against it.
+The correction to the correction, which matters more. That first run showed
+`off` losing 0.167, and 0.167 went into this docstring, TODO.md, AUDIT.md and a
+commit message before it had been measured. **At 20 seeds it is 0.015.** The
+mechanism is real; the magnitude was one seed and was wrong by an order of
+magnitude.
+
+So the honest statement is that every condition forgets a little (-0.015 to
+-0.030) and none forgets differently from any other -- all four retention
+comparisons null, sweep 024. What this benchmark resolves is acquisition, not
+retention, and at this scale there is no interference here to study.
 
     python3 experiments/continual.py --tag on --hebbian 1 --seed 0
     python3 experiments/continual.py --report
