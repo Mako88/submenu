@@ -14,6 +14,7 @@ question in plain language, with where it stands. Detail is below.
 | 7 | Does it actually work spread across machines? | Still never tried on real machines. But the property it depends on is now **measured**: delivery jitter below `delay_min` leaves a distributed run bit-identical, and above it does not |
 | 8 | Would a single GPU just beat this? | **The premise was wrong.** Not bandwidth-bound — 17 % of DRAM peak at 96 neurons, working set fits in L2. It is overhead-bound, so the comparison cannot be made until the code is near *some* limit |
 | 9 | Which claims in the record were never measured? | New, and it caught **all four** of DESIGN.md's headline departures. Two sweeps queued (036, 037), the routed modulator and the bandwidth premise both **refuted** |
+| 10 | Should `tau_branch` be 60 rather than 15? | **Known better setting, deliberately not adopted.** +0.056 at p = 0.0004 (sweep 034). Changing it invalidates every standing number as a comparison set, so re-baselining is a decision to take on purpose |
 
 Ordered by what would change the most if it turned out differently, not by
 effort. Each item says what it is, why it matters, and what would settle it —
@@ -631,6 +632,47 @@ reads it next.*
   exactly `delay_min - 1` steps. See item 7.
 - ~~The fast gather path~~ — every recorded number used it and nothing checked
   it against the correct path. Now asserted bit-identical, with a mutation.
+
+## 10. Should `tau_branch` be 60 rather than 15?
+
+*In plain terms: one number controlling how long each dendritic branch remembers
+its input was never tuned, and tuning it is worth about as much as the best
+learning mechanism in the project. The catch is that changing it makes every
+number measured so far incomparable, so it is a decision rather than a fix.*
+
+Sweep 034, 20 paired seeds, binding off, no drain tail:
+
+| `tau_branch` | decodability | vs the shipped 15 | |
+|---|---|---|---|
+| 15 | 0.802 | — | equals the standing `off` exactly |
+| 30 | 0.852 | +0.050 | p = 0.0002 |
+| **60** | **0.858** | **+0.056** | p = 0.0004 |
+| 120 | 0.843 | +0.041 | p = 0.0365 |
+| 240 | 0.822 | +0.020 | p = 0.2351, null |
+
+For scale, that is comparable to salience-gated binding's +0.074 and twice
+lateral inhibition's +0.028 — both mechanisms with sweeps behind them — from a
+constant nobody ever swept.
+
+**Why the default has not moved.** Every standing number in this repo was
+measured at 15: the 0.802 baseline, binding's +0.074, lateral's +0.028, the
+capacity curve across four column sizes, the operating-point results, the
+latency window. Changing the default does not improve those results, it
+*invalidates them as a comparison set* — which is rule 11 applied to a parameter
+rather than a bug, and the same reasoning that keeps every new mechanism off by
+default.
+
+**What adopting it would take.** Re-baselining deliberately: pick 60, list the
+sweeps whose numbers stop being comparable, and re-run the ones that still
+matter rather than silently carrying old figures beside new ones. That is a
+half-day of CI and a decision about which results are worth re-establishing, not
+a one-line change.
+
+**And a reason to wait.** The optimum is interior, so it is a real trade-off
+rather than a monotone improvement — and it may move once the plateau (sweep
+037) and the delay floor (sweep 035) are measured, since all three set
+timescales in the same forward path. Adopting 60 before those land would risk
+re-baselining twice.
 
 ## Housekeeping
 

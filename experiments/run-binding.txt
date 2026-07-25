@@ -1,24 +1,22 @@
-Sweep 034 -- is tau_branch a real improvement, or compensation for a tail?
+Sweeps 035, 036 and 037 -- three timescale/structure questions in one matrix.
 
-Sweep 030's control condition produced the largest single-parameter effect
-in this project: tau_branch 60 worth +0.218 and 120 worth +0.298, with
-binding off entirely. Larger than homeostatic settling's +0.197 and than
-every learning rule combined.
+  035  what does jitter tolerance cost? delay_min IS the jitter budget in
+       milliseconds, and the default of 1 ships a tolerance of zero steps.
+       dmin12-dmax48 separates "higher floor" from "narrower spread".
 
-But every condition in 030 ran at drain_steps 200, where the baseline is
-0.620 against the tail-free 0.802. A 15-step filter forgets everything
-across 200 silent steps and a 120-step one does not, so the effect may be
-compensation for a handicap the standard setup does not impose. Same shape
-as the baseline-shift error sweep 026 already paid for.
+  036  is heterogeneous membrane timing "a large win", as DESIGN.md claims?
+       Four homogeneous conditions, not one, because a badly-chosen constant
+       losing says nothing -- the claim is that NO single choice works.
 
-These conditions remove the tail and look again, and carry their own link
-back to 030 so nothing depends on numbers from another run. tb240 is
-predicted to fail -- the task's cues are 100 steps apart and a 240-step
-memory cannot separate them.
+  037  what is the dendritic plateau worth? DESIGN.md's fourth headline
+       departure and the model's main departure from a summing unit, and its
+       value has never been measured -- only the bug it once had.
 
-Prediction, recorded before the run: helps at drain 0, but by +0.02 to
-+0.10 rather than +0.20 to +0.30, with an interior optimum near 30-60. So
-mostly compensatory and partly real.
+All three are forward-path questions with binding off and drain 0, so
+tb15-drain0 / dmin1 / hetero / plateau-1.2 must each reproduce the standing
+0.802 or nothing is comparable.
 
-Full prediction and what each outcome means:
-experiments/sweeps/binding-034-is-tau-branch-general.txt
+Predictions and what each outcome means:
+  experiments/sweeps/binding-035-what-jitter-tolerance-costs.txt
+  experiments/sweeps/binding-036-does-heterogeneity-pay.txt
+  experiments/sweeps/binding-037-what-the-plateau-is-worth.txt

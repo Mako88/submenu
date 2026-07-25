@@ -163,4 +163,104 @@ throughout since sweep 026 established it is not the lever.
 
 RESULT -- 20 paired seeds
 -------------------------
-Pending.
+  condition        linear     vs tb15-drain0
+  tb15-drain0       0.802     --            (equals `off` exactly, p = 1.0000)
+  tb30-drain0       0.852     +0.050  17/20  p = 0.0002
+  tb60-drain0       0.858     +0.056  18/20  p = 0.0004   <- best
+  tb120-drain0      0.843     +0.041  14/20  p = 0.0365
+  tb240-drain0      0.822     +0.020  13/20  p = 0.2351   null
+
+  tb15-drain200     0.620     reproduces sweep 030
+  tb120-drain200    0.918     +0.298  20/20  p = 0.0000   reproduces 030 exactly
+
+THE CENTRAL CLAIM HELD, AND +0.298 WAS MOSTLY THE TAIL
+--------------------------------------------------------
+Predicted: `tau_branch` helps at `drain 0` too, but by **+0.02 to +0.10** at its
+best setting rather than the +0.20 to +0.30 sweep 030 reported.
+
+Measured: **+0.056** at `tau_branch 60`, on 18 of 20 seeds at p = 0.0004.
+
+So of sweep 030's +0.298, roughly **+0.056 is a real general improvement and
++0.242 is compensation for the 200-step drain tail** -- a 15-step filter forgets
+across 200 silent steps and a 120-step one does not. Four fifths of the largest
+single-parameter effect ever measured in this project was an artefact of the
+regime it was measured in.
+
+That is exactly what the AUDIT entry written at the time said it might be, and
+why +0.298 was recorded there as "a result about a configuration" rather than
+about the model. The guard worked.
+
+**Both link conditions reproduce sweep 030 exactly** -- 0.620 and 0.918, and the
+same +0.298 at 20/20 -- so this is a re-scoping of that result, not a
+contradiction of it. And `tb15-drain0` equals the standing `off` to +0.000 on
+0/20 seeds at p = 1.0000, so the sweep is comparable to everything else.
+
+THE SHAPE CLAIM HELD TOO
+--------------------------
+Predicted: with the tail gone the optimum should be **interior** -- best around
+30-60, falling by 240 -- where sweep 030 was monotone increasing across every
+setting it tried.
+
+Measured: 0.802 -> 0.852 -> **0.858** -> 0.843 -> 0.822. Interior optimum at 60,
+declining through 120 and 240. The monotone curve in 030 was the tail
+compensation growing, not the filter improving without limit.
+
+WHERE THE PREDICTION WAS WRONG, AND IT WAS THE CONDITION THAT COULD FAIL
+--------------------------------------------------------------------------
+  predicted  tb240-drain0  **0.55 to 0.72, clearly worse**
+  measured                 **0.822, +0.020 at p = 0.2351 -- null, if anything
+                           slightly better than baseline**
+
+`tb240` was included precisely because it was predicted to fail: "a condition
+predicted to fail is worth more than four predicted to succeed". It did not
+fail. The reasoning was that the task's cues are 100 steps apart and a 240-step
+memory cannot separate them.
+
+**And this note pre-committed to what to do about that:** "if it does not
+degrade then the filter is not doing what its name says. Distrust every reading
+above and check the filter directly before interpreting anything."
+
+So the filter was checked directly. Driving one impulse into a column with
+recurrence silenced and fitting the decay of the branch potential:
+
+    configured tau_branch    15      60     240
+    measured  tau_branch    15.0    60.0   240.0
+
+The filter is exactly what it claims to be. **The pre-commitment fires on my
+reasoning, not on the mechanism**, and the readings above stand.
+
+(The first attempt at that check was contaminated and is worth recording: with
+recurrence live, the branch potential *grows* after an impulse -- measured decay
+above 1.0 -- because the column's own output feeds back into its branches. It
+had to be silenced to measure the filter at all.)
+
+Why the reasoning was wrong is the interesting part. It assumed the branch
+potential is what carries cue identity across the gap. **It is not -- short-term
+plasticity is**, which is the largest single measured effect in the model
+(0.527 -> 0.864) and lives in synaptic efficacy rather than in any filter. So
+smearing the branch filter over 240 steps does not erase which cue occurred,
+because that information was never in the branch potential to begin with. A
+long filter costs a little precision and no memory.
+
+That is a testable consequence rather than a story: with STP disabled,
+`tb240-drain0` **should** collapse, because then the branch filter would be
+carrying the memory. Nothing here tests it.
+
+WHAT THIS CHANGES, AND WHAT IT DELIBERATELY DOES NOT
+------------------------------------------------------
+`tau_branch = 60` is worth +0.056 at p = 0.0004 over the shipped 15, from a
+forward-path constant nobody has ever tuned. That is comparable to salience-gated
+binding's +0.074 and larger than lateral inhibition's +0.028 -- both of which are
+mechanisms with sweeps behind them.
+
+**The default is not being changed, and the reason belongs on the record.**
+Every standing number in this project -- the 0.802 baseline, binding's +0.074,
+lateral's +0.028, the capacity curve, the operating-point results -- was measured
+at `tau_branch = 15`. Moving the default would invalidate all of them as a
+comparison set for no gain that could not be had by re-baselining deliberately.
+Rule 11 applies to a parameter change exactly as it does to a bug fix: the fix
+does not only correct the future.
+
+So this is recorded as **a known better setting that the defaults do not use**,
+and re-baselining at 60 is a decision to take on purpose, with the sweeps it
+would invalidate listed first.

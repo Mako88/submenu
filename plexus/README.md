@@ -361,15 +361,44 @@ That is larger than homeostatic settling's +0.197 and larger than every learning
 rule combined. It was found by accident, as the cost control for something else,
 and the prediction had it going the *other way*.
 
-**It is not yet a general result, and must not be quoted as one.** Every
-condition above runs at `drain_steps 200`, where the baseline is 0.620 against
-the 0.802 the tail-free configuration measures. So `tau_branch` may be
-*compensating for the drain tail* — 200 silent steps is a long time for a
-15-step filter to forget across, and a 120-step one forgets less — rather than
-improving the column generally. Reading +0.298 as a general improvement would
-repeat exactly the baseline-shift error of sweep 026. Sweep 034 sweeps
-`tau_branch` at `drain_steps 0` against the standing 0.802, and until it runs
-this is a result about a configuration.
+**Sweep 034 removed the tail and four fifths of it went away.** At
+`drain_steps 0`, against the standing 0.802:
+
+| `tau_branch` | decodability | vs 15 | |
+|---|---|---|---|
+| 15 (default) | 0.802 | — | equals `off` exactly, p = 1.0000 |
+| 30 | 0.852 | +0.050 | 17/20, p = 0.0002 |
+| **60** | **0.858** | **+0.056** | 18/20, p = 0.0004 |
+| 120 | 0.843 | +0.041 | 14/20, p = 0.0365 |
+| 240 | 0.822 | +0.020 | 13/20, p = 0.2351 — null |
+
+So of the +0.298, roughly **+0.056 is a real general improvement and +0.242 was
+compensation for the 200-step drain tail** — a 15-step filter forgets across 200
+silent steps and a 120-step one does not. Both link conditions reproduced sweep
+030 exactly (0.620 and 0.918, same +0.298 at 20/20), so this re-scopes that
+result rather than contradicting it.
+
+The curve also turns over: the optimum is interior at 60, declining through 120
+and 240, where under the tail it had been monotone increasing.
+
+**`tau_branch = 60` is a known better setting that the defaults do not use, and
+that is deliberate.** +0.056 at p = 0.0004 is comparable to salience-gated
+binding's +0.074 and larger than lateral inhibition's +0.028 — from a
+forward-path constant nobody ever tuned. But every standing number here was
+measured at 15, so moving the default would invalidate all of them as a
+comparison set. Re-baselining at 60 is a decision to take deliberately, with the
+sweeps it would invalidate listed first.
+
+One prediction was badly wrong and is worth the space. `tau_branch 240` was
+included *because* it was predicted to fail — cues are 100 steps apart and a
+240-step memory should not separate them — and it did not fail. The note had
+pre-committed to checking the filter directly if that happened, so it was
+checked: driving one impulse with recurrence silenced gives measured time
+constants of 15.0, 60.0 and 240.0 against configured 15, 60 and 240. The filter
+is exactly what it claims. What was wrong was the assumption that the branch
+potential carries cue identity — **short-term plasticity does**, and it lives in
+synaptic efficacy rather than in any filter, so smearing the filter costs
+precision and not memory.
 
 The three-factor rule's `tau_eligibility` is the mechanism the original claim
 was about, and it is worth −0.003 at p = 0.79 with no lag at all — so it cannot
