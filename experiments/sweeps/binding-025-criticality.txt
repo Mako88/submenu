@@ -136,4 +136,96 @@ episodes for the control, 300 probe episodes, 96 neurons, column lr 0.
 
 RESULT -- 20 seeds
 ------------------
-Pending.
+condition       m       m_excess    linear
+all           0.922      0.003      0.755
+on            0.924      0.003      0.816
+both          0.925      0.004      0.837
+no-knee       0.926      0.001      0.716
+
+  on      vs all   m_excess  (null)         linear +0.061  p = 0.0010
+                   m         +0.002  p = 0.0484
+  both    vs all   m_excess  +0.001  p = 0.2262
+                   linear    +0.082  p = 0.0001
+                   m         +0.003  p = 0.0144
+  no-knee vs all   m_excess  -0.002  p = 0.1296
+                   linear    -0.039  p = 0.0130
+                   m         +0.004  p = 0.0009
+  both    vs on    m_excess  +0.001  p = 0.1799
+                   linear    +0.021  p = 0.1653
+                   m         +0.001  p = 0.4055
+
+THE PREDICTION HOLDS, AND CRITICALITY IS NOT THE MECHANISM
+------------------------------------------------------------
+Both halves of the central claim are confirmed.
+
+`m_excess` stays under 0.03 in every live condition -- it spans **0.001 to
+0.004**, an order of magnitude inside the bound. And **every single m_excess
+comparison is null** (p = 0.13 to 0.23) while decodability moves across the same
+conditions by 0.121, from 0.716 to 0.837, with three of four comparisons
+significant.
+
+Decodability range 0.121. Branching-excess range 0.003. **Forty times smaller,
+and none of it significant.**
+
+THE CLEANEST REFUTATION IS `no-knee`
+--------------------------------------
+Disabling knee adaptation makes the column decode **reliably worse** -- -0.039,
+4/20 seeds, p = 0.0130 -- while its raw branching ratio goes **reliably up** --
++0.004, 15/20 seeds, p = 0.0009.
+
+Two significant effects in opposite directions on the same condition. If `m`
+tracked representation quality that could not happen. The condition that is
+closest to critical is the one that decodes worst.
+
+So: **the +0.197 that homeostatic settling buys is not a critical propagation
+regime.** Sweeps 022-023 stand unchanged, and their reading is now the one left
+holding: the emergence is real, and it is an operating point -- a firing rate
+and a knee per neuron -- which is a much simpler object than a dynamical regime,
+and which sweep 022 already showed can be handed over by copying two vectors.
+
+WHAT THE CONTROL SAVED
+-----------------------
+Raw `m` is 0.922 to 0.926 across every condition, and three of the four raw-`m`
+comparisons are significant. Without the control this sweep would have reported
+"the column sits at m = 0.92, close to critical, and every mechanism nudges it
+closer -- binding p = 0.048, binding+lateral p = 0.014" and that would have read
+as strong support for the hypothesis.
+
+It is an artefact. The control -- recurrence silenced, homeostasis re-settled to
+matched activity -- reads ~0.91 by itself, so **99% of that number is membrane
+leakiness**, and the significant differences in raw `m` are differences in
+single-neuron time constants and drive, not in propagation. Once the control is
+subtracted, nothing survives.
+
+The `no-knee` row is the proof that this is not over-caution: raw `m` says it is
+*more* critical and significantly so, and it decodes worse. Reading raw `m` as
+criticality would have produced a confident, significant, backwards conclusion.
+
+WHAT THIS DOES AND DOES NOT CLOSE
+-----------------------------------
+Closed: criticality, as measured by branching ratio, is not what homeostasis is
+producing and does not explain the +0.197.
+
+Not closed: the broader idea that structure here emerges from the system
+operating rather than from a designated learning mechanism. **That idea is in
+better shape than ever** -- it is just that the emergent thing is an operating
+point, not a critical regime. The evidence for it is unchanged and strong: the
+designed three-factor rule is worth -0.003, homeostasis is worth +0.197, and
+sweep 023 found that benefit is obtained better from structureless input than
+from the task, at p = 0.0032.
+
+Two formalisations remain, and both are cheaper than this one was:
+
+  structural   Does the *wiring* self-organise? `Column.add_inputs` already does
+               the mechanics of rewiring; nothing has asked whether rewiring on
+               a local rule beats the fixed random graph.
+  the simple   Is the operating point itself the emergent structure? Sweeps
+  answer       022-023 point straight at it and nobody has tried to characterise
+               what theta and knee encode beyond "not a firing rate" (023's
+               sparsity column rules that out).
+
+The second is the obvious next move. It is also the one this sweep makes more
+interesting rather than less: whatever the settling process finds, it is worth
++0.197, it survives having its input's timing destroyed, and it is *not*
+criticality and *not* rate calibration. Two explanations eliminated, and the
+quantity is two vectors long.

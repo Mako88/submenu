@@ -492,6 +492,39 @@ decodes 0.048 *worse*. **The firing-rate ordering and the decodability ordering
 do not match**, which rules out the confound in the strongest available form and
 leaves what θ and the knee actually carry unexplained.
 
+### It is not criticality either
+
+The obvious formalisation of "structure emerges from the system operating" is
+self-organised criticality: a branching process turns one event into `m` further
+events, and at `m = 1` a network holds and combines information over the longest
+timescales available to it. Sweep 025 measured it and it is **not** what
+homeostasis is producing.
+
+| condition | branching excess | decodability |
+|---|---|---|
+| everything adapting | 0.003 | 0.755 |
+| binding | 0.003 | 0.816 |
+| binding + lateral | 0.004 | 0.837 |
+| no knee adaptation | 0.001 | 0.716 |
+
+Decodability moves **0.121** across these conditions; the branching excess moves
+**0.003**, and every comparison of it is null. The sharpest case is `no-knee`,
+which decodes reliably *worse* (−0.039, p = 0.0130) while its raw branching
+ratio goes reliably *up* (+0.004, p = 0.0009) — the condition nearest critical
+decodes worst.
+
+**The control is what makes that legible, and it is the whole methodological
+point.** Raw `m` reads 0.922–0.926 and three of four raw comparisons are
+significant, which would have been written up as strong support. But silencing
+the recurrent synapses — with homeostasis re-settled so activity matches — still
+gives ~0.91. Roughly **99% of the apparent branching is membrane leakiness**, so
+raw `m` is a statement about `tau_soma`. Reading it as criticality would have
+produced a confident, significant, backwards conclusion.
+
+So the emergence is real and it is simpler than a dynamical regime: an operating
+point, two vectors long, reproducible by copying, better found from noise than
+from the task, and now known to be neither criticality nor rate calibration.
+
 Two things fell out that nobody was looking for. **Removing synaptic scaling
 costs nothing** — 0.780 against 0.755, sparsity identical — which is the first
 evidence about a live default (`scaling_lr = 2e-2`) that was chosen while the

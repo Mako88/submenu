@@ -65,25 +65,37 @@ Three benchmarks would each open something currently invisible:
   out *better* from structureless input than from the task, so it is not
   acquiring the task at all.
 
-  **Self-organised criticality** is the version of that idea with a number
-  attached: a branching process turns one event into `m` further events, and at
-  `m = 1` a network holds and combines information over the longest timescales
-  available to it. The measurement is local, so asking the question does not
-  break the design rule.
+  **Self-organised criticality** was the version of that idea with a number
+  attached, and sweep 025 **refutes it**. The branching excess over a control
+  with recurrence silenced spans 0.001 to 0.004 across every condition, and
+  every comparison of it is null — while decodability over the same conditions
+  moves 0.121, from 0.716 to 0.837. Forty times the range, none of it in `m`.
 
-  One seed says be careful. Raw `m` reads 0.9246 — but with recurrence silenced
-  and activity re-matched, the control reads **0.9145**, so ~99% of the apparent
-  branching is membrane leakiness. Reporting "this column sits near critical"
-  would have been a statement about `tau_soma`. Only the excess is evidence, and
-  it is +0.010. Sweep 025 predicts, against the hypothesis, that it does not
-  track decodability.
+  The cleanest refutation is `no-knee`: disabling knee adaptation decodes
+  **reliably worse** (−0.039, p = 0.0130) while its raw branching ratio goes
+  **reliably up** (+0.004, p = 0.0009). The condition closest to critical is
+  the one that decodes worst.
 
-  A negative there closes this measurement, not the idea. Two cheaper
-  formalisations stay open: whether the *wiring* self-organises (structural
-  rather than synaptic plasticity — `Column.add_inputs` already does the
-  mechanics), and whether the operating point from sweeps 022–023 simply *is*
-  the emergent structure, in which case the answer is that emergence is real and
-  much simpler than criticality.
+  The control is what makes that readable. Raw `m` sits at 0.922–0.926 and three
+  of four raw comparisons are significant — without the control this would have
+  been written up as strong support. It is membrane leakiness: the control reads
+  ~0.91 on its own.
+
+  **That closes the measurement, not the idea** — and the idea is in better
+  shape than before. The emergent thing is an operating point, not a dynamical
+  regime, which is a much simpler object: sweep 022 showed it can be handed over
+  by copying two per-neuron vectors, and sweep 023 that it is better found from
+  input with no task structure at all (+0.051, p = 0.0032).
+
+  Two formalisations remain, both cheaper than this one:
+
+  - **Structural.** Does the *wiring* self-organise? `Column.add_inputs` already
+    does the mechanics of rewiring; nothing has asked whether rewiring on a local
+    rule beats the fixed random graph.
+  - **The simple answer.** Characterise what θ and the knee actually encode. Two
+    explanations are now eliminated — it is not criticality (025) and not rate
+    calibration (023's sparsity column) — and the quantity is two vectors long.
+    This is the obvious next move.
 
 ## 2. What is lateral inhibition actually doing?
 
@@ -288,6 +300,11 @@ needs to be argued on grounds other than cost.
   matrix that produced it — GitHub path filters cannot distinguish a file being
   added from one being edited, so the trigger has to live where results are
   never written. Cost ~11 minutes of CI per write-up before it was noticed.
+- **Arm the wake-up in the same action that launches the sweep.** Sweep 025
+  finished and sat unrecorded because the commit that triggered it did not also
+  schedule a check-in — the scheduler was fine, every trigger in the account
+  fired on time. The failure mode is silent: a finished run looks identical to a
+  running one until someone asks. Launching and watching are one step, not two.
 - **`experiments/mutation.py` has caught its own staleness four times.** When a
   refactor moves a line a mutation targets, it reports "source moved" and
   fails rather than going quietly green. Keep that property in any rewrite.
