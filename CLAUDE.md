@@ -180,6 +180,22 @@ abandoned because it "did not help" may have been tested through a broken
 mechanism. Discarding a good idea on an invalid measurement is the most
 expensive error available here.
 
+**Then fix the class, not the instance.** Before closing a bug, ask what *kind*
+of mistake it is and enumerate the other places that kind could live. Write the
+check over the enumeration rather than over the one case, so the next instance
+fails the suite instead of waiting to be noticed.
+
+> *Calibration.* An EMA reporting its own seed as a measurement was found three
+> times before anyone swept for it. `elig_rms` ran the effective learning rate
+> ~5× high for thousands of episodes; the readout standardised with a variance
+> that had not converged; then `rate` and `engagement` did it again in the
+> reporting path, where they are seeded at *exactly their homeostatic targets*
+> and so read "perfectly on target" before a single sample — 0.0300 for a column
+> firing at 0.0022. The first two were each fixed as a one-off. What ends the
+> class is a check that enumerates every decaying accumulator and requires each
+> to carry a sample counter or be named as controller state, so a fourth cannot
+> be added quietly.
+
 **12. Put the reasoning where the reader will be standing.** Someone about to
 change a threshold reads the test that guards it, not the sweep note. To keep
 one rationale from drifting across four files:

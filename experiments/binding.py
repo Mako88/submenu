@@ -50,6 +50,22 @@ def main() -> None:
     ap.add_argument("--collect", type=int, default=500)
     ap.add_argument("--neurons", type=int, default=96)
     ap.add_argument("--seed", type=int, default=0)
+    # Sweep 026. Binding reads the modulator only for its *presence*, and scores
+    # `act_fast` -- a 50ms window on the neuron's own activity -- at the moment it
+    # arrives. A late modulator therefore scores a window that has already
+    # decayed, which makes this mechanism latency-sensitive by construction and
+    # the right vehicle for the architecture's headline claim.
+    ap.add_argument("--modulator-lag", type=int, default=0)
+    # The window binding scores when the modulator lands. If latency tolerance
+    # is set by this constant rather than by the architecture, raising it should
+    # buy tolerance directly -- which is the condition that makes sweep 026
+    # actionable rather than merely descriptive.
+    ap.add_argument("--tau-act-fast", type=float, default=ColumnConfig.tau_act_fast)
+    # Pinned, never left to track the lag. Sweep 013 lost a whole run to that:
+    # the silent drain tail scaled with the lag, so a *frozen* column shifted
+    # -0.062 (p = 0.0011) between lag settings and the comparison measured tail
+    # length rather than latency.
+    ap.add_argument("--drain-steps", type=int, default=200)
     ap.add_argument("--report", action="store_true")
     args = ap.parse_args()
 
@@ -76,7 +92,10 @@ def main() -> None:
             lateral_lr=args.lateral_lr,
             hebb_lr=args.hebb_lr,
             bind_scale=args.bind_scale,
+            tau_act_fast=args.tau_act_fast,
         ),
+        modulator_lag=args.modulator_lag,
+        drain_steps=args.drain_steps,
         seed=args.seed,
     )
     rng = np.random.default_rng(1000 + args.seed)
@@ -101,6 +120,8 @@ def main() -> None:
 
     row = dict(
         tag=args.tag, seed=args.seed, episodes=args.episodes, neurons=args.neurons,
+        modulator_lag=args.modulator_lag, drain_steps=args.drain_steps,
+        tau_act_fast=args.tau_act_fast,
         linear=logistic_score(logistic(Xtr, ytr), Xte, yte),
         mlp=mlp(Xtr, ytr, Xte, yte),
         corr=float(offdiag.mean()),

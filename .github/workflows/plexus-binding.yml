@@ -76,6 +76,28 @@ jobs:
           python experiments/binding.py --tag lateral     --hebbian 0 --lateral 1 $common
           python experiments/binding.py --tag lateral+on  --hebbian 1 --lateral 1 $common
 
+          # Sweep 026: the architecture's headline claim, on a mechanism that
+          # works. AUDIT asked for the three-factor rule under lag, but that rule
+          # is worth -0.003 at lag 0, so measuring whether a null degrades tests
+          # nothing. Binding pays +0.074 AND reads the modulator's arrival time
+          # through `act_fast` (tau 50ms), so it is latency-sensitive by
+          # construction.
+          #
+          # drain-steps pinned at 200 everywhere, never tracking the lag: sweep
+          # 013 lost a run because the silent tail scaled with the lag and a
+          # frozen column shifted -0.062 (p = 0.0011) between settings.
+          # off-lag150 against off is the check that the fix holds.
+          lag="--hebbian 1 --drain-steps 200 $common"
+          python experiments/binding.py --tag off-lag150 --hebbian 0 \
+            --modulator-lag 150 --drain-steps 200 $common
+          python experiments/binding.py --tag on-lag25  --modulator-lag 25  $lag
+          python experiments/binding.py --tag on-lag50  --modulator-lag 50  $lag
+          python experiments/binding.py --tag on-lag150 --modulator-lag 150 $lag
+          # Is latency tolerance a property or a parameter? If raising the window
+          # restores the gain at intercontinental lag, it is a parameter.
+          python experiments/binding.py --tag on-lag150-slow --modulator-lag 150 \
+            --tau-act-fast 250 $lag
+
           # Sweep 016: the same two conditions scored end to end, by the online
           # readout, rather than by an offline decoder. Everything measured so
           # far is representation quality, and sweep 009 is the standing warning
@@ -130,7 +152,7 @@ jobs:
       - name: Fail loudly if a condition produced nothing
         if: steps.gate.outputs.run == 'yes'
         run: |
-          for tag in off on; do
+          for tag in off on off-lag150 on-lag25 on-lag50 on-lag150 on-lag150-slow; do
             grep -q "\"tag\": \"$tag\"" experiments/binding_results.jsonl \
               || { echo "no rows for condition '$tag'"; exit 1; }
           done
@@ -163,9 +185,11 @@ jobs:
           cat collected/*/binding_results.jsonl > experiments/binding_results.jsonl
           cat collected/*/e2e_results.jsonl > experiments/e2e_results.jsonl
           python experiments/binding.py --report | tee summary.txt
-          for pair in "on off" "lateral off" "lateral+on on"; do
+          for pair in "on off" "lateral off" "lateral+on on" \
+                      "off-lag150 off" "on-lag25 off" "on-lag50 off" \
+                      "on-lag150 off" "on-lag150-slow off" "on-lag150-slow on-lag150"; do
             set -- $pair
-            for metric in linear corr eff_rank; do
+            for metric in linear; do
               echo "" | tee -a summary.txt
               python experiments/paired_test.py --file experiments/binding_results.jsonl \
                 --metric $metric --a "$1" --b "$2" | tee -a summary.txt

@@ -1,0 +1,131 @@
+Sweep 026 -- the architecture's headline claim, on a mechanism that works
+=========================================================================
+
+QUESTION
+--------
+AUDIT.md has carried this as the highest-value pending item since it was
+written, and the README says it plainly:
+
+  "The other half -- that the eligibility traces absorb a late *modulator*, so
+   credit assignment survives a wide-area network -- is the harder claim and the
+   one the design actually rests on, and it has not been run at twenty seeds."
+
+Conduction delay between columns is measured and free (75x costs -0.048, i.e.
+nothing). What has never been measured is whether *learning* survives a late
+modulator. That is the half the distribution thesis depends on.
+
+WHY THE EXPERIMENT AUDIT ASKED FOR WOULD NOT ANSWER IT
+--------------------------------------------------------
+AUDIT proposes running `plexus-experiment.yml` at `modulator_lag=200`, which
+tests the three-factor rule under lag. **That rule is worth -0.003 at p = 0.79
+with no lag at all.**
+
+Measuring whether a null degrades is not a test of latency tolerance. Whatever
+comes back -- null at lag 200, null at lag 0 -- the honest reading is "there was
+nothing there to lose", and the sweep would produce a reassuring number that
+means nothing. It is the same shape as sweep 022's `preset-frozen`: a condition
+whose outcome is guaranteed by how it is built.
+
+So the item is not run as specified. It is replaced.
+
+THE RIGHT VEHICLE
+------------------
+Salience-gated Hebbian binding, because it satisfies both requirements the
+three-factor rule fails:
+
+  it pays        +0.074 linear decodability, 18/20 seeds, p = 0.0000 (sweep 020)
+  it is          it reads the modulator only for its *presence*, and scores
+  latency-       `act_fast` -- a `tau_act_fast = 50ms` window on the neuron's own
+  sensitive      activity -- at the instant the modulator lands. A late modulator
+                 scores a window that has already decayed.
+
+That second property is what makes this a real test rather than a hopeful one.
+Binding *should* degrade with lag, on a timescale the code states outright, and
+the question is whether it does and how fast.
+
+CONDITIONS  (20 seeds, 300 episodes, 96 neurons, column lr 0, drain pinned at 200)
+------------------------------------------------------------------------------------
+  off-lag0      no binding, lag 0        the standing baseline
+  off-lag150    no binding, lag 150      **the sanity condition**
+  on-lag0       binding, lag 0           the standing +0.074
+  on-lag25      binding, lag 25          half a time constant
+  on-lag50      binding, lag 50          one time constant
+  on-lag150     binding, lag 150         three time constants; intercontinental
+  on-lag150-slow  binding, lag 150, tau_act_fast 250
+
+`drain_steps` is **pinned at 200 for every condition**, never left to track the
+lag. Sweep 013 lost an entire run to that: the silent tail scaled with the lag,
+so a *frozen* column shifted -0.062 at p = 0.0011 between lag settings and the
+comparison was measuring tail length. `off-lag150` against `off-lag0` is the
+check that the fix holds -- if those two differ, this sweep is void and says so
+rather than being interpreted.
+
+PREDICTION (recorded before the run)
+--------------------------------------
+The mechanism gives an arithmetic prediction rather than a guess. `act_fast`
+decays as `exp(-lag / tau_act_fast)` with tau = 50, so the fraction of the
+activity window still present when the modulator lands is:
+
+  lag 0     1.00      lag 25    0.61      lag 50    0.37      lag 150   0.05
+
+If the gain is proportional to that fraction, scaling the established +0.074:
+
+  off-lag0        0.802   (established)
+  off-lag150      0.802   MUST match off-lag0 within 0.01, or the run is void
+  on-lag0         0.876   (established, +0.074)
+  on-lag25        0.845 to 0.860     gain +0.043 to +0.058
+  on-lag50        0.825 to 0.845     gain +0.023 to +0.043
+  on-lag150       0.802 to 0.815     gain +0.000 to +0.013, probably null
+  on-lag150-slow  0.840 to 0.865     gain restored to +0.038 to +0.063
+
+**The central claim: binding's gain decays with modulator lag on a scale set by
+`tau_act_fast`, and is null or nearly so at lag 150.** So latency tolerance for
+the mechanism that works is *not* free -- it is bought by one time constant.
+
+**And the second claim is the one that matters: `on-lag150-slow` restores most of
+it.** If raising `tau_act_fast` from 50 to 250 recovers the gain at
+intercontinental lag, then latency tolerance here is a **parameter, not a
+property** -- something the model can be configured for rather than something it
+either has or lacks.
+
+WHAT EACH OUTCOME MEANS, NAMED IN ADVANCE
+-------------------------------------------
+  decay + recovery    Latency tolerance is a tunable time constant. The
+                      architecture's claim survives in a *narrower and more
+                      useful* form than the README states, and the README gets
+                      rewritten to say which parameter buys it and what it
+                      costs in credit precision.
+
+  decay, no recovery  Something other than the window is broken by lag. Then
+                      binding is genuinely latency-bound and the distribution
+                      thesis loses its second half for the one mechanism that
+                      works. That is the outcome that would most change the
+                      project and it is the one to be most careful not to
+                      explain away.
+
+  no decay at all     Would mean `act_fast` is not what gates binding, since
+                      three time constants of decay changed nothing. That
+                      contradicts sweep 020's connection test
+                      (`test_binding_scales_with_how_active_the_neuron_was`) and
+                      the right response is to distrust this sweep, not to
+                      celebrate.
+
+The third is worth stating because it is the outcome that would read as good
+news, and it is the one that would mean the instrument is broken.
+
+WHAT THIS DOES NOT TEST
+------------------------
+The eligibility trace. `tau_eligibility` is the mechanism the README's claim is
+actually *about*, and it belongs to the three-factor rule, which does not work.
+So this sweep tests latency tolerance for the mechanism this project has, not
+for the one it was designed around. The README must say that rather than letting
+a result about binding stand in for a claim about credit assignment.
+
+SETTINGS
+--------
+20 seeds, 300 episodes, 500 collection episodes, 96 neurons, column lr 0,
+drain_steps 200 everywhere, `tau_act_fast` 50 except where stated.
+
+RESULT -- 20 paired seeds
+-------------------------
+Pending.
