@@ -1,5 +1,75 @@
 # What is outstanding
 
+## DIRECTION — read this before picking anything up
+
+**The project is in a measurement rut and the pivot below is the agreed way
+out.** Written down because it was agreed in conversation and would otherwise be
+lost, and because the drift it corrects is structural rather than accidental.
+
+### The drift, named so it can be noticed again
+
+Audited over one autonomous day: **53 commits, of which the most-changed files
+were `TODO.md`, the test suite, `AUDIT.md`, `mutation.py` and the workflows.**
+`column.py` changed ten times and added exactly **one** new mechanism
+(`bind_tau_pre`), which was then refuted. Three sweeps were resolved and five
+were queued.
+
+The cause is structural and worth stating plainly: **these standards reward
+auditing.** Every audit yields a satisfying, recordable, provably-correct result
+— a refuted claim, a vacuous test caught, a dead quantity removed. A new
+learning mechanism most likely yields a null. There is a gradient here, it
+points away from the goal, and following it for a day felt like productive work
+the whole time.
+
+None of that audit work was wasted — it stopped a wrong headline claim entering
+the record, found a headline mechanism inert, and caught a fourth vacuous test.
+But it is **maintenance, not progress toward learning**, and the project's stated
+goal is a model that learns.
+
+### The rules that keep this from recurring
+
+1. **No more than two sweeps pending at once.** The queue is where creep
+   accumulates. If a third is worth running, something else gets dropped.
+2. **Retire conditions in the same commit that adds them** (already a
+   housekeeping rule; it was violated to the tune of 48 conditions per seed).
+3. **Alternate.** After a block of measurement work, the next block is a
+   mechanism — even if the mechanism is likely to fail. A null from a new
+   mechanism is worth more to this project than a fifth confirmed audit.
+4. **When in doubt, ask what would make the thing learn**, not what would make
+   the record more accurate.
+
+### The plan, in order
+
+1. Collect sweeps 035 / 036 / 037 (in flight).
+2. **Defer 032 and 033.** They are good questions about a substrate that already
+   works; neither moves the learning problem.
+3. **Fix the benchmark first — this is the blocker for everything else.** See
+   item 11.
+4. Re-read e-prop and SORN properly and write down exactly what differs from
+   what is implemented here. Do not build from memory of them.
+5. Build **one** mechanism, off by default, with a connection test, a mutation
+   and a prediction written before it runs. Current pick: **dendritic error**,
+   because the branch structure it needs already exists.
+
+### Prior work to pull from
+
+Recorded from memory and **not yet re-read** — every one of these needs checking
+before anything is built on it, and no number from them should be quoted until
+it has been.
+
+| what | who | why it matters here |
+|---|---|---|
+| **SORN** — self-organising recurrent network | Lazar, Pipa & Triesch (2009) | **Closest existing system to what plexus already is**: a reservoir combining spike-timing plasticity, intrinsic plasticity and synaptic normalisation, reported to beat a static reservoir. Our homeostasis-dominates result may be a rediscovery of their intrinsic-plasticity finding. Read for *what makes their plastic part pay when ours does not*. |
+| **e-prop** | Bellec et al. (2020), Nat. Comms. | Three-factor learning with eligibility traces in spiking RNNs, **reported working**. Ours is worth −0.003. **That discrepancy is the single most diagnostic thing available** — their traces come from an RTRL factorisation rather than a stack of filters, and `gradcheck.py` already measures our gradient correlation at only +0.207. Chase this first. |
+| Dendritic error / two-compartment | Urbanczik & Senn (2014); Sacramento, Costa, Bengio & Senn (2018) | The apical dendrite computes a *local* error. Fits this architecture better than almost any project, because branches are already first-class objects. **Current pick to build.** |
+| Burst-dependent plasticity | Payeur, Guerguiev, Zenke, Richards & Naud (2021) | Multiplexes credit and activity down one channel using bursts. Fits the valued-event primitive. |
+| Feedback alignment / DFA | Lillicrap et al. (2016); Nøkland (2016) | **We already ship a `dfa` mode** and have never compared it against the default at 20 seeds. |
+| Forward-Forward | Hinton (2022) | No backward pass at all — two forward passes over positive and negative data. Maximally local. |
+| Predictive coding | Rao & Ballard (1999); Whittington & Bogacz (2017) | Local error from prediction mismatch. **Would dissolve the modulator-latency problem entirely**, since there is no broadcast signal to be late. |
+| Reservoir computing | Maass (LSM); Jaeger (ESN) | The 0.802-from-a-random-column result *is* a reservoir result and should be described as one. |
+| Poirazi & Mel (2003) | | "Pyramidal neuron as two-layer neural network" — the branch-nonlinearity idea is theirs, not ours. |
+| Polychronization | Izhikevich (2006) | Delays as a computational resource. Distinct goal from ours (coding, not distribution). |
+
 **Scan this table and stop, if that is all you have time for.** Every row is a
 question in plain language, with where it stands. Detail is below.
 
@@ -14,6 +84,8 @@ question in plain language, with where it stands. Detail is below.
 | 7 | Does it actually work spread across machines? | Still never tried on real machines. But the property it depends on is now **measured**: delivery jitter below `delay_min` leaves a distributed run bit-identical, and above it does not |
 | 8 | Would a single GPU just beat this? | **The premise was wrong.** Not bandwidth-bound — 17 % of DRAM peak at 96 neurons, working set fits in L2. It is overhead-bound, so the comparison cannot be made until the code is near *some* limit |
 | 9 | Which claims in the record were never measured? | New, and it caught **all four** of DESIGN.md's headline departures. Two sweeps queued (036, 037), the routed modulator and the bandwidth premise both **refuted** |
+| 11 | **Is the benchmark why nothing learns?** | **NEW, and the blocker for everything.** A frozen random column already scores 0.802 on delayed XOR. There is almost nothing left for a learning rule to win |
+| 12 | What here is actually novel, and would we start the same way again? | **NEW.** Most components are prior art. Honest answer written below |
 | 10 | Should `tau_branch` be 60 rather than 15? | **Known better setting, deliberately not adopted.** +0.056 at p = 0.0004 (sweep 034). Changing it invalidates every standing number as a comparison set, so re-baselining is a decision to take on purpose |
 
 Ordered by what would change the most if it turned out differently, not by
@@ -673,6 +745,134 @@ rather than a monotone improvement — and it may move once the plateau (sweep
 037) and the delay floor (sweep 035) are measured, since all three set
 timescales in the same forward path. Adopting 60 before those land would risk
 re-baselining twice.
+
+## 11. Is the benchmark why nothing learns?
+
+*In plain terms: we keep testing learning rules on a puzzle the network can
+mostly already do before it learns anything. A random, untrained column scores
+0.802 out of 1.0 on it. So even a perfect learning rule could only ever show a
+small improvement, and every mechanism we have tried has been competing for the
+last fifth of the problem. This may be the reason eleven sweeps came back null.*
+
+**This is the blocker, and it should be fixed before another mechanism is
+built.** Building a learning rule and testing it here is close to unfalsifiable:
+a null tells you nothing, because there was little to win.
+
+### What the numbers already say
+
+- A frozen random column: **0.802 linear**, and the MLP decoder on the same
+  states reads **0.987**. So the label is almost fully present and *almost fully
+  linearly accessible already*.
+- Sweep 002, at 24 neurons: **linear 0.689, MLP 0.881** — a **+0.19 gap**. The
+  information is present and *not* linearly accessible. **That is precisely the
+  regime where a learning rule has a job**, and it was noted and then not
+  pursued.
+- 3-cue parity at 96 neurons: both decoders at chance — a memory wall, so *too*
+  hard. No headroom in either direction.
+
+### The principle this gives us
+
+**The right benchmark maximises the linear-to-MLP gap.** That gap is a direct
+measurement of "the information is there and a linear readout cannot get at it",
+which is the only thing a representation-learning rule can fix. A task where the
+gap is 0.02 cannot show a mechanism working; one where both decoders sit at
+chance cannot either.
+
+### What to do
+
+Build `experiments/headroom.py`: sweep task difficulty (cue count, spacing,
+noise, distractors) and column size, and report the **linear→MLP gap** for a
+frozen column in each configuration. Pick the configuration with the largest
+gap that is not at chance, and make it the standard benchmark.
+
+Then — and this is the part that makes it worth doing — **re-run the mechanisms
+that are already known to work on the new benchmark.** Binding's +0.074 and
+lateral's +0.028 were measured where there was 0.198 of headroom. If they scale
+with available headroom they are much stronger than they look; if they do not,
+that is a different and more troubling result. Either way it is worth more than
+another mechanism measured in the same saturated regime.
+
+**Prediction, recorded now:** binding's gain grows on a higher-headroom task,
+because sweep 028 showed the gain is roughly flat in column size but *shrank to
++0.020 at 384 neurons where the baseline hit 0.973* — which is the same
+ceiling effect appearing from the other direction. That is a real, already-
+measured hint that these mechanisms are headroom-limited rather than
+weak.
+
+## 12. What is novel here, and would we start the same way again?
+
+*In plain terms: an honest audit of which parts of this are new. Most are not.
+Written down because it is much easier to answer this now than after another
+month of building on top.*
+
+### Almost every individual component is prior art
+
+| component here | prior work |
+|---|---|
+| random recurrent column + trained linear readout | reservoir computing (Maass LSM, Jaeger ESN) |
+| homeostasis + Hebbian + synaptic scaling in a reservoir | **SORN** (Lazar, Pipa & Triesch 2009) |
+| three-factor rule with eligibility traces | e-prop (Bellec et al. 2020) and a large literature |
+| RLS/FORCE readout | Sussillo & Abbott (2009), used directly |
+| short-term plasticity | Tsodyks–Markram, used directly |
+| dendritic branch nonlinearity | Poirazi & Mel (2003) |
+| conduction delays as a computational resource | polychronization (Izhikevich 2006) |
+| intrinsic/threshold homeostasis | Turrigiano; Triesch (2005) |
+| random-projection feedback | feedback alignment (Lillicrap 2016), DFA (Nøkland 2016) |
+
+**The scientific novelty of the components is close to zero, and the write-up
+should say so.**
+
+### What may actually be new
+
+1. **The locality constraint as a hard design rule, with delays as first-class
+   parameters, aimed at internet-scale distribution.** Polychronization uses
+   delays for coding; delay-based reservoir computing uses one delay loop as a
+   substitute for spatial extent. Neither is trying to spread a network over
+   unreliable machines. **This framing is the distinctive thing.**
+2. **Emission-time indexing making jitter provably free below a stated bound.**
+   Measured, not argued: a distributed run is bit-identical under arbitrary
+   reordering and lateness below `delay_min`. This is a systems contribution
+   rather than an ML one, and it is the most defensible novel claim here.
+3. **θ = 5.927·τ^−0.748** — the homeostatic fixed point being a closed-form
+   function of a static per-neuron property. Possibly new, possibly a known
+   consequence of this particular homeostatic rule. **Check before claiming.**
+4. **Valued events instead of spikes** — uncommon, because SNN work keeps binary
+   spikes for hardware reasons that do not apply to us. But **our own audit
+   found the graded component using 0.32% of its span**, with the variation
+   coming from short-term plasticity instead. So the one genuinely unusual
+   primitive is measured to be nearly inert. Keep it for cheapness; drop the
+   claim.
+
+### Would we start the same way again? Probably not, and here is where
+
+The project started from "biology, but better" — pick biologically-motivated
+mechanisms, then look for a learning rule that fits them. **Inverted, that is
+the wrong order: credit assignment is the hard part and the binding constraint,
+so it should have been chosen first and the substrate chosen to serve it.**
+
+Four early decisions worth revisiting, in order of how much they cost:
+
+1. **The task.** See item 11. Choosing a benchmark that defeats trivial
+   baselines was right; not noticing that it also leaves a learning rule almost
+   nothing to do was the single most limiting decision made.
+2. **A supervised broadcast error as the credit signal.** It is the least local,
+   least biologically-motivated and least scalable part of the design — and it
+   is measured to be inert in every working configuration. **A self-supervised
+   or predictive objective gives every neuron a local error for free, needs no
+   broadcast at all, and dissolves the modulator-latency problem rather than
+   working around it.** If one thing were changed, it should be this.
+3. **The readout.** RLS pools across the whole population — the one admitted
+   locality exception — and the project's best number (0.842) depends on it.
+   That is a load-bearing exception to the rule the architecture exists to obey.
+4. **Valued events.** Keep, but stop describing as a departure that buys
+   anything until something measures it doing so.
+
+**Where I would start today, given the same goals:** a predictive/self-supervised
+local objective over a sparse event substrate with first-class delays, on a task
+a random reservoir cannot already do. That reframes the north star from "biology
+but better" to **"what is the largest class of problems learnable using only
+local information and bounded asynchrony?"** — which is a question the locality
+work already done actually serves.
 
 ## Housekeeping
 
