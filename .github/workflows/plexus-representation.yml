@@ -8,9 +8,15 @@ name: plexus representation
 
 on:
   workflow_dispatch:
+  # A dedicated sentinel, so that recording a result does not re-run the matrix
+  # that produced it. See plexus-binding.yml for the full story.
+  #
+  # The file does not exist yet, deliberately: creating it would itself trigger
+  # a run, and there is no question waiting on this workflow right now. Create
+  # experiments/run-representation.txt when there is one.
   push:
     paths:
-      - 'experiments/sweeps/**rep**'
+      - 'experiments/run-representation.txt'
 
 env:
   NEURONS: '24'

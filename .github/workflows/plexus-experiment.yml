@@ -52,15 +52,14 @@ on:
   # until this is merged the sweep is triggered by touching a sentinel file.
   # Editing experiments/run-experiment.txt (which also records the settings)
   # starts a run from whatever branch the change lands on.
-  # Only NEW numbered sweep files start a run. The filter used to be
-  # 'experiments/sweeps/**', which meant writing a result back into a sweep
-  # note re-ran the entire 20-seed matrix that produced it -- four redundant
-  # runs in one afternoon. AUDIT.md and the engram files are excluded for the
-  # same reason.
+  # A dedicated sentinel. An earlier attempt narrowed this to numbered sweep
+  # files, which does not work: path filters cannot tell a file being added
+  # from one being edited, so writing a *result* into a sweep note re-ran the
+  # matrix that produced it. The trigger has to live somewhere results are
+  # never written.
   push:
     paths:
-      - 'experiments/sweeps/0[0-9][0-9]-*.txt'
-      - '!experiments/sweeps/AUDIT.md'
+      - 'experiments/run-experiment.txt'
 
 # Push-triggered runs have no inputs, so every parameter falls back to a default.
 env:
