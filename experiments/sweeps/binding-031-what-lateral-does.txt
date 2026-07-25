@@ -1,0 +1,159 @@
+Sweep 031 -- what is lateral inhibition actually doing?
+========================================================
+
+IN PLAIN TERMS
+--------------
+Two mechanisms in this project help. One of them, lateral inhibition, was added
+for a reason that turned out to be wrong.
+
+The idea was that making neurons which fire together inhibit each other would
+spread information out, so different neurons end up carrying different things.
+Sweep 020 measured that directly and it does not happen. The spreading is not
+there.
+
+But the mechanism still helps, by a decent margin, and nobody knows why. That is
+an uncomfortable thing to have in the code -- a rule that works for unknown
+reasons cannot be improved on purpose, cannot be predicted to survive a change
+of task, and cannot be explained to anyone. The README currently says outright
+that what it does is unmeasured and that no explanation should be written into
+the code until one exists.
+
+This is the attempt to produce one. A yes means we know which property of the
+representation to aim at, and can ask whether other mechanisms hit it more
+cheaply. A no narrows the field by eliminating the most plausible remaining
+explanation, and the question becomes what is left.
+
+QUESTION
+--------
+TODO item 2, and the README's standing admission. Sweep 020, 20 paired seeds on
+a frozen column:
+
+                    off     lateral      verdict
+    linear         0.802     0.830      +0.028, p = 0.0297
+    correlation    0.178     0.175      unchanged
+    eff_rank      17.404    17.139      unchanged
+    sparsity       0.031     0.031      unchanged
+
+**A mechanism that makes the state measurably easier to read while moving
+neither its dimensionality, nor its redundancy, nor its firing rate.** Those
+three were the only structural quantities anyone had measured, and all three say
+nothing happened.
+
+THE HYPOTHESIS, AND WHY IT IS THE ONE LEFT
+--------------------------------------------
+If the representation's *shape* is unchanged but its *readability* improves, the
+thing that changed is where the label sits inside that shape.
+
+A linear decoder fitted to finite data resolves a representation's leading
+directions well and its trailing directions badly -- that is the whole content
+of sweep 028's `48-thin` control, and of the 0.802-vs-0.853 gap between 500 and
+1200 collection episodes. So a mechanism that *rotates the label into the
+leading directions* would raise linear decodability by a lot while leaving the
+eigenvalue spectrum, the mean off-diagonal correlation and the firing rate all
+exactly where they were.
+
+That is the prediction: **lateral inhibition improves alignment between the
+class-difference direction and the state's leading directions, without improving
+class separability itself.**
+
+It also makes a sharp negative prediction, which is what makes it worth running:
+if alignment is the mechanism, then **Fisher separability should not improve** —
+the label is no easier to separate in principle, only easier to *find*. If
+separability rises instead, the representation genuinely got better and
+alignment is not the story.
+
+HONESTY ABOUT ORDERING
+------------------------
+The hypothesis and the three metrics were written into `experiments/geometry.py`
+before it was run for the first time, and the ground-truth test
+(`test_alignment_probe_recovers_a_known_label_direction`) was written and passing
+before any column was measured. This note was written after the measurement runs
+had been *launched* but before any number from them was read.
+
+That is weaker than the usual standard, where the note precedes the run
+outright, and it is recorded rather than glossed. The prediction below is not
+retrofitted -- it is the docstring's, transcribed -- but the ordering is not
+what rule 4 asks for and the next one should not copy it.
+
+WHAT IS MEASURED  (experiments/geometry.py)
+---------------------------------------------
+None of these fits a decoder, deliberately. `binding.py` already reports a
+decoder score, and sweep 009 established a decoder can hide a column-level
+difference entirely. Everything here comes from class-conditional means and
+covariances directly.
+
+  align5 / align10   Fraction of the label direction `mu_1 - mu_0` captured by
+                     the top 5 / top 10 eigenvectors of the state's correlation
+                     matrix. **The hypothesis.**
+
+  align_rand         The chance level, `sqrt(k/n)` = 0.323 at n = 96, k = 10.
+                     Reported alongside rather than subtracted, because an
+                     alignment of 0.4 sounds meaningful and is not.
+
+  fisher             `|mu_1 - mu_0|^2 / tr(within-class covariance)`.
+                     Separability with the decoder taken out of it. **The
+                     negative prediction.**
+
+  margin             Separation along the Fisher discriminant `S_w^-1 delta`,
+                     ridge 1e-3.
+
+Correlation rather than covariance throughout, because `probe.logistic`
+standardises its inputs and the metric exists to explain what that decoder sees.
+
+CONDITIONS  (frozen column, lr 0, 300 episodes, 500 collection, 96 neurons)
+-----------------------------------------------------------------------------
+  off           neither mechanism
+  lateral       lateral inhibition only     -- the condition under test
+  on            binding only                -- the comparison
+  lateral+on    both                        -- does it stack the same way?
+
+`on` is here because binding's effect on this metric is *not* predicted to be
+alignment: sweep 020 measured binding halving effective rank and raising
+correlation, so binding changes the shape and lateral does not. If both come
+back looking identical on these metrics, the metrics are not resolving the
+difference and the sweep says so rather than being interpreted.
+
+PREDICTION (transcribed from the probe's docstring)
+------------------------------------------------------
+  align5   lateral > off by a clear margin, both above the 0.323 chance level
+  fisher   lateral ~= off, i.e. **no improvement in separability**
+  on       align rises too, but accompanied by a large eff_rank drop, which is
+           a different mechanism reaching a similar place
+
+WHAT EACH OUTCOME MEANS
+-------------------------
+  alignment up,        The explanation. Lateral inhibition is a *decoder-facing*
+  fisher flat          mechanism: it does not make the column better, it makes
+                       the column's existing information easier to reach with a
+                       linear readout on finite data. That predicts the gain
+                       shrinks as the decoder gets more data -- directly
+                       testable against sweep 028's collection-budget effect,
+                       and the first falsifiable consequence this mechanism has
+                       ever had.
+
+  alignment flat,      The representation genuinely improved and the improvement
+  fisher up            is invisible to correlation, rank and sparsity alike.
+                       Then the question is what the extra separation is made
+                       of, and the metrics here are not enough.
+
+  both up              Two things happening at once; needs the collection-budget
+                       test to separate them.
+
+  both flat            The most likely outcome and the least satisfying: +0.028
+                       comes from something none of these five quantities sees.
+                       The direction is then genuinely open, and the honest
+                       response is to say so in the README rather than to keep
+                       proposing explanations.
+
+The last one is the one to be careful not to explain away. Four structural
+metrics have already come back unchanged for this mechanism; a fifth and sixth
+doing the same is a real possibility and not a failure of the sweep.
+
+SETTINGS
+--------
+6 seeds locally for the first look, then the 20-seed matrix if anything moves.
+Frozen column throughout (`lr = 0`), so no learning-path result can reach it.
+
+RESULT
+------
+Pending.

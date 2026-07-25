@@ -1156,6 +1156,55 @@ def test_lateral_inhibition_step_is_scaled_to_the_weights():
     assert moved(ColumnConfig.lateral_lr * 4) > 2.0 * rel
 
 
+def test_alignment_probe_recovers_a_known_label_direction():
+    """Ground truth, not a connection test — the alignment metric has an exact answer.
+
+    `experiments/geometry.py` asks where the label sits relative to the state's
+    own leading directions, to explain how lateral inhibition raises linear
+    decodability by +0.028 while leaving correlation, effective rank and
+    sparsity all unchanged (sweep 020). A metric answering that question is only
+    worth anything if it returns the right number when the answer is known, so
+    this builds data whose label direction *is* a chosen eigenvector.
+
+    What breaks if this stops holding: the probe's first ground-truth check put
+    the label on a high-**variance** feature axis and got 0.232 against a chance
+    level of 0.323 — below chance for a label sitting exactly where it had been
+    placed. `geometry()` standardises its input, so its eigenbasis is of the
+    *correlation* matrix and per-feature variance is gone before it looks. That
+    is the right choice, because `probe.logistic` standardises too and the
+    metric exists to explain what that decoder sees — but it makes "high
+    variance" and "leading direction" different things, and a test written in
+    the wrong one of the two reads as a broken probe.
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "experiments"))
+    from geometry import geometry  # noqa: E402
+
+    rng = np.random.default_rng(0)
+    n, m = 96, 6000
+    basis, _ = np.linalg.qr(rng.normal(size=(n, n)))
+    lam = np.geomspace(20.0, 0.05, n)
+    lam = lam / lam.mean()  # unit-ish per-feature variance, structure in the correlations
+    base = (rng.normal(size=(m, n)) * np.sqrt(lam)) @ basis.T
+    y = (rng.random(m) < 0.5).astype(int)
+
+    def align(direction, sep=0.8):
+        X = base.copy()
+        X[y == 1] += sep * direction
+        return geometry(X, y)["align5"]
+
+    chance = np.sqrt(10.0 / n)
+    leading = align(basis[:, 0])
+    trailing = align(basis[:, -1])
+    assert leading > 0.9, (
+        f"a label placed exactly on the top eigenvector reads {leading:.3f}; "
+        "the probe is not finding alignment that is there"
+    )
+    assert trailing < 0.5 * chance, (
+        f"a label placed on the bottom eigenvector reads {trailing:.3f} against "
+        f"a chance level of {chance:.3f}; the probe reports alignment regardless"
+    )
+
+
 def test_branching_estimator_recovers_a_known_branching_ratio():
     """Ground truth, not a connection test — the estimator has an exact answer.
 

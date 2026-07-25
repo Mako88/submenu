@@ -24,6 +24,19 @@ Each mutation below patches one line of source, runs the tests that ought to
 notice, and restores the file. Deliberately crude -- it edits text rather than
 an AST -- because the point is to be obviously correct rather than general.
 
+**Nothing else may run against this repo while this is running.** It edits
+`plexus/column.py` in place, so any experiment launched during a mutation window
+imports the broken module, produces plausible numbers from it, and writes them
+to a results file that carries no record of the fact. That is the project's
+signature failure -- a quantity that looks connected and is not -- with the
+mutation harness as the cause. Finish or kill background runs first.
+
+Being killed is survivable but not free: the `finally` that restores the source
+does not run on SIGKILL, so the original is parked in `.mutation-backup` and the
+next run restores from it. That path exists because a two-minute timeout once
+left `column.py` carrying `self.bind_pre *= self.decay_branch`, and it was
+committed.
+
     python3 experiments/mutation.py
 """
 
