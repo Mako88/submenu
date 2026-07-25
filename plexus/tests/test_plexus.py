@@ -1077,3 +1077,46 @@ def test_modulator_actually_arrives_late_when_lagged():
     assert not np.any(transport.modulator(10)), "modulator arrived on the step it was sent"
     assert not np.any(transport.modulator(12)), "modulator arrived before its lag elapsed"
     assert np.allclose(transport.modulator(13), [1.0, -1.0]), "modulator never arrived"
+
+
+def test_frozen_column_is_unaffected_by_modulator_lag():
+    """A column that never reads the modulator must not notice its delay.
+
+    `apply_modulator` returns immediately when learning is off, so at lr=0 the
+    lag is unobservable in principle. It was observable in practice, and not
+    through any leak: the episode's drain tail is as long as the lag, and
+    homeostasis keeps adapting through those extra silent steps. A 200-step lag
+    added 24,000 silent steps over 120 episodes and moved a *frozen* column's
+    threshold from 0.295 to 0.231, its sparsity from 0.0289 to 0.0189 and its
+    plateau engagement from 0.111 to 0.0926 -- worth -0.062 end-to-end accuracy
+    on 17/20 paired seeds at p = 0.0011.
+
+    That made every lag comparison a comparison of two operating points as well
+    as two lags. Holding `drain_steps` constant separates them, and this asserts
+    the separation is exact rather than merely smaller.
+    """
+    task = DelayedXOR()
+
+    def train(lag):
+        cfg = ColumnConfig(n_neurons=24, lr=0.0, seed=0)
+        m = Plexus(
+            task.n_inputs, task.n_classes, column=cfg,
+            modulator_lag=lag, drain_steps=200, seed=0,
+        )
+        rng = np.random.default_rng(1000)
+        for _ in range(12):
+            m.run_episode(task.episode(rng), learn=True)
+        return m.column
+
+    a, b = train(0), train(200)
+    assert np.array_equal(a.theta, b.theta), "thresholds diverged"
+    assert np.array_equal(a.knee, b.knee), "dendritic knees diverged"
+    assert np.array_equal(a.W, b.W), "weights diverged"
+    assert a._steps == b._steps, f"{a._steps} steps vs {b._steps}"
+
+
+def test_drain_shorter_than_the_lag_is_rejected():
+    """Silently discarding every learning signal must not be reachable."""
+    task = DelayedXOR()
+    with pytest.raises(ValueError, match="discarding"):
+        Plexus(task.n_inputs, task.n_classes, modulator_lag=200, drain_steps=50, seed=0)

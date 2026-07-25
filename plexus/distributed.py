@@ -59,6 +59,7 @@ class DistributedPlexus:
         readout_rule: str = "delta",
         readout_block: int | None = None,
         modulator_lag: int = 0,
+        drain_steps: int | None = None,
         answer_steps: int = 50,
         seed: int = 0,
     ):
@@ -104,6 +105,16 @@ class DistributedPlexus:
             rls_block=readout_block,
             seed=seed + 1,
         )
+        # See Plexus for why this is separate from the lag: the drain tail is
+        # not inert, so a tail that tracks the lag confounds every comparison
+        # across lag settings.
+        self.drain_steps = modulator_lag if drain_steps is None else int(drain_steps)
+        if self.drain_steps < modulator_lag:
+            raise ValueError(
+                f"drain_steps ({self.drain_steps}) < modulator_lag ({modulator_lag}): "
+                "the episode would end before the modulator arrived, silently "
+                "discarding every learning signal"
+            )
         self.n_inputs = n_inputs
         self.per_column = per_column
         self._t = 0
@@ -179,7 +190,7 @@ class DistributedPlexus:
             for col in self.columns:
                 col.apply_modulator(t)
 
-        for _ in range(self.transport.modulator_lag):
+        for _ in range(self.drain_steps):
             t = self._t
             self._t += 1
             self._tick(t, self._zero_input)

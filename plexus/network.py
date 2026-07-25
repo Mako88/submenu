@@ -54,6 +54,7 @@ class Plexus:
         readout_rule: str = "delta",
         readout_block: int | None = None,
         modulator_lag: int = 0,
+        drain_steps: int | None = None,
         answer_steps: int = 50,
         seed: int = 0,
     ):
@@ -81,6 +82,26 @@ class Plexus:
             rls_block=readout_block,
             seed=seed + 1,
         )
+        # How many silent steps end each episode. Defaults to the lag, which is
+        # the minimum needed for an in-flight modulator to land -- but it must
+        # be held CONSTANT when comparing lag settings, or the comparison is
+        # confounded. The tail is not inert: homeostasis keeps adapting through
+        # it on near-zero activity, so a longer tail lowers thresholds, and
+        # `modulator_lag` ends up changing the column's whole operating point
+        # rather than only when feedback arrives.
+        #
+        # Measured, on a *frozen* column that never reads the modulator at all:
+        # lag 0 gives threshold 0.295, sparsity 0.0289, engagement 0.111; lag
+        # 200 gives 0.231, 0.0189, 0.0926. End-to-end that was a -0.062 accuracy
+        # difference on 17/20 paired seeds at p = 0.0011, in a condition where
+        # the lag is supposed to be unobservable.
+        self.drain_steps = modulator_lag if drain_steps is None else int(drain_steps)
+        if self.drain_steps < modulator_lag:
+            raise ValueError(
+                f"drain_steps ({self.drain_steps}) < modulator_lag ({modulator_lag}): "
+                "the episode would end before the modulator arrived, silently "
+                "discarding every learning signal"
+            )
         self._t = 0
         self._zero_mod = np.zeros(n_classes, dtype=np.float32)
         self._zero_input = np.zeros(n_inputs, dtype=np.float32)
@@ -158,7 +179,11 @@ class Plexus:
         # appear not to learn at all. A continuously running system has no such
         # boundary -- the tail is what makes the episodic simulation faithful
         # to it, not a workaround for a real limitation.
-        for _ in range(self.transport.modulator_lag):
+        #
+        # Its length is `drain_steps`, not the lag, so that two lag settings can
+        # be compared without also comparing two different amounts of silent
+        # homeostatic adaptation. See the constructor for what that cost.
+        for _ in range(self.drain_steps):
             t = self._t
             self._t += 1
             self.column.step(t, self._zero_input)

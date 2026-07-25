@@ -36,6 +36,9 @@ def main() -> None:
     ap.add_argument("--readout-lr", type=float, default=0.5)
     ap.add_argument("--readout-rule", default="delta", choices=["delta","rls"])
     ap.add_argument("--modulator-lag", type=int, default=0)
+    # Held constant across lag conditions on purpose: the drain tail is not
+    # inert, so letting it track the lag confounds every lag comparison.
+    ap.add_argument("--drain-steps", type=int, default=200)
     ap.add_argument("--elig-mode", default="magnitude", choices=["magnitude","sign"])
     ap.add_argument("--surrogate", default="window", choices=["window","graded","hybrid"])
     ap.add_argument("--pretrain", type=int, default=0,
@@ -68,6 +71,7 @@ def main() -> None:
         readout_rule=args.readout_rule,
         feedback_mode=args.feedback,
         modulator_lag=args.modulator_lag,
+        drain_steps=args.drain_steps,
         seed=args.seed,
     )
     rng = np.random.default_rng(1000 + args.seed)
@@ -86,6 +90,7 @@ def main() -> None:
         fh.write(json.dumps(dict(tag=args.tag, lr=args.lr, seed=args.seed, acc=acc,
                                  tau_elig=args.tau_elig, episodes=args.episodes,
                                  modulator_lag=args.modulator_lag,
+                                 drain_steps=args.drain_steps,
                                  pretrain=args.pretrain, elig_mode=args.elig_mode,
                                  surrogate=args.surrogate,
                                  readout_rule=args.readout_rule)) + "\n")

@@ -75,4 +75,59 @@ several intervening changes. Use #21 as the control.
 
 RESULT -- 20 paired seeds
 -------------------------
-Pending.
+                       frozen           plastic      paired diff        p
+lag 0   (run #21)   0.592 +/- 0.059  0.590 +/- 0.060     -0.001      0.909
+lag 200 (run #24)   0.530 +/- 0.037  0.531 +/- 0.040     +0.001      0.915
+
+The primary prediction held, and was as weak as advertised: the lag changes
+nothing about plastic-vs-frozen, because there was no effect at zero lag for it
+to degrade.
+
+The secondary prediction is the one that paid, and it did not hold.
+
+THE CONTROL MOVED
+-----------------
+It said: the frozen condition should be *identical* across lag settings,
+because a frozen column ignores the modulator entirely -- apply_modulator
+returns immediately when learning is off -- and anything else is a bug.
+
+Frozen, same 20 seeds, lag 0 vs lag 200:
+  0.592 -> 0.530, paired difference -0.062, lower on 17/20 seeds, p = 0.0011.
+
+So the lag was observable in a condition where it is unobservable in
+principle. Two candidates: a locality bug, or something about the harness.
+It is the harness, and the mechanism is exact.
+
+Each episode ends with a drain tail as long as the lag, so that a modulator
+still in flight is not discarded at the episode boundary. The tail is not
+inert. Homeostasis keeps adapting through those extra silent steps, on
+near-zero activity. Measured directly on a frozen column over 120 episodes:
+
+                 steps    threshold   sparsity   knee    engagement
+  lag 0          48,000     0.2948     0.0289   0.2308     0.1112
+  lag 200        72,000     0.2311     0.0189   0.1746     0.0926
+
+24,000 extra silent steps, and the column settles at a different operating
+point. `modulator_lag` was therefore never only a lag -- it was a lag *and* a
+33% longer silent period *and* a lower effective threshold, and any comparison
+across it confounded all three.
+
+CONCLUSION
+----------
+Sweep 013's design is invalid, and its null result says nothing about latency
+tolerance. Recorded rather than deleted, because the confound is the finding
+and because the prediction that caught it is the reason this file format
+exists: had the sweep only reported "no significant difference, p = 0.92" it
+would have looked like a clean confirmation of the architecture's central
+claim, and it was not one.
+
+FIX
+---
+`Plexus` and `DistributedPlexus` take `drain_steps`, defaulting to the lag so
+existing behaviour is unchanged, but settable so that compared conditions share
+a tail. experiments/e2e.py now pins it at 200 for every condition. Two tests:
+that a frozen column's threshold, knee and weights are bit-identical across
+lag settings when the tail is held constant, and that a tail shorter than the
+lag raises rather than silently discarding every learning signal.
+
+Sweep 014 should re-run this properly. The question is unanswered.
