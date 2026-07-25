@@ -103,7 +103,17 @@ jobs:
           # 013 lost a run because the silent tail scaled with the lag and a
           # frozen column shifted -0.062 (p = 0.0011) between settings.
           # off-lag150 against off is the check that the fix holds.
+          # Every lag condition needs the same tail, AND so does the lag-0
+          # reference they are compared against -- otherwise the comparison is
+          # tail length again. `on-lag0` is that reference, run explicitly here
+          # rather than reusing `on`, which now correctly has no tail.
           lag="--hebbian 1 --drain-steps 200 $common"
+          python experiments/binding.py --tag on-lag0 --modulator-lag 0 $lag
+          # The no-binding reference AT THE SAME TAIL as every lag condition.
+          # Also serves as the sweep-013 check: off-lag150 against off-lag0 must
+          # be zero, or the tail is still tracking the lag.
+          python experiments/binding.py --tag off-lag0 --hebbian 0 \
+            --modulator-lag 0 --drain-steps 200 $common
           python experiments/binding.py --tag off-lag150 --hebbian 0 \
             --modulator-lag 150 --drain-steps 200 $common
           python experiments/binding.py --tag on-lag25  --modulator-lag 25  $lag
@@ -168,7 +178,7 @@ jobs:
       - name: Fail loudly if a condition produced nothing
         if: steps.gate.outputs.run == 'yes'
         run: |
-          for tag in off on off-lag150 on-lag25 on-lag50 on-lag150 on-lag150-slow; do
+          for tag in off on off-lag0 off-lag150 on-lag0 on-lag25 on-lag50 on-lag150 on-lag150-slow; do
             grep -q "\"tag\": \"$tag\"" experiments/binding_results.jsonl \
               || { echo "no rows for condition '$tag'"; exit 1; }
           done
@@ -202,8 +212,10 @@ jobs:
           cat collected/*/e2e_results.jsonl > experiments/e2e_results.jsonl
           python experiments/binding.py --report | tee summary.txt
           for pair in "on off" "lateral off" "lateral+on on" \
-                      "off-lag150 off" "on-lag25 off" "on-lag50 off" \
-                      "on-lag150 off" "on-lag150-slow off" "on-lag150-slow on-lag150"; do
+                      "off-lag150 off-lag0" "on-lag0 off-lag150" \
+                      "on-lag25 off-lag150" "on-lag50 off-lag150" \
+                      "on-lag150 off-lag150" "on-lag150-slow off-lag150" \
+                      "on-lag150-slow on-lag150"; do
             set -- $pair
             for metric in linear; do
               echo "" | tee -a summary.txt

@@ -143,6 +143,76 @@ SETTINGS
 20 seeds, 300 episodes, 500 collection episodes, 96 neurons, column lr 0,
 drain_steps 200 everywhere, `tau_act_fast` 50 except where stated.
 
-RESULT -- 20 paired seeds
--------------------------
-Pending.
+RESULT -- 20 paired seeds  (COMPROMISED -- see below; re-running)
+------------------------------------------------------------------
+  off               0.620 +/- 0.055
+  off-lag150 vs off    +0.000   0/20   p = 1.0000
+  on-lag25   vs off    +0.016  12/20   p = 0.1610
+  on-lag50   vs off    +0.011  10/20   p = 0.4184
+  on-lag150  vs off    +0.001   7/20   p = 0.8849
+  on-lag150-slow vs off +0.000  9/20   p = 1.0000
+  on-lag150-slow vs on-lag150  -0.001  7/20  p = 0.8719
+
+THE SANITY CONDITION PASSED AND THE BASELINE MOVED ANYWAY
+-----------------------------------------------------------
+`off-lag150` matched `off` to +0.000 on 0 of 20 seeds at p = 1.0000. The
+sweep-013 confound this sweep was written to avoid is genuinely fixed: pinning
+`drain_steps` does hold the tail constant across lag settings.
+
+**And the baseline is 0.620 against the 0.802 that sweeps 015 through 025 all
+measured.** That is not a small drift. It is the largest single movement any
+baseline has made in this project.
+
+WHAT I DID
+-----------
+`--drain-steps` was added to `binding.py` for this sweep with a default of
+**200**. The four standing conditions -- `off`, `on`, `lateral`, `lateral+on` --
+are invoked without the flag, so they took the default. Before this sweep
+`binding.py` never passed `drain_steps` at all, so `Plexus` used
+`drain_steps = modulator_lag = 0`.
+
+So every condition in the file gained a 200-step silent tail per episode. Sweeps
+022-023 established that the homeostatic operating point carries most of the
+column's representation quality, and 200 extra silent steps per episode move
+exactly that. The baseline fell 0.182.
+
+**A new flag's default is a silent change to every existing condition.** Third
+instance in this project: sweep 003 ran with a `PRETRAIN` default that made it
+test nothing, sweep 013 lost a run to the drain tail itself, and now this. The
+default is corrected to 0 -- reproducing what every prior sweep ran -- and
+conditions that want a tail pass it explicitly.
+
+WHY THE LAG NUMBERS CANNOT BE READ
+------------------------------------
+Every lag condition is null against `off`, which looks like a clean answer:
+binding's gain is gone by lag 25 and never returns. It cannot be read that way,
+because **there is no lag-0 reference at the same tail.** `on` in this run has
+the 200-step tail too, but it is not in the paired list, and without
+`on-lag0 vs off-lag0` there is no way to separate
+
+  "binding decays with lag"   from   "binding produces nothing at drain 200"
+
+and the second is entirely plausible given the baseline moved 0.182. Reporting
+the decay would be exactly the failure this sweep refused to commit when it
+declined AUDIT's version of the experiment: measuring whether a null degrades.
+
+The irony is on the record deliberately. This sweep's own QUESTION section
+rejects an experiment for lacking a working mechanism to degrade, and then
+ships without the condition that would prove its own mechanism was working.
+
+WHAT THE RE-RUN ADDS
+---------------------
+Two conditions that should have been there from the start, both at the same
+200-step tail as every lag condition:
+
+  off-lag0   no binding, lag 0, tail 200   -- the reference the gains are against
+  on-lag0    binding,    lag 0, tail 200   -- proves binding works in this regime
+
+and the pairs are re-pointed so every comparison is against `off-lag150` or
+`off-lag0` rather than the tail-free `off`. `off-lag150 vs off-lag0` remains the
+sweep-013 check.
+
+If `on-lag0 vs off-lag0` comes back null, the mechanism does not survive the
+tail and the lag question needs a different configuration entirely -- which
+would itself be worth knowing, and is a finding about `drain_steps` rather than
+about latency.

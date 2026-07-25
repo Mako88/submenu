@@ -65,7 +65,20 @@ def main() -> None:
     # the silent drain tail scaled with the lag, so a *frozen* column shifted
     # -0.062 (p = 0.0011) between lag settings and the comparison measured tail
     # length rather than latency.
-    ap.add_argument("--drain-steps", type=int, default=200)
+    #
+    # **Default 0, not 200.** Sweep 026 shipped this at 200 and every condition
+    # in the file picked it up silently, because `off`, `on`, `lateral` and
+    # `lateral+on` are invoked without the flag. The baseline moved from the
+    # 0.802 that sweeps 015-025 all measured to 0.620 -- 200 extra silent steps
+    # per episode shift the homeostatic operating point, and sweeps 022-023
+    # established that operating point carries most of the representation
+    # quality. A parameter added for one condition changed every condition.
+    #
+    # Same failure as sweep 003 (`PRETRAIN` default made it test nothing) and
+    # sweep 013 (the drain tail itself). Third instance: **a new flag's default
+    # is a silent change to every existing condition, and must reproduce what
+    # they ran before.** Conditions that want the tail pass it explicitly.
+    ap.add_argument("--drain-steps", type=int, default=0)
     ap.add_argument("--report", action="store_true")
     args = ap.parse_args()
 

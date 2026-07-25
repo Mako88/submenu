@@ -50,3 +50,11 @@ run 5 -- sweep 026: the architecture's headline claim, measured on a mechanism
   Prediction in experiments/sweeps/binding-026-latency-tolerance.txt, derived
   arithmetically from exp(-lag/tau) rather than guessed, and naming
   no-decay-at-all as the outcome that would mean the instrument is broken.
+
+run 6 -- sweep 026 re-run. The first attempt is compromised and says so: adding
+  --drain-steps with a default of 200 silently gave every standing condition a
+  200-step tail, moving the baseline from the 0.802 that sweeps 015-025 measured
+  to 0.620. Default corrected to 0. Adds off-lag0 and on-lag0 at the same tail
+  as the lag conditions, which the first attempt lacked -- without them there is
+  no way to separate "binding decays with lag" from "binding produces nothing at
+  drain 200".
