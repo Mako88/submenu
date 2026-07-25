@@ -45,6 +45,12 @@ def main() -> None:
                     help="episodes of readout-only training before column plasticity")
     ap.add_argument("--hebbian", type=int, default=0,
                     help="salience-gated Hebbian binding (sweep 014/015)")
+    ap.add_argument("--hebb-decay", type=float, default=1.0,
+                    help="per-event decay of the binding rate (sweep 018)")
+    ap.add_argument("--bind-episodes", type=int, default=0,
+                    help="bind only for the first N episodes, then continue "
+                         "training the readout alone within the SAME episode "
+                         "budget (sweep 018)")
     ap.add_argument("--catchup", type=int, default=0,
                     help="episodes of readout-only training after the column is "
                          "frozen, to test whether a moving representation is what "
@@ -72,7 +78,7 @@ def main() -> None:
         column=ColumnConfig(
             n_neurons=args.neurons, lr=args.lr, tau_eligibility=args.tau_elig,
             elig_mode=args.elig_mode, surrogate=args.surrogate, seed=args.seed,
-            hebbian=bool(args.hebbian)
+            hebbian=bool(args.hebbian), hebb_decay=args.hebb_decay
         ),
         readout_lr=args.readout_lr,
         readout_rule=args.readout_rule,
@@ -90,7 +96,15 @@ def main() -> None:
         saved, model.column.cfg.lr = model.column.cfg.lr, 0.0
         model.train(task, args.pretrain, rng=rng, report_every=10**9)
         model.column.cfg.lr = saved
-    model.train(task, args.episodes, rng=rng, report_every=10**9)
+    if args.bind_episodes:
+        # Two-phase within the same budget: bind, then stop binding and let the
+        # readout converge against a settled column. Unlike --catchup this adds
+        # no episodes, so it answers whether the gain is available for free.
+        model.train(task, args.bind_episodes, rng=rng, report_every=10**9)
+        model.column.cfg.hebbian = False
+        model.train(task, args.episodes - args.bind_episodes, rng=rng, report_every=10**9)
+    else:
+        model.train(task, args.episodes, rng=rng, report_every=10**9)
     if args.catchup:
         # Stop the column changing, then let the readout converge against what
         # is now a static representation. The offline probe fits its decoder to
@@ -106,6 +120,8 @@ def main() -> None:
                                  modulator_lag=args.modulator_lag,
                                  drain_steps=args.drain_steps,
                                  hebbian=args.hebbian, catchup=args.catchup,
+                                 hebb_decay=args.hebb_decay,
+                                 bind_episodes=args.bind_episodes,
                                  pretrain=args.pretrain, elig_mode=args.elig_mode,
                                  surrogate=args.surrogate,
                                  readout_rule=args.readout_rule)) + "\n")

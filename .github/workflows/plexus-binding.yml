@@ -95,6 +95,14 @@ jobs:
           python experiments/e2e.py --tag catchup-off --hebbian 0 --catchup 150 $e2e
           python experiments/e2e.py --tag catchup-on  --hebbian 1 --catchup 150 $e2e
 
+          # Sweep 018: is the gain available inside the same episode budget?
+          # 017's catchup used 450 episodes against everyone else's 300, so it
+          # showed the gain exists rather than that it is free. These all run
+          # 300.
+          python experiments/e2e.py --tag decay-99 --hebbian 1 --hebb-decay 0.99 $e2e
+          python experiments/e2e.py --tag decay-98 --hebbian 1 --hebb-decay 0.98 $e2e
+          python experiments/e2e.py --tag phase    --hebbian 1 --bind-episodes 150 $e2e
+
       # A run that produced no rows would otherwise aggregate to a confident
       # empty table. The previous version of this workflow passed flags that
       # binding.py does not accept, and every seed died on its first line.
@@ -142,7 +150,9 @@ jobs:
           echo "" | tee -a summary.txt
           python experiments/e2e.py --report | tee -a summary.txt
           echo "" | tee -a summary.txt
-          for pair in "e2e-on e2e-off" "rls-on rls-off" "catchup-on catchup-off"; do
+          for pair in "e2e-on e2e-off" "rls-on rls-off" "catchup-on catchup-off" \
+                      "decay-99 e2e-off" "decay-98 e2e-off" "phase e2e-off" \
+                      "phase decay-98"; do
             set -- $pair
             echo "" | tee -a summary.txt
             python experiments/paired_test.py --file experiments/e2e_results.jsonl \

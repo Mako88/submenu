@@ -1,0 +1,76 @@
+Sweep 018 -- can the gain arrive without stopping the world?
+============================================================
+
+QUESTION
+--------
+Sweep 017 established that salience-gated Hebbian binding pays end to end, but
+only once binding stops:
+
+  flat, delta readout            +0.007   p = 0.68
+  RLS readout                    +0.043   p = 0.0063
+  binding frozen, readout catches up  +0.063   p = 0.0013
+
+and that the readout does not need more time in general -- catchup-off scored
+0.707 against e2e-off's 0.709. It needs a column that has stopped moving.
+
+That is a real limitation stated plainly: a system that must stop learning
+before its readout can use what it learned has deferred continual learning, not
+solved it. This asks whether the gain is available *within the same episode
+budget*, without a special phase bolted on.
+
+The catchup condition in 017 used 450 episodes against everyone else's 300, so
+it was never a fair comparison -- it showed the gain exists, not that it is
+free. Every condition here runs exactly 300.
+
+CONDITIONS  (all 300 episodes, 20 seeds, 96 neurons, column lr 0)
+------------------------------------------------------------------
+  off            no binding
+  flat           binding at a constant rate               (= 017's e2e-on)
+  decay-0.99     hebb_decay 0.99   -> rate x0.05 by episode 300
+  decay-0.98     hebb_decay 0.98   -> rate x0.002, effectively off by ~200
+  phase          bind for 150 episodes, then readout only for 150
+
+`phase` is the direct test: same budget, binding simply stops halfway.
+`decay` is the softer version -- does a *slowing* representation suffice, or
+does the readout need it genuinely static?
+
+PREDICTION (recorded before the run)
+------------------------------------
+  phase        0.750 to 0.780.  High confidence it beats flat significantly.
+               017's catchup reached 0.770 with 150 extra episodes; the same
+               150 static episodes taken out of the binding budget should land
+               close, because binding does most of its work early -- the
+               baseline it scores against converges, so late events contribute
+               progressively less.
+
+  decay-0.98   0.740 to 0.775, probably significant. Close to `phase` in
+               effect, since a rate at 0.2% of its initial value is a stopped
+               column in all but name.
+
+  decay-0.99   0.725 to 0.760, and this is the one I would bet against. At
+               episode 300 the rate is still 5% of initial, and 017 says the
+               readout wants static, not slow.
+
+Stated sharply so it can be wrong: **if decay-0.99 matches phase, "slow enough"
+is sufficient and the mechanism is fine as a continuous rule. If only
+decay-0.98 and phase work, the requirement is genuinely a stop, and this is a
+two-phase learner that should be described as one.**
+
+The outcome I would find most interesting is `phase` >= 0.770 on 300 episodes,
+because that would mean the 150 episodes of binding thrown away cost nothing --
+the mechanism saturates early and the rest of the budget is better spent on the
+readout. That is a schedule finding with an obvious next question: how few
+binding episodes are actually needed?
+
+FAILURE RESPONSE, NAMED IN ADVANCE
+-----------------------------------
+If every scheduled condition is null and only 017's extra-budget catchup works,
+then the gain is not free and the honest description is that binding needs a
+consolidation phase the current architecture has no way to schedule for itself.
+That is not a defeat -- it is a specific, structural finding about what the
+mechanism requires, and it would make "when does a column decide it has learned
+enough" the next question rather than another hyperparameter.
+
+RESULT -- 20 paired seeds
+-------------------------
+Pending.

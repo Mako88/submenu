@@ -138,6 +138,18 @@ class ColumnConfig:
     # sign or its target, so it does not depend on the error signal being right.
     hebbian: bool = False
     hebb_lr: float = 0.02
+    # Multiplicative decay of the binding rate, applied per binding event.
+    # 1.0 leaves it flat, which is the behaviour every sweep up to 017 measured.
+    #
+    # It exists because of what 017 found: binding and readout adaptation
+    # compete on one timescale. The readout cannot follow a representation that
+    # is still moving, and freezing binding so it can converge is worth +0.063
+    # (p = 0.0013) while the same mechanism running flat delivers +0.007
+    # (p = 0.68). A rate that decays lets binding front-load and the
+    # representation settle while the readout is still learning -- consolidation
+    # on a slower clock than the changes being consolidated, which is the shape
+    # biology uses.
+    hebb_decay: float = 1.0
     tau_act_fast: float = 50.0  # window defining "active right now"
     # The activity ratio is multiplied by this before it scales the update, so
     # `hebb_lr` means the same thing here as it did when a fraction this size of
@@ -673,13 +685,16 @@ class Column:
         self.n_samples += 1
         self.act_slow = (d * self.act_slow + (1.0 - d) * self.act_fast).astype(np.float32)
         baseline = self.act_slow / (1.0 - d**self.n_samples)
+        # Binding rate at this event. n_samples was just incremented, so the
+        # first event sees the full rate.
+        rate = cfg.hebb_lr * cfg.hebb_decay ** (self.n_samples - 1)
         # Clipped so one unusually loud episode cannot dominate the weights.
         post = np.clip(self.act_fast / (baseline + 1e-9), 0.0, 5.0) * cfg.bind_scale
         # `pre` carries the Dale sign; multiplying it back out recovers the
         # presynaptic activity itself, which is what Hebb's rule is about.
         excitatory = self.syn_sign > 0.0
         self.W += (
-            cfg.hebb_lr * post[:, None, None] * (self.pre * self.syn_sign) * excitatory
+            rate * post[:, None, None] * (self.pre * self.syn_sign) * excitatory
         ).astype(np.float32)
         np.clip(self.W, 0.0, cfg.weight_max, out=self.W)
 

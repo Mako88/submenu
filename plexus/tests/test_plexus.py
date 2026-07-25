@@ -788,6 +788,53 @@ def test_binding_carries_which_synapses_were_driving_the_neuron():
     )
 
 
+def test_binding_rate_decays_when_asked_to():
+    """hebb_decay must shrink the update by exactly its own factor per event.
+
+    Sweep 017 found binding and readout adaptation competing on one timescale:
+    freezing binding so the readout can converge is worth +0.063 (p = 0.0013)
+    while the same mechanism running flat delivers +0.007 (p = 0.68). A decaying
+    rate is the proposed fix, so a decay knob that silently did nothing would
+    read as a null result about schedules rather than a disconnected parameter.
+
+    Measured as a *ratio between two runs at the same event index*, not as
+    flatness within one run. The first version asserted that a run with
+    hebb_decay=1.0 produces a constant update, and it failed -- correctly. The
+    baseline `act_slow` adapts toward the activity it is scored against, so the
+    postsynaptic factor shrinks on its own even at a fixed rate. That is the
+    mechanism behaving properly, and the test was wrong about it.
+
+    Both runs here share identical activity, baseline and presynaptic
+    trajectories, since none of those depend on hebb_decay. So the ratio at
+    event k isolates the rate and must be exactly decay**k.
+    """
+    def bind_deltas(decay, events=8):
+        col = _bind_column(hebb_decay=decay)
+        col.act_slow[:] = 0.1
+        col.n_samples = 0
+        out = []
+        for _ in range(events):
+            col.act_fast[:] = 0.2
+            col.pre[:] = 0.5
+            before = col.W.copy()
+            col._bind()
+            out.append(float(np.abs(col.W - before).sum()))
+        return np.array(out)
+
+    decay = 0.8
+    flat, decayed = bind_deltas(1.0), bind_deltas(decay)
+    assert flat[0] > 0.0, "nothing bound at all"
+    expected = decay ** np.arange(len(flat))
+    # 2e-3 rather than something tighter because the weights are float32 and
+    # the observed ratio lands at 0.8001 against 0.8. That is arithmetic, not
+    # slack: the mutation this guards against removes the decay entirely, which
+    # puts the ratio at 1.0 and misses by 250x the tolerance.
+    assert np.allclose(decayed / flat, expected, rtol=2e-3), (
+        f"rate ratio {np.round(decayed / flat, 4)} against expected "
+        f"{np.round(expected, 4)}"
+    )
+
+
 def test_binding_statistics_advance_once_per_event():
     """The baseline binding is scored against must match what is scored.
 
