@@ -27,6 +27,15 @@ class Episode:
     # answer, such as whether two episodes the model must give the *same*
     # answer to were nonetheless different events (++ and -- are both parity 0).
     bits: tuple[int, ...] | None = None
+    # Which timesteps a cue or go burst is actually on, and which group is
+    # driving it (-1 when none). Also never shown to the model. This exists
+    # because a burst cannot be recovered from `inputs`: background noise lands
+    # on the cue channels too, by design, so "some cue channel is carrying
+    # something" is 0.33 background at the default 2% noise over 20 cue
+    # channels and only 0.49 in total. A diagnostic that reconstructs the mask
+    # from the input measures mostly noise.
+    cue_active: np.ndarray | None = None  # (T,) bool
+    cue_group: np.ndarray | None = None  # (T,) int8, -1 outside a burst
 
 
 class DelayedParity:
@@ -122,12 +131,21 @@ class DelayedParity:
         ]
         bursts.append((self.response_start - self.go_lead, self.go_group, self.go_duration))
 
+        cue_active = np.zeros(T, dtype=bool)
+        cue_group = np.full(T, -1, dtype=np.int8)
         for t0, group, dur in bursts:
             sl = self._group(group)
             seg = x[t0 : t0 + dur, sl]
             seg += self.cue_strength * (
                 rng.random(seg.shape) < 0.5
             ).astype(np.float32) * rng.uniform(0.8, 1.2, size=seg.shape).astype(np.float32)
+            # Recorded from the burst schedule rather than from `x`, because
+            # the burst is deliberately not separable from noise by looking at
+            # the input -- see Episode.cue_active. Clipped the same way the
+            # slice above is, so a burst running past the end marks only the
+            # steps that exist.
+            cue_active[t0 : t0 + dur] = True
+            cue_group[t0 : t0 + dur] = group
 
         response = np.zeros(T, dtype=bool)
         response[self.response_start :] = True
@@ -140,7 +158,8 @@ class DelayedParity:
             # untouched. A permutation cannot change any of those properties,
             # only which physical channel carries which role.
             x = x[:, self.channel_perm]
-        return Episode(inputs=x, label=label, response=response, bits=tuple(bits))
+        return Episode(inputs=x, label=label, response=response, bits=tuple(bits),
+                       cue_active=cue_active, cue_group=cue_group)
 
 
 class DelayedXOR(DelayedParity):

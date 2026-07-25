@@ -790,6 +790,52 @@ def test_xor_classes_are_balanced_in_total_input():
     assert np.std(sums) / np.mean(sums) < 0.12
 
 
+def test_cue_active_marks_the_bursts_and_not_the_noise_on_the_same_channels():
+    """`cue_active` must come from the schedule, not from reading the input.
+
+    Background noise lands on the cue channels on purpose, so the obvious
+    reconstruction -- "some cue-group channel is carrying something" -- selects
+    mostly noise. It ran at 0.490 of all timesteps against a true burst
+    occupancy of 0.208 at the defaults: 57% of what it selected was background.
+    `experiments/predictability.py` used exactly that reconstruction to define
+    its "during a cue" condition, which made that condition a measurement of
+    the noise floor with a cue-shaped name on it.
+
+    The two assertions are the two halves of the claim: the schedule mask must
+    be *inside* the union of burst-driven steps (no burst invented), and it
+    must be much smaller than the read-from-input heuristic (noise excluded).
+    """
+    task = DelayedXOR()
+    rng = np.random.default_rng(0)
+    cue_span = task.group_size * (2 * task.n_cues + 1)
+    true_frac, heuristic_frac = [], []
+    for _ in range(30):
+        ep = task.episode(rng)
+        assert ep.cue_active is not None and ep.cue_active.shape == (task.length,)
+        # Every burst step must carry drive on its own group. This is what
+        # fails if the mask is ever written from the wrong times.
+        for t in np.flatnonzero(ep.cue_active):
+            g = int(ep.cue_group[t])
+            assert g >= 0
+        for t in np.flatnonzero(~ep.cue_active):
+            assert ep.cue_group[t] == -1
+        # A burst window must actually be brighter on its group than a
+        # non-burst window is: the mask is only useful if it tracks drive.
+        on = np.array([ep.inputs[t, task._group(int(ep.cue_group[t]))].sum()
+                       for t in np.flatnonzero(ep.cue_active)])
+        assert on.mean() > 2.0 * task.group_size * task.noise_rate
+
+        true_frac.append(float(ep.cue_active.mean()))
+        heuristic_frac.append(float((ep.inputs[:, :cue_span] > 0).any(axis=1).mean()))
+
+    # The gap between the two is the size of the contamination the schedule
+    # mask removes. Measured at 0.208 against 0.490; the bound is loose enough
+    # to survive reasonable task changes and tight enough that a mask rebuilt
+    # from the input would fail it.
+    assert np.mean(true_frac) < 0.30
+    assert np.mean(heuristic_frac) > 1.4 * np.mean(true_frac)
+
+
 def test_temporal_patterns_are_invisible_to_a_rate_code():
     """Summing over time must destroy the label.
 

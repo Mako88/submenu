@@ -25,23 +25,47 @@ a predictive mechanism without first checking there is anything to predict.
 
 WHAT IT MEASURES
 ----------------
-For a **frozen** column (`lr = 0`, both mechanisms off), at each horizon `k`:
+For a **frozen** column (`lr = 0`, both mechanisms off), at each horizon `k`, a
+decoder reads the column state at `t` and predicts something about `t + k`.
+Three targets, because they ask three different questions and only the third is
+the one the pivot needs:
 
-    linear   a logistic readout predicting the input at `t + k` from the column
-             state at `t`
-    mlp      the same, with a small nonlinear decoder
-    gap      mlp - linear
+    any     is *any* input channel carrying an event at t+k. Dominated by the
+            Poisson background, so it is close to unpredictable by
+            construction. Reported because it is the honest overall number,
+            not because a null on it means anything.
+    burst   is a cue or go burst on at t+k -- taken from the episode's burst
+            schedule, not reconstructed from the input. This is the *timing*
+            question: does the state know where it is in the episode.
+    group   *which* of the five burst groups is on at t+k, over burst steps
+            only. Chance is the majority-group rate, reported alongside.
 
-and against a **shuffled control**: the identical decoder trained to predict a
-*time-shuffled* input stream. That control is what makes the numbers mean
-anything. The inputs here are mostly sparse Poisson noise with a fixed marginal
-rate, so a decoder can score above zero purely by learning "channels are usually
-silent" without predicting anything. The control measures exactly that floor.
+**`group` is not yet the content question, and must not be quoted as one.**
+Four of the five groups are cue groups carrying a random bit; the fifth is the
+go cue, which is **identical in every episode**. A decoder that has learned
+only "the go cue comes at a fixed time" scores well on this target without
+predicting any content at all, and the go cue is the single commonest group
+(45 steps against 25), so it dominates. Splitting `group` into go-versus-cue
+(timing) and which-cue-of-the-pair restricted to non-go bursts (content) is
+the next change to this file, and no conclusion about the pivot should be
+drawn until it is made.
 
-**The target is predicted as a binary event per channel** -- did this channel
-carry anything at `t + k` -- rather than as a magnitude. Magnitude is drawn
-independently from a fixed range in this task, so it is unpredictable by
-construction and including it would only dilute the signal.
+For each target: `linear` (logistic readout), `mlp` (small nonlinear decoder),
+`gap = mlp - linear`, and two floors.
+
+THE TWO FLOORS, BECAUSE ONE IS NOT ENOUGH
+-------------------------------------------
+    base       the majority-class rate on the test split. A decoder that
+               predicts the commonest answer and nothing else scores this.
+    shuffled   the same decoder trained against a time-shuffled target stream.
+               This catches a decoder scoring off the marginal rate *and* any
+               leakage through the train/test split.
+
+`base` is here because the first version of this probe reported only
+`shuffled`, and the `any` target ran at a base rate of 0.564 -- so a score of
+0.549 would have read as "just above the 0.540 floor" when it is in fact
+*worse than a constant*. Any number in this table is meaningless without the
+`base` column beside it.
 
 WHAT EACH OUTCOME MEANS
 -------------------------
@@ -50,37 +74,53 @@ WHAT EACH OUTCOME MEANS
                          again, one level down.
 
   gap large, mlp well    The regime the pivot needs: present, not linearly
-  above the control      accessible, and therefore something a local rule could
+  above both floors      accessible, and therefore something a local rule could
                          plausibly make accessible.
 
-  both at the control    The state carries no information about its own future.
-                         **The pivot is dead as specified** -- but see below,
-                         because the most likely cause is the benchmark rather
-                         than the model.
+  everything at the      The state carries no information about its own future.
+  floors, `group`        **The pivot is dead as specified.**
+  included
 
-THE CONFOUND THAT MATTERS MOST
---------------------------------
-`DelayedParity` fills most timesteps with independent Poisson noise. That is
-**unpredictable by construction**, so a null here may be a fact about the task
-and not about the substrate. The cue bursts are the only predictable structure
-in the stream, and they occupy a small fraction of it.
+  `burst` above the      The state tracks episode *timing* but not *content*. A
+  floors, `group` at     predictive rule would learn the clock and nothing
+  them                   else. Weaker than it looks, and worth knowing before
+                         building anything.
 
-So the probe reports `during_cue` separately -- predictability restricted to
-timesteps inside a cue burst, where there is something to predict. If the
-overall number is at the control floor and `during_cue` is well above it, the
-finding is "this task is mostly noise", not "this substrate cannot predict", and
-the response is a task with temporal structure rather than abandoning the
-direction.
+WHY THE BURST MASK IS NOT READ OFF THE INPUT
+----------------------------------------------
+Background noise lands on the cue channels deliberately, so that a cue must be
+recognised rather than merely detected. The consequence for a diagnostic is
+that "some cue-group channel is carrying something" is **not** a cue mask: at
+the defaults it selects 0.490 of all timesteps against a true burst occupancy
+of 0.208, so 57% of what it selects is background. The first version of this
+probe used exactly that reconstruction, which made its cue-restricted condition
+a measurement of the noise floor wearing a cue-shaped name.
 
-STATUS: WRITTEN, NOT YET VERIFIED TO RUN
-------------------------------------------
-This has not completed a run. Two smoke attempts at reduced settings both hit a
-115-second timeout, and subsampling to 6000 rows did not fix it, so the cost is
-in the probe rather than in machine contention -- most likely the per-horizon
-decoder count (six fits: linear and MLP, each for the raw target, the shuffled
-control and the cue-only mask). **No number from this file should be quoted
-until it has run end to end.** The next step is to time the pieces separately
-rather than reduce settings blindly.
+The masks here come from `Episode.cue_active` / `Episode.cue_group`, recorded
+from the burst schedule at generation time and never shown to the model.
+`test_cue_active_marks_the_bursts_and_not_the_noise_on_the_same_channels`
+holds that apart.
+
+STATUS
+------
+Runs end to end. Timed and smoke-tested at `--quick` (1 seed, 15 episodes),
+which is **shape only and not a result** -- the three-seed default has not been
+run, and the `group` split described above has not been made. No number from
+this file belongs in the record yet.
+
+What the smoke run does establish, because they are properties of the probe
+rather than of the model: the horizon-0 control is well above both floors on
+`burst` and `group`, so the state *is* decodable and a null at k>0 would have
+meant something; and the raw-spike version of this probe sat at the floor even
+at horizon 0, which is why it now reads the filtered trace.
+
+COST
+----
+About 7 minutes at the defaults on one core, measured by timing the pieces:
+8s to settle a column, 1s per 15 episodes of trajectory, 0.3s per logistic fit
+and 4.8s per MLP fit at 4200x96. The MLP fits are 95% of it, and there are
+`3 seeds x 4 horizons x 3 targets x 2 (target + shuffled control)` of them.
+Anything that needs to be faster should cut horizons, not rows.
 
     python3 experiments/predictability.py --quick
     python3 experiments/predictability.py --report
@@ -104,42 +144,77 @@ OUT = Path(__file__).resolve().parent / "predictability_results.jsonl"
 
 
 def trajectory(model, task, episodes: int, rng):
-    """Column states and the input stream beside them, aligned in time.
+    """Column states and what was happening beside them, aligned in time.
 
     The column is observed and not disturbed: `learning` off throughout, so
     nothing adapts to the fact that it is being watched.
+
+    `cue_active` and `cue_group` come from the episode's burst schedule rather
+    than from its inputs -- see the module docstring for why reconstructing
+    them from the input measures the noise floor instead.
     """
     col = model.column
     col.learning = False
-    states, inputs, in_cue = [], [], []
+    model.readout.learning = False
+    states, inputs, active, group = [], [], [], []
     for _ in range(episodes):
         ep = task.episode(rng)
         col.reset_state()
+        model.readout.reset()
         model.transport.reset()
-        # A timestep counts as "in a cue" when any cue-group channel carries
-        # something. The go cue is included: it is predictable structure too.
-        cue_span = task.group_size * (2 * task.n_cues + 1)
         for k in range(ep.inputs.shape[0]):
             t = model._t
             model._t += 1
-            out = col.step(t, ep.inputs[k])
-            states.append(out.copy())
+            # The *filtered* trace, not the raw spike vector. At the operating
+            # sparsity of ~0.02 a single timestep of `col.step` output has 2 of
+            # 96 units on, and a decoder over it cannot read the burst that is
+            # happening *right now*, let alone a future one -- the first
+            # version of this probe used the raw output and sat at the floor
+            # even at horizon 0. `probe.collect` uses the trace for the same
+            # reason; this is the column's state as the readout sees it.
+            states.append(model.readout.observe(col.step(t, ep.inputs[k])).copy())
             inputs.append(ep.inputs[k].copy())
-            in_cue.append(bool((ep.inputs[k][:cue_span] > 0).any()))
+        active.append(ep.cue_active)
+        group.append(ep.cue_group)
     return (np.array(states, dtype=np.float32),
             np.array(inputs, dtype=np.float32),
-            np.array(in_cue, dtype=bool))
+            np.concatenate(active), np.concatenate(group))
 
 
-def score(states, targets, mask=None, cap: int = 6000, seed: int = 0
-          ) -> tuple[float, float]:
-    """Linear and MLP accuracy predicting a binary target from column state.
+def shuffle_within(y, mask, seed: int):
+    """Time-shuffle the target, permuting only the rows the mask will keep.
 
-    Subsampled to `cap` rows. A run of 60 episodes produces ~27,000 timesteps,
-    and this probe fits six decoders per horizon across four horizons and three
-    seeds -- 72 fits, each an MLP over 96 features. Uncapped that does not
-    finish. Six thousand rows is far more than is needed to separate a real
-    effect from the shuffled floor, and the cap is applied *before* the
+    Shuffling the whole array and masking afterwards is not the same control.
+    For the `group` target the mask keeps burst steps only, roughly a fifth of
+    the stream; a global shuffle would fill those rows with values drawn from
+    the four fifths that are outside any burst, so the control would face a
+    different class balance from the real target and its score would not be a
+    floor for it. Permuting inside the mask holds the balance fixed and varies
+    only the alignment to time, which is the one thing the control is for.
+    """
+    out = y.copy()
+    rng = np.random.default_rng(seed)
+    if mask is None:
+        rng.shuffle(out)
+        return out
+    idx = np.flatnonzero(mask)
+    out[idx] = out[rng.permutation(idx)]
+    return out
+
+
+def score(states, targets, mask=None, n_classes: int = 2, cap: int = 6000,
+          seed: int = 0) -> tuple[float, float, float]:
+    """Linear accuracy, MLP accuracy, and the majority-class floor.
+
+    The third return value is not decoration. It is the score a decoder gets
+    for ignoring its input entirely, and on the `any` target it sits at 0.564
+    -- above what either decoder achieves. A linear/MLP pair reported without
+    it reads as a weak positive when it is a negative.
+
+    Subsampled to `cap` rows. A run of 60 episodes produces ~27,000 timesteps
+    and this probe fits many decoders; uncapped it does not finish in a
+    sensible time. Six thousand rows is far more than is needed to separate a
+    real effect from the floors, and the cap is applied *before* the
     train/test split so both sides shrink together.
 
     Sampled without replacement rather than truncated: the trajectory is
@@ -149,7 +224,7 @@ def score(states, targets, mask=None, cap: int = 6000, seed: int = 0
     if mask is not None:
         states, targets = states[mask], targets[mask]
     if len(states) < 200 or targets.min() == targets.max():
-        return float("nan"), float("nan")
+        return float("nan"), float("nan"), float("nan")
     if len(states) > cap:
         idx = np.random.default_rng(seed).choice(len(states), cap, replace=False)
         idx.sort()          # keep time order, so the split stays a time split
@@ -159,8 +234,13 @@ def score(states, targets, mask=None, cap: int = 6000, seed: int = 0
     ytr, yte = targets[:split], targets[split:]
     mu, sd = Xtr.mean(0), Xtr.std(0) + 1e-8
     Xtr, Xte = (Xtr - mu) / sd, (Xte - mu) / sd
-    lin = logistic_score(logistic(Xtr, ytr), Xte, yte)
-    return float(lin), float(mlp(Xtr, ytr, Xte, yte))
+    # The floor is read off the *test* split using the *training* majority, so
+    # it is a number a real predictor could have achieved rather than an
+    # oracle's.
+    majority = np.bincount(ytr, minlength=n_classes).argmax()
+    base = float((yte == majority).mean())
+    lin = logistic_score(logistic(Xtr, ytr, n_classes=n_classes), Xte, yte)
+    return float(lin), float(mlp(Xtr, ytr, Xte, yte, n_classes=n_classes)), base
 
 
 def main() -> None:
@@ -176,17 +256,23 @@ def main() -> None:
 
     if args.report:
         rows = [json.loads(x) for x in OUT.read_text().splitlines() if x.strip()]
-        print(f"{'horizon':>8s}{'linear':>9s}{'mlp':>9s}{'gap':>8s}"
-              f"{'shuffled':>10s}{'lin-cue':>9s}{'mlp-cue':>9s}{'seeds':>7s}")
-        for k in sorted({r["horizon"] for r in rows}):
-            sel = [r for r in rows if r["horizon"] == k]
-            g = lambda f: np.nanmean([r[f] for r in sel])  # noqa: E731
-            print(f"{k:8d}{g('linear'):9.3f}{g('mlp'):9.3f}"
-                  f"{g('mlp') - g('linear'):8.3f}{g('shuffled_mlp'):10.3f}"
-                  f"{g('linear_cue'):9.3f}{g('mlp_cue'):9.3f}{len(sel):7d}")
-        print("\n`shuffled` is the floor: the same decoder on a time-shuffled "
-              "stream.\nA score at that level means no predictive information, "
-              "however high it looks.")
+        print(f"{'target':>8s}{'horizon':>8s}{'base':>8s}{'shuf':>8s}"
+              f"{'linear':>9s}{'mlp':>8s}{'gap':>8s}{'over':>8s}{'seeds':>7s}")
+        for target in ("any", "burst", "group"):
+            for k in sorted({r["horizon"] for r in rows if r["target"] == target}):
+                sel = [r for r in rows
+                       if r["horizon"] == k and r["target"] == target]
+                g = lambda f: np.nanmean([r[f] for r in sel])  # noqa: E731
+                floor = max(g("base"), g("shuffled_mlp"))
+                print(f"{target:>8s}{k:8d}{g('base'):8.3f}{g('shuffled_mlp'):8.3f}"
+                      f"{g('linear'):9.3f}{g('mlp'):8.3f}"
+                      f"{g('mlp') - g('linear'):8.3f}"
+                      f"{g('mlp') - floor:+8.3f}{len(sel):7d}")
+        print("\n`over` is mlp minus the HIGHER of the two floors -- the "
+              "majority-class rate\nand the time-shuffled control. Only a "
+              "positive `over` is predictive information.\n`gap` is the part "
+              "of it a linear readout cannot reach, which is the part a\n"
+              "representation-learning rule could have a job closing.")
         return
 
     seeds = 1 if args.quick else args.seeds
@@ -201,29 +287,43 @@ def main() -> None:
         )
         model.train(task, args.settle, rng=np.random.default_rng(1000 + s),
                     report_every=10**9)
-        states, inputs, in_cue = trajectory(
+        states, inputs, active, group = trajectory(
             model, task, episodes, np.random.default_rng(21 + s))
 
-        # Predict whether ANY channel carries an event at t+k. A per-channel
-        # target would be dominated by the ~98% of channels that are silent at
-        # any moment, so the score would report the marginal rate rather than
-        # prediction. This asks the sharper question: is something coming?
-        event = (inputs > 0).any(axis=1).astype(int)
-        shuffled = event.copy()
-        np.random.default_rng(777 + s).shuffle(shuffled)
+        # Three targets, weakest question first. See the module docstring.
+        #   any    -- is anything arriving. Mostly Poisson, mostly unpredictable.
+        #   burst  -- is a scheduled burst on. The timing question.
+        #   group  -- which burst. The content question, and the only one whose
+        #             answer would justify building a predictive rule.
+        n_groups = 2 * task.n_cues + 1
+        targets = {
+            "any": ((inputs > 0).any(axis=1).astype(int), None, 2),
+            "burst": (active.astype(int), None, 2),
+            "group": (np.maximum(group, 0).astype(int), active, n_groups),
+        }
 
-        for k in args.horizons:
-            lin, non = score(states[:-k], event[k:])
-            _, sh = score(states[:-k], shuffled[k:])
-            lin_c, non_c = score(states[:-k], event[k:], mask=in_cue[:-k])
-            row = dict(horizon=k, seed=s, neurons=args.neurons,
-                       episodes=episodes, linear=lin, mlp=non,
-                       shuffled_mlp=sh, linear_cue=lin_c, mlp_cue=non_c)
-            with OUT.open("a") as fh:
-                fh.write(json.dumps(row) + "\n")
-            print(f"k={k:3d} seed={s}  linear {lin:.3f}  mlp {non:.3f}  "
-                  f"gap {non - lin:+.3f}  shuffled {sh:.3f}  "
-                  f"cue-only {lin_c:.3f}/{non_c:.3f}")
+        for name, (y, mask, n_classes) in targets.items():
+            # Horizon 0 is a control and not a result: it asks whether the
+            # state encodes what is happening *now*. Without it a null at k>0
+            # is unreadable, because "the future is not predictable" and "this
+            # state is not decodable by this probe" produce the same table. It
+            # is prepended rather than left to the caller so it cannot be
+            # omitted from a run whose numbers then get quoted.
+            for k in [0] + list(args.horizons):
+                end = len(states) if k == 0 else -k
+                m = None if mask is None else mask[k:]
+                lin, non, base = score(states[:end], y[k:], mask=m,
+                                       n_classes=n_classes)
+                _, sh, _ = score(states[:end], shuffle_within(y[k:], m, 777 + s),
+                                 mask=m, n_classes=n_classes)
+                row = dict(target=name, horizon=k, seed=s,
+                           neurons=args.neurons, episodes=episodes,
+                           linear=lin, mlp=non, base=base, shuffled_mlp=sh)
+                with OUT.open("a") as fh:
+                    fh.write(json.dumps(row) + "\n")
+                print(f"{name:>6s} k={k:3d} seed={s}  base {base:.3f}  "
+                      f"shuf {sh:.3f}  linear {lin:.3f}  mlp {non:.3f}  "
+                      f"gap {non - lin:+.3f}")
 
 
 if __name__ == "__main__":

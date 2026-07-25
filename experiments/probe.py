@@ -47,14 +47,14 @@ def logistic_score(W, X, y):
     return float((np.argmax(Xb @ W.T, axis=1) == y).mean())
 
 
-def mlp(Xtr, ytr, Xte, yte, hidden=64, epochs=900, lr=0.05, seed=0):
+def mlp(Xtr, ytr, Xte, yte, hidden=64, epochs=900, lr=0.05, seed=0, n_classes=2):
     rng = np.random.default_rng(seed)
     d = Xtr.shape[1]
     W1 = rng.normal(0, np.sqrt(2.0 / d), size=(d, hidden))
     b1 = np.zeros(hidden)
-    W2 = rng.normal(0, np.sqrt(2.0 / hidden), size=(hidden, 2))
-    b2 = np.zeros(2)
-    Y = np.eye(2)[ytr]
+    W2 = rng.normal(0, np.sqrt(2.0 / hidden), size=(hidden, n_classes))
+    b2 = np.zeros(n_classes)
+    Y = np.eye(n_classes)[ytr]
     for _ in range(epochs):
         h = np.maximum(Xtr @ W1 + b1, 0.0)
         p = softmax(h @ W2 + b2)

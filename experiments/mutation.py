@@ -228,6 +228,13 @@ MUTATIONS = [
         "channel_permutation_is_off_by_default",
     ),
     (
+        ROOT / "plexus" / "tasks.py",
+        "the cue mask is widened past the burst, so it selects background noise",
+        "            cue_active[t0 : t0 + dur] = True",
+        "            cue_active[t0 : t0 + dur * 3] = True",
+        "cue_active_marks_the_bursts",
+    ),
+    (
         ROOT / "experiments" / "criticality.py",
         "branching fit cuts on positivity, biasing m upward toward critical",
         "    FLOOR = 0.02",

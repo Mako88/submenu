@@ -1051,6 +1051,47 @@ about the benchmark than about the model — which is precisely why item 11 and
 item 13 are the same piece of work approached from two sides, and why both come
 before any mechanism is built.
 
+### WHERE THIS STANDS — pick up here
+
+`experiments/predictability.py` now **runs end to end**. It did not before; the
+earlier "it times out" diagnosis was wrong, and the whole thing takes about
+seven minutes at the defaults. Three defects in the probe were found and fixed
+along the way, and all three were of the kind this project keeps producing — an
+instrument that reports a number while measuring something else:
+
+1. **The cue mask was reconstructed from the input.** Background noise lands on
+   the cue channels on purpose, so "some cue channel is carrying something"
+   selected 0.490 of all timesteps against a true burst occupancy of 0.208 —
+   57% of the "during a cue" condition was background. Fixed at the source:
+   `Episode.cue_active` / `Episode.cue_group` are now recorded from the burst
+   schedule, guarded by
+   `test_cue_active_marks_the_bursts_and_not_the_noise_on_the_same_channels`
+   and by a mutation.
+2. **The state was the raw spike vector.** At the operating sparsity of ~0.02
+   that is 2 of 96 units per timestep, and the probe sat at the floor *even at
+   horizon 0* — it could not read the burst happening right then. Now reads the
+   readout's filtered trace, as `probe.collect` already did.
+3. **There was no horizon-0 control and no majority-class floor.** Without k=0,
+   "the future is unpredictable" and "this probe cannot decode anything" give
+   the same table. Without `base`, the `any` target reads as a weak positive at
+   0.549 when the constant predictor gets 0.564. Both are now mandatory columns.
+
+**What is NOT established.** Only `--quick` has been run — one seed, 15
+episodes. That is shape, not a result. And the headline-looking number is not
+yet meaningful:
+
+> `group` scores 0.797 linear against a 0.526 base at k=0 and holds ~0.75–0.81
+> out to k=50. **Do not read this as "the substrate predicts its own input."**
+> Four of the five groups carry a random bit; the fifth is the go cue, which is
+> *identical in every episode* and is the commonest group (45 steps against
+> 25). A decoder that learned only "the go cue arrives at a fixed time" scores
+> well here while predicting no content whatever.
+
+**The next change, before any run that gets recorded:** split `group` into
+go-versus-cue (timing, expected to be easy and uninteresting) and
+which-cue-of-the-pair over non-go bursts only (content, the actual gate).
+Then run the three-seed default and write the sweep note.
+
 ## Housekeeping
 
 - **Poll cadence from condition count.** Sweep wall clock per *seed*, measured:
