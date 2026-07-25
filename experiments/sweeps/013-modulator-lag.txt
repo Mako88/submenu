@@ -63,8 +63,15 @@ SETTINGS
 --------
 20 seeds, 400 episodes, 24 neurons, plastic lr 5e-3, tau_elig 70,
 MODULATOR_LAG=200, SURROGATE=graded, ELIG_MODE=magnitude, READOUT_RULE=delta.
-Identical to sweep 008 in every respect except the lag, so 008 is the control
-and no separate zero-lag run is needed.
+Identical to sweep 008 in every respect except the lag.
+
+Better control than 008, by accident: adding AUDIT.md under experiments/sweeps/
+tripped the same path filter one commit earlier, so "plexus experiment" run #21
+executed the whole 20-seed comparison at MODULATOR_LAG=0. The only difference
+between that commit and this one, anywhere under plexus/ or in e2e.py, is 18
+lines of README. So #21 and #22 are a matched pair differing in exactly one
+parameter, which is a cleaner comparison than reaching back to sweep 008 across
+several intervening changes. Use #21 as the control.
 
 RESULT -- 20 paired seeds
 -------------------------
