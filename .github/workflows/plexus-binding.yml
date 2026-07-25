@@ -202,6 +202,26 @@ jobs:
           python experiments/binding.py --tag tb120-drain200 \
             --tau-branch 120 --drain-steps 200 $nb
 
+          # Sweep 035. The jitter test pinned the bound exactly: lateness
+          # below delay_min is invisible, at or above it is not. So delay_min
+          # IS the jitter budget in milliseconds, and the default of 1 ships a
+          # tolerance of zero steps. What raising it costs has never been
+          # measured.
+          #
+          # dmin12-dmax48 is the condition the sweep turns on. Raising the floor
+          # also narrows the delay *spread*, and the README claims the spread is
+          # what enriches the temporal basis -- so without a condition that
+          # restores the spread at the same floor, any drop is unattributable
+          # and "tolerance is expensive" would be recorded when the truth may be
+          # "a narrow delay range is expensive".
+          dly="--hebbian 0 --drain-steps 0 $common"
+          python experiments/binding.py --tag dmin1  --delay-min 1  $dly
+          python experiments/binding.py --tag dmin6  --delay-min 6  $dly
+          python experiments/binding.py --tag dmin12 --delay-min 12 $dly
+          python experiments/binding.py --tag dmin18 --delay-min 18 $dly
+          python experiments/binding.py --tag dmin12-dmax48 \
+            --delay-min 12 --delay-max 48 $dly
+
           # Sweep 016: the same two conditions scored end to end, by the online
           # readout, rather than by an offline decoder. Everything measured so
           # far is representation quality, and sweep 009 is the standing warning
@@ -261,7 +281,8 @@ jobs:
                      off-tb120-lag0 on-tb120-lag0 on-tb120-lag50 \
                      on-tag-lag0 on-tag-lag25 on-tag-lag150 \
                      tb15-drain0 tb30-drain0 tb60-drain0 tb120-drain0 \
-                     tb240-drain0 tb15-drain200 tb120-drain200; do
+                     tb240-drain0 tb15-drain200 tb120-drain200 \
+                     dmin1 dmin6 dmin12 dmin18 dmin12-dmax48; do
             grep -q "\"tag\": \"$tag\"" experiments/binding_results.jsonl \
               || { echo "no rows for condition '$tag'"; exit 1; }
           done
@@ -309,7 +330,9 @@ jobs:
                       "on-tag-lag0 on-lag0" "on-tag-lag25 on-tb60-lag25" \
                       "tb30-drain0 tb15-drain0" "tb60-drain0 tb15-drain0" \
                       "tb120-drain0 tb15-drain0" "tb240-drain0 tb15-drain0" \
-                      "tb120-drain200 tb15-drain200" "tb15-drain0 off"; do
+                      "tb120-drain200 tb15-drain200" "tb15-drain0 off" \
+                      "dmin6 dmin1" "dmin12 dmin1" "dmin18 dmin1" \
+                      "dmin12-dmax48 dmin12" "dmin12-dmax48 dmin1"; do
             set -- $pair
             for metric in linear; do
               echo "" | tee -a summary.txt

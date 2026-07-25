@@ -80,6 +80,16 @@ def main() -> None:
     # it -- the window is a product, so 300 on one side alone is still capped
     # near 50 by the other.
     ap.add_argument("--bind-tau-pre", type=float, default=None)
+    # Sweep 035. `test_delivery_jitter_does_not_change_a_distributed_run`
+    # established that delivery lateness below `delay_min` leaves a distributed
+    # run bit-identical and lateness at or above it does not -- so `delay_min`
+    # IS the jitter budget, exactly, and raising it buys tolerance directly.
+    # What that costs the column has never been measured. `delay_max` is exposed
+    # alongside it because raising the floor alone also narrows the *spread* of
+    # delays, and the README claims the spread is what enriches the temporal
+    # basis; without both flags the two cannot be told apart.
+    ap.add_argument("--delay-min", type=int, default=ColumnConfig.delay_min)
+    ap.add_argument("--delay-max", type=int, default=ColumnConfig.delay_max)
     # Pinned, never left to track the lag. Sweep 013 lost a whole run to that:
     # the silent drain tail scaled with the lag, so a *frozen* column shifted
     # -0.062 (p = 0.0011) between lag settings and the comparison measured tail
@@ -127,6 +137,8 @@ def main() -> None:
             tau_act_fast=args.tau_act_fast,
             tau_branch=args.tau_branch,
             bind_tau_pre=args.bind_tau_pre,
+            delay_min=args.delay_min,
+            delay_max=args.delay_max,
         ),
         modulator_lag=args.modulator_lag,
         drain_steps=args.drain_steps,
@@ -157,6 +169,7 @@ def main() -> None:
         modulator_lag=args.modulator_lag, drain_steps=args.drain_steps,
         tau_act_fast=args.tau_act_fast, tau_branch=args.tau_branch,
         bind_tau_pre=args.bind_tau_pre, collect=args.collect,
+        delay_min=args.delay_min, delay_max=args.delay_max,
         linear=logistic_score(logistic(Xtr, ytr), Xte, yte),
         mlp=mlp(Xtr, ytr, Xte, yte),
         corr=float(offdiag.mean()),

@@ -1,0 +1,139 @@
+Sweep 035 -- what does buying jitter tolerance cost the column?
+===============================================================
+
+IN PLAIN TERMS
+--------------
+For this thing to run spread over ordinary machines, packets have to be allowed
+to arrive late. We now know exactly how late: a message emitted at one moment is
+first read a fixed number of steps later, and any lateness below that number is
+completely invisible -- the run computes bit-identical results. Above it, things
+change.
+
+That number is a setting. Turning it up buys more tolerance for a bad network,
+which is the whole point of the architecture. But it also means every neuron
+waits longer to hear from every other neuron, and nobody has checked whether the
+network still works as well when it does.
+
+So this is a price tag. If tolerance is nearly free, distribution over a flaky
+home connection is a configuration choice. If it is expensive, there is a real
+trade between how far apart the machines can be and how well the thing thinks.
+
+QUESTION
+--------
+`test_delivery_jitter_does_not_change_a_distributed_run` established the bound
+exactly: a packet emitted at `t` is first read at `t + delay_min`, so **lateness
+strictly below `delay_min` steps is invisible and lateness at or above it is
+not.** A three-column run with every published slice delayed 0-11 steps and
+applied in shuffled order is bit-identical in its learned weights to a punctual
+one at `delay_min = 12`, and differs at 40.
+
+So `delay_min` is the jitter budget, in milliseconds, exactly. The default is
+**1**, which means the tolerance shipped today is **zero steps**. Nothing has
+measured what raising it costs.
+
+THE CONFOUND, AND THE CONDITION THAT SEPARATES IT
+----------------------------------------------------
+Delays are drawn per synapse from `[delay_min, delay_max]`, and `delay_max` is
+24. So raising `delay_min` does two things at once:
+
+  longer floor    every synapse waits at least that long, so recurrent feedback
+                  is slower and the column's shortest loop lengthens.
+
+  narrower spread the range shrinks from 24 values to fewer. The README claims
+                  the *spread* is what enriches the temporal basis -- "cortex
+                  uses delays for coding rather than minimising them" -- so a
+                  narrower range should hurt for a reason that has nothing to do
+                  with the floor.
+
+`dmin12-dmax48` is the condition that separates them: the same floor as
+`dmin12` with the original 24-value spread restored above it. If the cost is
+the narrowing, that condition recovers it. If the cost is the floor, it does
+not.
+
+Without it, any drop is unattributable, and "jitter tolerance is expensive"
+would be recorded when the truth might be "a narrow delay range is expensive".
+
+CONDITIONS  (20 seeds, 300 episodes, 96 neurons, lr 0, binding off, drain 0)
+-------------------------------------------------------------------------------
+  dmin1          delays 1-24    the default; reproduces the standing 0.802
+  dmin6          delays 6-24    5 steps of jitter budget
+  dmin12         delays 12-24   11 steps
+  dmin18         delays 18-24   17 steps, and the narrowest spread
+  dmin12-dmax48  delays 12-48   11 steps, spread restored to 24 values
+
+Binding is off throughout. This is a question about the forward path and adding
+a plasticity rule would only make it harder to read.
+
+`drain_steps 0`, so this is measured in the standard regime rather than sweep
+030's tailed one -- and `dmin1` must reproduce **0.802** or the sweep is not
+comparable to anything.
+
+PREDICTION (recorded before the run)
+--------------------------------------
+  dmin1          0.802   (established; anything else voids the sweep)
+  dmin6          0.78 to 0.82
+  dmin12         0.74 to 0.81
+  dmin18         0.68 to 0.78
+  dmin12-dmax48  0.78 to 0.84, i.e. **at or above dmin12**
+
+**The central claim: the cost is small up to `delay_min = 12` -- under 0.05 --
+so roughly 11 ms of jitter budget is close to free.**
+
+**And the supporting claim: `dmin12-dmax48` beats `dmin12`**, because most of
+whatever cost appears should come from the narrowed spread rather than the
+raised floor.
+
+The reasoning: the task holds cues 100 steps apart, so a recurrent loop that
+lengthens from 1 to 12 steps is still an order of magnitude shorter than the
+structure being held, and should barely matter. The spread is the part with a
+mechanism behind it -- a delay line is how this column represents time at all,
+and 7 distinct values (18-24) is a much poorer basis than 24.
+
+Sweep 030 supplies a reason to doubt the direction, which is why the bands are
+wide: it found that *lengthening* the branch filter helped enormously rather
+than hurting, so this project's intuitions about longer timescales have been
+wrong before, in the direction of underestimating them. `dmin18` might improve.
+
+WHAT EACH OUTCOME MEANS
+-------------------------
+  cost small to dmin12   Jitter tolerance is a configuration choice, and the
+                         default of 1 is leaving free robustness on the table.
+                         The default should probably move, and the README's
+                         latency section gains a real number: this much jitter
+                         costs this much accuracy.
+
+  cost large, and        The spread is what matters, not the floor. Then
+  dmax48 recovers it     tolerance is bought by widening the whole range rather
+                         than raising the floor, which costs memory (`depth`
+                         scales with `delay_max`) instead of accuracy.
+
+  cost large, and        A genuine trade: distance between machines is paid for
+  dmax48 does not        in accuracy. Then the distribution thesis has a price
+                         it has never quoted, and it belongs in the README next
+                         to the latency table rather than in a sweep note.
+
+  dmin18 improves        The delay floor is doing something useful, as sweep 030
+                         found for the branch filter. Then the interesting
+                         question is whether delays and `tau_branch` are two
+                         handles on the same thing, and 030's +0.298 may be
+                         partly a delay effect in disguise.
+
+WHAT THIS DOES NOT TEST
+-------------------------
+Peer delays. `peer_delay` is separate and already 30 by default in distributed
+runs, so cross-machine traffic has a much larger budget than `delay_min`
+suggests. This sweep is about the *within-column* floor, which is what bounds
+jitter for a column's own published slice.
+
+Nor does it test whether a real network's jitter distribution looks anything
+like the uniform 0-N used in the test that motivated this. It almost certainly
+does not; the bound is what matters, not the shape below it.
+
+SETTINGS
+--------
+20 seeds, 300 episodes, 500 collection episodes, 96 neurons, lr 0, binding and
+lateral off, `drain_steps 0`, `tau_branch` at its default 15.
+
+RESULT -- 20 paired seeds
+-------------------------
+Pending. Sweep 034 holds the matrix.
