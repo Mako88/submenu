@@ -58,12 +58,11 @@ and constantly leaving*.
 1. Collect sweeps 035 / 036 / 037 (in flight).
 2. **Defer 032 and 033.** Good questions about a substrate that already works;
    neither moves the learning problem.
-3. **Fix the measuring instrument — item 11, in progress.** Still first: without
-   it we cannot tell whether *any* mechanism works. But see the refinement in
-   item 11 about what a predictive objective needs, which is not quite the same
-   benchmark.
-4. **Is the substrate predictable at all? — item 13, the new first mechanism
-   question.** Before building a predictive objective, measure whether a frozen
+3. ~~Fix the measuring instrument — item 11.~~ **Done, and the premise was
+   wrong.** The standing benchmark has ~0.19 of linear-to-MLP headroom, binding
+   already captures 40% of it, and no tested configuration beats it. The
+   benchmark is not the blocker. **Skip to step 4.**
+4. **Is the substrate predictable at all? — item 13, now the first question.** Before building a predictive objective, measure whether a frozen
    column's own state predicts its next input. If it does not, the direction is
    dead and it costs one probe to find out instead of a month.
 5. Re-read e-prop and SORN properly. Do not build from memory of them.
@@ -132,7 +131,7 @@ question in plain language, with where it stands. Detail is below.
 | 8 | Would a single GPU just beat this? | **The premise was wrong.** Not bandwidth-bound — 17 % of DRAM peak at 96 neurons, working set fits in L2. It is overhead-bound, so the comparison cannot be made until the code is near *some* limit |
 | 9 | Which claims in the record were never measured? | New, and it caught **all four** of DESIGN.md's headline departures. Two sweeps queued (036, 037), the routed modulator and the bandwidth premise both **refuted** |
 | 13 | **Is the substrate predictable at all?** | **NEW — the gate on the whole pivot.** If a frozen column's state does not predict its own next input, a predictive objective has nothing to learn from. One probe settles it |
-| 11 | **Is the benchmark why nothing learns?** | **NEW, and the blocker for everything.** A frozen random column already scores 0.802 on delayed XOR. There is almost nothing left for a learning rule to win |
+| 11 | ~~Is the benchmark why nothing learns?~~ | **Measured — premise REFUTED.** The standing task has ~0.19 of linear-to-MLP headroom and binding already captures 40% of it. No tested configuration beats it. Not the blocker |
 | 12 | What here is actually novel, and would we start the same way again? | **NEW.** Most components are prior art. Honest answer written below |
 | 10 | Should `tau_branch` be 60 rather than 15? | **Known better setting, deliberately not adopted.** +0.056 at p = 0.0004 (sweep 034). Changing it invalidates every standing number as a comparison set, so re-baselining is a decision to take on purpose |
 
@@ -796,11 +795,16 @@ re-baselining twice.
 
 ## 11. Is the benchmark why nothing learns?
 
-*In plain terms: we keep testing learning rules on a puzzle the network can
-mostly already do before it learns anything. A random, untrained column scores
-0.802 out of 1.0 on it. So even a perfect learning rule could only ever show a
-small improvement, and every mechanism we have tried has been competing for the
-last fifth of the problem. This may be the reason eleven sweeps came back null.*
+> ## MEASURED, AND THE PREMISE WAS WRONG. See the result at the end of this item.
+> The benchmark is **not** obviously the blocker. There is ~0.19 of headroom on
+> the standing task and binding already captures 40% of it.
+
+*In plain terms (as originally written, and kept so the correction is legible):
+we keep testing learning rules on a puzzle the network can mostly already do
+before it learns anything. A random, untrained column scores 0.802 out of 1.0 on
+it. So even a perfect learning rule could only ever show a small improvement,
+and every mechanism we have tried has been competing for the last fifth of the
+problem. This may be the reason eleven sweeps came back null.*
 
 **This is the blocker, and it should be fixed before another mechanism is
 built.** Building a learning rule and testing it here is close to unfalsifiable:
@@ -855,6 +859,61 @@ because sweep 028 showed the gain is roughly flat in column size but *shrank to
 ceiling effect appearing from the other direction. That is a real, already-
 measured hint that these mechanisms are headroom-limited rather than
 weak.
+
+### RESULT — `experiments/headroom.py`, 3 seeds, frozen column
+
+| configuration | linear | mlp | **gap** |
+|---|---|---|---|
+| xor-24 | 0.606 | 0.822 | **0.217** |
+| **xor-96 (the standing benchmark)** | 0.744 | 0.958 | **0.214** |
+| xor-distract-96 | 0.658 | 0.856 | 0.197 |
+| xor-48 | 0.772 | 0.939 | 0.167 |
+| parity3-96 | 0.464 | 0.533 | 0.069 |
+| xor-noisy-96 | 0.561 | 0.611 | 0.050 |
+| xor-weak-96 | 0.539 | 0.589 | 0.050 |
+| parity3-close-192 | 0.547 | 0.592 | 0.044 |
+| parity3-192 | 0.475 | 0.469 | −0.006 |
+| xor-far-96 | 0.631 | 0.628 | −0.003 |
+
+**The premise of this item is refuted.** I claimed the standing benchmark leaves
+a learning rule almost nothing to do. It does not. At the grid's settings
+xor-96's gap is **0.214**, statistically the same as xor-24's 0.217 — and at the
+standing settings (300 episodes, 500 collect) it is linear 0.802 against MLP
+0.987, a gap of **0.185**. The half of my claim that was wrong is the second
+half: the label is nearly fully *present*, but it is **not** nearly fully
+linearly accessible.
+
+Put against what the mechanisms actually deliver:
+
+    available gap        0.185
+    binding    +0.074    captures 40% of it
+    lateral    +0.028    captures 15%
+
+**These mechanisms are not starved for headroom. They are taking a substantial
+fraction of what is available.** That is a much better result for them than the
+framing I built this item on, and it means "the benchmark is why nothing learns"
+is not supported.
+
+**No configuration tested beats the standing benchmark meaningfully.** Every
+attempt to make the task harder — more noise, weaker cues, longer gaps, a third
+cue — destroys the information rather than tangling it: gaps collapse to 0.05 or
+below and both decoders fall toward chance. `xor-far-96` (cue spacing 200) is the
+sharpest case, gap **−0.003**: stretch the delay and the substrate simply stops
+holding the cue. The only mild candidate is `xor-distract-96` — comparable gap
+(0.197) from a lower linear baseline (0.658), so more of it sits on the readable
+side — and that is a refinement, not a fix.
+
+**One caveat that cuts against reading this too favourably.** The gap is measured
+with a 64-unit MLP, which can represent things a *local* rule in the column could
+never make linearly accessible. So the gap is an **upper bound** on what any
+local mechanism could win, not a promise. The probe's docstring said this before
+the run and it still applies.
+
+**What this changes.** Item 11 stops being the blocker, and the plan skips step 3
+— go to the mechanism question directly. The residual value here is `xor-far-96`
+and `parity3-*`, which together map where the substrate's memory wall is: cues
+100 steps apart survive, 200 do not, and three cues do not at any size tested.
+That is a real constraint on any future task design and worth keeping.
 
 ## 12. What is novel here, and would we start the same way again?
 
