@@ -277,6 +277,13 @@ someone who was not there what to do next time. So:
   exists to prevent — and it was committed in the same turn the rule was
   written, which is how easy it is.
 
+  **The invariant, because the two failure modes are opposite and both happened:
+  never end a turn with neither more work nor an armed wake-up.** A turn ends
+  when the tool calls stop. Writing "continuing on local work" and then stopping
+  is a dead stop that nothing recovers from — no timer fires, no notification
+  arrives, and the project sits until a human notices. Either keep calling
+  tools, or arm the wake-up. Prose is not a third option.
+
 - The design rule the whole architecture serves: **no operation may require
   globally synchronised state.** A mechanism needing a population sort, a global
   mean, or a pooled matrix is a violation and gets flagged as one even when it
