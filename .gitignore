@@ -10,3 +10,4 @@ experiments/*_results.jsonl
 experiments/geometry_results.jsonl
 experiments/growth_results.jsonl
 experiments/headroom_results.jsonl
+experiments/predictability_results.jsonl
