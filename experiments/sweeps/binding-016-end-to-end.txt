@@ -1,0 +1,71 @@
+Sweep 016 -- does the representation gain survive the readout?
+==============================================================
+
+QUESTION
+--------
+Everything measured about salience-gated Hebbian binding so far is
+representation quality: an offline logistic decoder on the column state reads
+0.876 with it against 0.802 without (sweep 014, confirmed against the rewritten
+code in 015). Nothing has scored the model end to end, by the online readout it
+actually ships with.
+
+Sweep 009 is why that is not a formality. It measured a column-level quantity
+that the online readout could not see, and the whole point of that sweep was
+that representation and accuracy come apart. It happened to come apart in the
+direction that hid a *loss* then; there is no reason it cannot hide a gain now.
+
+CONDITIONS
+----------
+  e2e-off   frozen column, hebbian off
+  e2e-on    frozen column, hebbian on
+
+Column lr 0 in both, so the three-factor rule contributes nothing and this
+isolates binding. Same 20 seeds, 300 episodes, 96 neurons as sweeps 014/015.
+drain_steps pinned to 0 rather than e2e.py's default of 200: that default
+exists to make *lag* comparisons valid, and with no lag it only adds 200 silent
+steps per episode, shifting the operating point away from the sweeps this is
+meant to be comparable with. Sweep 013 is the reason that is worth stating.
+
+PREDICTION (recorded before the run)
+------------------------------------
+Moderate confidence: **+0.02 to +0.05 on eval accuracy, p < 0.05.**
+
+The reasoning, so the number is checkable rather than a feeling. The online
+delta readout has always extracted less than an offline decoder on the same
+states -- the README records 0.717 end to end at 96 neurons against ~0.85
+offline, so it captures roughly 60% of the available margin above chance. If
+that fraction holds, a +0.074 offline gain should arrive as roughly +0.045.
+Predicting a range below that because assuming linear transfer is the
+optimistic case, and because a readout tracking a representation that is itself
+drifting under binding is a harder problem than either alone.
+
+`e2e-off` should land near 0.71 -- the README's figure at this size, though at
+350 episodes rather than 300.
+
+FAILURE RESPONSES, NAMED IN ADVANCE
+------------------------------------
+A null here is the likely outcome to mishandle, so:
+
+  If p > 0.05 with a positive point estimate, the readout is the suspect, not
+  the mechanism. The specific test is to re-run with --readout-rule rls, which
+  sweep 010 showed closes the online/offline extraction gap (+0.032, p =
+  0.0098). If the gain appears under RLS and not under delta, binding works and
+  the delta readout cannot see it -- which is a statement about the readout and
+  would make local decorrelation inside the column the next thing to build.
+  That is a real experiment, not a way of explaining the null away, and it
+  should be run before the mechanism is credited end to end.
+
+  If the difference is significantly NEGATIVE, that is the interesting case and
+  it should not be softened. It would mean binding helps a decoder fitted after
+  the fact while hurting one learning online, most plausibly because binding
+  moves the representation under a readout that is chasing it. Testable by
+  freezing the column's binding partway through training and letting the
+  readout converge against a static representation.
+
+  What must not happen either way: reporting the offline number as though it
+  established end-to-end performance. It does not, and until this sweep lands
+  the README should not say otherwise.
+
+RESULT -- 20 paired seeds
+-------------------------
+Pending.

@@ -43,6 +43,8 @@ def main() -> None:
     ap.add_argument("--surrogate", default="window", choices=["window","graded","hybrid"])
     ap.add_argument("--pretrain", type=int, default=0,
                     help="episodes of readout-only training before column plasticity")
+    ap.add_argument("--hebbian", type=int, default=0,
+                    help="salience-gated Hebbian binding (sweep 014/015)")
     ap.add_argument("--feedback", default="symmetric")
     ap.add_argument("--report", action="store_true")
     args = ap.parse_args()
@@ -65,7 +67,8 @@ def main() -> None:
         task.n_classes,
         column=ColumnConfig(
             n_neurons=args.neurons, lr=args.lr, tau_eligibility=args.tau_elig,
-            elig_mode=args.elig_mode, surrogate=args.surrogate, seed=args.seed
+            elig_mode=args.elig_mode, surrogate=args.surrogate, seed=args.seed,
+            hebbian=bool(args.hebbian)
         ),
         readout_lr=args.readout_lr,
         readout_rule=args.readout_rule,
@@ -91,6 +94,7 @@ def main() -> None:
                                  tau_elig=args.tau_elig, episodes=args.episodes,
                                  modulator_lag=args.modulator_lag,
                                  drain_steps=args.drain_steps,
+                                 hebbian=args.hebbian,
                                  pretrain=args.pretrain, elig_mode=args.elig_mode,
                                  surrogate=args.surrogate,
                                  readout_rule=args.readout_rule)) + "\n")

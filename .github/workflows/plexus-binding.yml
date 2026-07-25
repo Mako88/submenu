@@ -65,6 +65,20 @@ jobs:
           python experiments/binding.py --tag off --hebbian 0 $common
           python experiments/binding.py --tag on  --hebbian 1 $common
 
+          # Sweep 016: the same two conditions scored end to end, by the online
+          # readout, rather than by an offline decoder. Everything measured so
+          # far is representation quality, and sweep 009 is the standing warning
+          # that it and accuracy can come apart.
+          #
+          # --drain-steps 0 so the column runs the same dynamics binding.py
+          # measured. e2e.py pins it at 200 by default, which exists to make
+          # *lag* comparisons valid; with no lag it only adds 200 silent steps
+          # per episode and shifts the operating point away from the sweep this
+          # is meant to be comparable with.
+          e2e="--seed ${{ matrix.seed }} --episodes $EPISODES --neurons $NEURONS --lr 0 --drain-steps 0"
+          python experiments/e2e.py --tag e2e-off --hebbian 0 $e2e
+          python experiments/e2e.py --tag e2e-on  --hebbian 1 $e2e
+
       # A run that produced no rows would otherwise aggregate to a confident
       # empty table. The previous version of this workflow passed flags that
       # binding.py does not accept, and every seed died on its first line.
@@ -80,7 +94,9 @@ jobs:
         if: steps.gate.outputs.run == 'yes'
         with:
           name: binding-seed-${{ matrix.seed }}
-          path: experiments/binding_results.jsonl
+          path: |
+            experiments/binding_results.jsonl
+            experiments/e2e_results.jsonl
           retention-days: 14
 
   aggregate:
@@ -100,18 +116,25 @@ jobs:
       - name: Combine, report, and run the paired test
         run: |
           cat collected/*/binding_results.jsonl > experiments/binding_results.jsonl
+          cat collected/*/e2e_results.jsonl > experiments/e2e_results.jsonl
           python experiments/binding.py --report | tee summary.txt
           for metric in linear mlp; do
             echo "" | tee -a summary.txt
             python experiments/paired_test.py --file experiments/binding_results.jsonl \
               --metric $metric --a on --b off | tee -a summary.txt
           done
+          echo "" | tee -a summary.txt
+          python experiments/e2e.py --report | tee -a summary.txt
+          echo "" | tee -a summary.txt
+          python experiments/paired_test.py --file experiments/e2e_results.jsonl \
+            --metric acc --a e2e-on --b e2e-off | tee -a summary.txt
 
       - uses: actions/upload-artifact@v4
         with:
           name: binding-combined
           path: |
             experiments/binding_results.jsonl
+            experiments/e2e_results.jsonl
             summary.txt
           retention-days: 30
 
