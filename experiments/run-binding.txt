@@ -1,60 +1,22 @@
-Sentinel for .github/workflows/plexus-binding.yml.
+Sweep 030 -- can the latency window be bought, and what does it cost?
 
-Editing this file starts a 20-seed run of the binding sweeps. It exists so that
-writing a *result* into experiments/sweeps/binding-*.txt does not re-run the
-matrix that produced it, which the previous path filter did every time -- about
-eleven minutes of CI per recorded result.
+Two routes, one matrix, so they are comparable rather than measured a week
+apart against different baselines.
 
-Record what each run was for, so the artifacts can be matched to a question.
+  tau_branch 60 / 120   widens the window by changing the forward path's own
+                        integration filter. Windows measured at 28.7 and ~37
+                        steps against 11.9 at the default. Costs whatever
+                        changing the column's computation costs, which is
+                        unmeasured and is half of what this sweep prices.
 
-run 1 -- sweeps 015/016/017/018, ten conditions per seed.
-  binding on/off measured offline (linear, MLP), and end to end across delta,
-  RLS, catch-up, two decay rates and a bind-then-stop schedule.
-  Results in experiments/sweeps/binding-015 .. -018.
+  bind_tau_pre 300      gives the binding rule its own presynaptic trace, so
+  + tau_act_fast 300    the forward path is provably untouched. Window measured
+                        at 154 steps, with 40% of the update surviving lag 150.
 
-run 2 -- adds sweep 019: linear decodability every 25 episodes across training,
-  binding on vs off, to separate "binding is slow" from "the readout is slow".
-  Prediction recorded in experiments/sweeps/binding-019-trajectory.txt.
+The headline is on-tag-lag150. Two conditions have already failed at that
+lag -- on-lag150 at +0.001 (p = 0.88) and on-lag150-slow at +0.000
+(p = 1.0000) -- so a win there is a real result and a loss costs a config
+flag that ships off by default.
 
-run 3 -- adds sweep 020: lateral inhibition (Vogels-Sprekeler anti-Hebbian rule
-  on the existing inhibitory synapses), plus correlation and effective-rank
-  columns on every condition. Tests the premise behind the whole
-  decorrelation direction, which one seed says is backwards.
-  Prediction in experiments/sweeps/binding-020-decorrelation.txt.
-
-run 4 -- sweep 021: lateral inhibition end to end. Adds lat-on, latbind-on,
-  latbind-rls and latbind-catchup; drops sweep 018's three schedule conditions
-  and sweep 019's trajectory probe, whose questions are answered and written
-  up. `latbind-on` against `rls-on` is the one that matters -- a local rule
-  under the shipped delta readout against RLS's pooled correlation matrix.
-  Prediction in experiments/sweeps/binding-021-lateral-end-to-end.txt, which
-  predicts it is null and names closing the direction as the consequence.
-
-run 5 -- sweep 026: the architecture's headline claim, measured on a mechanism
-  that works. AUDIT asked for the three-factor rule under modulator lag, but
-  that rule is worth -0.003 at lag 0, so measuring whether a null degrades tests
-  nothing -- the same shape as sweep 022's preset-frozen, a condition whose
-  outcome is guaranteed by how it is built. Replaced rather than run as
-  specified.
-
-  Binding is the right vehicle: it pays +0.074 at p = 0.0000, and it reads the
-  modulator only for its presence, scoring a 50ms window on the neuron's own
-  activity at the instant it lands. A late modulator scores a decayed window, so
-  the mechanism is latency-sensitive by construction.
-
-  Seven conditions: off and on at lag 0, off at lag 150 (the sanity check that
-  sweep 013's drain-tail confound is fixed), on at lags 25/50/150, and on at lag
-  150 with tau_act_fast raised to 250 -- which asks whether latency tolerance is
-  a property or a parameter. drain_steps pinned at 200 everywhere.
-
-  Prediction in experiments/sweeps/binding-026-latency-tolerance.txt, derived
-  arithmetically from exp(-lag/tau) rather than guessed, and naming
-  no-decay-at-all as the outcome that would mean the instrument is broken.
-
-run 6 -- sweep 026 re-run. The first attempt is compromised and says so: adding
-  --drain-steps with a default of 200 silently gave every standing condition a
-  200-step tail, moving the baseline from the 0.802 that sweeps 015-025 measured
-  to 0.620. Default corrected to 0. Adds off-lag0 and on-lag0 at the same tail
-  as the lag conditions, which the first attempt lacked -- without them there is
-  no way to separate "binding decays with lag" from "binding produces nothing at
-  drain 200".
+Prediction, references and what each outcome means:
+experiments/sweeps/binding-030-buying-the-window.txt
