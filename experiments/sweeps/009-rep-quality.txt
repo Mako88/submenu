@@ -26,3 +26,29 @@ Prediction, recorded before the sweep: an effect of roughly that size at
 20 seeds would be the first positive result for the learning rule in this
 project. Three times today a promising single seed has decayed to zero by
 twenty, so the honest prior is that this does the same.
+
+RESULT -- 20 paired seeds, measuring the column state directly:
+    linear   frozen 0.639 +/- 0.052   plastic 0.621 +/- 0.062
+             mean paired difference -0.018, improved on 6/20, p = 0.084
+    MLP      frozen 0.891 +/- 0.050   plastic 0.885 +/- 0.061
+             mean paired difference -0.006, improved on 10/20, p = 0.643
+
+  The prediction held, and then some. Seed 0 alone had shown 0.675 -> 0.728 on
+  linear; across twenty it is -0.018, with 6/20 improving and a p-value trending
+  toward the rule being harmful rather than helpful. Fourth time a single seed
+  has misled in this project.
+
+  This also refutes the instrument hypothesis that motivated the sweep. Bypassing
+  the readout entirely and measuring what the column represents shows no benefit
+  either, so the six earlier end-to-end nulls were not an artefact of measuring
+  through a blunt readout.
+
+  Note what the frozen numbers say about the opportunity: linear 0.639 against
+  MLP 0.891. The information is richly present and poorly linearly accessible, a
+  gap of +0.25 that is precisely the job of a learning rule. The rule is not
+  merely failing to help at the margin; it is failing at a well-defined task
+  with abundant room, and it makes the representation slightly worse.
+
+  Explanations now excluded: the benchmark (001, 002), the teacher (004), the
+  update scaling (006), the trace's magnitude noise (007), the surrogate (008),
+  and the measuring instrument (009).
