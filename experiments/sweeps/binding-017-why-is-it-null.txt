@@ -1,0 +1,64 @@
+Sweep 017 -- why does the representation gain not reach the readout?
+====================================================================
+
+QUESTION
+--------
+Sweep 016 measured the mechanism end to end and got nothing: +0.007 on 11/20
+seeds, p = 0.68, against an offline representation gain of +0.074. The null
+stands. This asks why, because the two available explanations imply completely
+different next steps and picking one by intuition would be guessing.
+
+  1. EXTRACTION. The information is there and the delta readout cannot pull it
+     out. Sweep 010 established that RLS closes the online/offline gap on this
+     model (+0.032, p = 0.0098), so if the binding gain shows up under RLS and
+     not under delta, the mechanism works and the shipped readout is the
+     bottleneck.
+
+  2. NON-STATIONARITY. The offline decoder is fitted to the column's *final*
+     state. The online readout learns while binding is still changing that
+     state underneath it, spending its budget chasing a moving target. Tested
+     by freezing binding after training and giving the readout 150 more
+     episodes against a now-static column -- which is exactly the state the
+     offline probe fits.
+
+Sweep 016's recorded response named (1). (2) is added because the evidence
+already points at it: the `on` condition had higher seed variance than `off`
+(0.069 vs 0.054) at a nearly identical mean, which is what a readout fighting a
+moving representation looks like, not what an inert mechanism looks like.
+
+CONDITIONS
+----------
+  rls-off / rls-on          --readout-rule rls
+  catchup-off / catchup-on  --catchup 150 (binding frozen, readout continues)
+
+Both paired against their own control, so each answers its own question without
+depending on the other. Same 20 seeds, 300 episodes, 96 neurons, column lr 0,
+drain_steps 0 as in 016.
+
+PREDICTION (recorded before the run)
+------------------------------------
+Non-stationarity is the better bet, at maybe 60/40.
+
+  catchup: +0.03 to +0.06, p < 0.05. If binding leaves the representation
+  better and the readout simply has not caught up, 150 static episodes should
+  recover most of the offline gap. A delta readout converges on this task in
+  well under that.
+
+  rls: +0.01 to +0.04, and possibly not significant. RLS raises both
+  conditions, and if extraction were the whole story sweep 016 would have shown
+  *some* gain rather than 9% of the expected one.
+
+  Both null is the outcome that would hurt most, and it is not unlikely. It
+  would mean the offline +0.074 reflects something a fresh decoder can exploit
+  that no online learner reaches from either direction -- at which point the
+  honest reading is that binding improves a *measurement* of the column and not
+  the model, and the mechanism should be reported that way or dropped.
+
+Naming that last branch explicitly, because after a null and two follow-ups the
+temptation is to keep adding conditions until one is significant. If both come
+back null, the answer is that the mechanism does not pay end to end on this
+task, and the next move is a different task, not a third readout.
+
+RESULT -- 20 paired seeds
+-------------------------
+Pending.

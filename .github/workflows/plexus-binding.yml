@@ -79,6 +79,22 @@ jobs:
           python experiments/e2e.py --tag e2e-off --hebbian 0 $e2e
           python experiments/e2e.py --tag e2e-on  --hebbian 1 $e2e
 
+          # Sweep 017, the two follow-ups sweep 016's prediction named. 016 came
+          # back null (+0.007, p = 0.68) against a +0.074 offline gain, and the
+          # two candidate explanations imply different next steps, so both get
+          # measured rather than one.
+          #
+          #   rls     -- extraction. Sweep 010 showed RLS closes the
+          #              online/offline gap. If the gain appears here and not
+          #              under delta, the shipped readout cannot see it.
+          #   catchup -- non-stationarity. Freeze binding, let the readout
+          #              converge against a static column. The offline probe
+          #              fits its decoder to exactly that state.
+          python experiments/e2e.py --tag rls-off --hebbian 0 --readout-rule rls $e2e
+          python experiments/e2e.py --tag rls-on  --hebbian 1 --readout-rule rls $e2e
+          python experiments/e2e.py --tag catchup-off --hebbian 0 --catchup 150 $e2e
+          python experiments/e2e.py --tag catchup-on  --hebbian 1 --catchup 150 $e2e
+
       # A run that produced no rows would otherwise aggregate to a confident
       # empty table. The previous version of this workflow passed flags that
       # binding.py does not accept, and every seed died on its first line.
@@ -126,8 +142,12 @@ jobs:
           echo "" | tee -a summary.txt
           python experiments/e2e.py --report | tee -a summary.txt
           echo "" | tee -a summary.txt
-          python experiments/paired_test.py --file experiments/e2e_results.jsonl \
-            --metric acc --a e2e-on --b e2e-off | tee -a summary.txt
+          for pair in "e2e-on e2e-off" "rls-on rls-off" "catchup-on catchup-off"; do
+            set -- $pair
+            echo "" | tee -a summary.txt
+            python experiments/paired_test.py --file experiments/e2e_results.jsonl \
+              --metric acc --a "$1" --b "$2" | tee -a summary.txt
+          done
 
       - uses: actions/upload-artifact@v4
         with:

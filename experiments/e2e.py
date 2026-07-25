@@ -45,6 +45,10 @@ def main() -> None:
                     help="episodes of readout-only training before column plasticity")
     ap.add_argument("--hebbian", type=int, default=0,
                     help="salience-gated Hebbian binding (sweep 014/015)")
+    ap.add_argument("--catchup", type=int, default=0,
+                    help="episodes of readout-only training after the column is "
+                         "frozen, to test whether a moving representation is what "
+                         "the online readout cannot follow (sweep 017)")
     ap.add_argument("--feedback", default="symmetric")
     ap.add_argument("--report", action="store_true")
     args = ap.parse_args()
@@ -87,6 +91,13 @@ def main() -> None:
         model.train(task, args.pretrain, rng=rng, report_every=10**9)
         model.column.cfg.lr = saved
     model.train(task, args.episodes, rng=rng, report_every=10**9)
+    if args.catchup:
+        # Stop the column changing, then let the readout converge against what
+        # is now a static representation. The offline probe fits its decoder to
+        # exactly this state, so if accuracy rises to meet it, the gap is the
+        # readout chasing a moving target rather than failing to extract.
+        model.column.cfg.hebbian = False
+        model.train(task, args.catchup, rng=rng, report_every=10**9)
     acc = model.evaluate(task, args.eval, rng=np.random.default_rng(9999))
 
     with OUT.open("a") as fh:
@@ -94,7 +105,7 @@ def main() -> None:
                                  tau_elig=args.tau_elig, episodes=args.episodes,
                                  modulator_lag=args.modulator_lag,
                                  drain_steps=args.drain_steps,
-                                 hebbian=args.hebbian,
+                                 hebbian=args.hebbian, catchup=args.catchup,
                                  pretrain=args.pretrain, elig_mode=args.elig_mode,
                                  surrogate=args.surrogate,
                                  readout_rule=args.readout_rule)) + "\n")

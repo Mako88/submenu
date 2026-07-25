@@ -358,40 +358,42 @@ with it the label is 0.86 decodable. That is the main positive result.
 **Refuted.** That the local three-factor rule beats a frozen reservoir. Twenty
 paired seeds put the difference at −0.003 with p = 0.79.
 
-**First positive learning result.** A different rule does beat it.
+**A mechanism that improves the representation but not the accuracy.**
 Salience-gated Hebbian binding — on a modulator release, every neuron
 strengthens the excitatory synapses that were driving it, in proportion to its
-own activity against its own baseline — improves linear decodability to
-**0.876 against a frozen column's 0.802**
-(`experiments/sweeps/engram-014-is-allocation-necessary.txt`).
+own activity against its own baseline — raises linear decodability of the
+column state from **0.802 to 0.876** over 20 paired seeds, p = 0.0000
+(`experiments/sweeps/engram-014`, re-measured in `binding-015`).
 
-Two properties matter more than the size. It is *local*: every quantity is a
-neuron reading its own state, nothing pooled, where the RLS readout's
+**End to end it delivers +0.007, p = 0.68** (`binding-016`). The gain does not
+reach the online readout, and the honest summary of this mechanism today is
+that it improves a measurement of the column rather than the model. Sweep 017
+is testing which of two explanations holds — that the delta readout cannot
+extract it, or that the readout is chasing a representation still moving under
+it — and until one lands, the offline number should not be quoted as
+performance.
+
+Two properties are still worth keeping in view. It is *local*: every quantity
+is a neuron reading its own state, nothing pooled, where the RLS readout's
 comparable gain needed a global correlation matrix that did not decompose
 (sweep 011). And it is *unsupervised*: the modulator is read only for its
-presence, never its sign or its target, so it does not depend on the error
-signal that has failed eleven times.
+presence, never its sign or its target.
 
-It arrived by way of a mechanism that was deleted. This began as an engram
+It also arrived by way of a mechanism that was deleted. This began as an engram
 allocator — excitability drift, a recruitment competition, an allocation
 refractory — following Han et al. 2007 / Yiu et al. 2014 / Cai et al. 2016.
 Sweep 012 measured the full apparatus at +0.029 over frozen, p = 0.0176, and
 that looked like the result. Sweep 014 stripped it: the full apparatus reads
 0.830 against 0.876 for binding alone, worse on 19 of 20 seeds at p = 0.0001.
-The excitability half cost 0.041 and the recruitment competition contributed
+The excitability half cost 0.041; the recruitment competition contributed
 nothing (p = 0.52). All of it is gone from the code and recorded in the sweep.
 
-The lesson is worth more than the mechanism: **a significant positive result is
-not evidence that the mechanism producing it is the right one.** Sweep 012's
-+0.029 was real, replicated at +0.028, and less than half of what was available
-from the one component nobody had isolated.
-
-Two caveats. This is representation quality, not end-to-end accuracy, and sweep
-009 is the standing reminder that those can come apart. And delayed XOR has one
-episode, one answer and no interference between memories, so it never asks for
-what allocation is for — the refractory demonstrably produced engrams
-overlapping less than independent sampling, and that is worth revisiting on a
-capacity or continual-learning benchmark rather than treating as refuted.
+Two lessons, both cheaper to read here than to rediscover. **A significant
+positive result is not evidence that the mechanism producing it is the right
+one** — 012's +0.029 was real, replicates at +0.028, and was less than half of
+what sat inside it in a component nobody had isolated. And **representation
+quality is not accuracy**; sweep 009 established that in the direction that hid
+a loss, and 016 is the same lesson in the direction that hides a gain.
 
 Two readings are worth separating. The *locality* claims — no synchronisation
 barrier, emission-time addressing, tolerance of inter-column conduction delay —
