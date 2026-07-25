@@ -1,0 +1,183 @@
+name: plexus growth
+
+# Sweep 033. `Column.add_inputs` is shipped with four tests and three mutations,
+# and everything measured about it so far was measured on an *untrained* column.
+# TODO item 5 names the open half outright: whether a trained model's function
+# survives growth. It cannot, because making room for the new channels rewires
+# a quarter of every neuron's fan-in and re-draws those weights.
+#
+# See experiments/sweeps/binding-033-growth-on-a-trained-model.txt for the
+# prediction, the three costs the conditions separate, and the comparison the
+# write-up is warned not to merge.
+
+
+# Only one sweep matrix at a time, across every plexus workflow.
+#
+# Without this they interleave badly. A 20-seed matrix takes all 20 runners, so
+# when a second sweep is pushed while the first is still running, the second's
+# seeds queue -- then grab every runner the moment the first's seeds finish, and
+# the first's `aggregate` job starves behind them. That happened three times
+# (021/022, 023/024, 026/027), each costing ~20 minutes of nothing.
+concurrency:
+  group: plexus-sweeps
+  cancel-in-progress: false
+
+on:
+  workflow_dispatch:
+    inputs:
+      seeds:
+        description: 'Number of seeds'
+        required: false
+        default: '20'
+      episodes:
+        description: 'Training episodes before growth'
+        required: false
+        default: '300'
+      recover:
+        description: 'Episodes after growth'
+        required: false
+        default: '100'
+      collect:
+        description: 'Episodes captured for the offline decoder'
+        required: false
+        default: '500'
+  # A dedicated sentinel, never a results path -- see plexus-binding.yml for why
+  # triggering on the sweep notes re-ran the matrix that produced them.
+  push:
+    paths:
+      - 'experiments/run-growth.txt'
+
+env:
+  SEEDS: ${{ github.event.inputs.seeds || '20' }}
+  EPISODES: ${{ github.event.inputs.episodes || '300' }}
+  RECOVER: ${{ github.event.inputs.recover || '100' }}
+  COLLECT: ${{ github.event.inputs.collect || '500' }}
+
+jobs:
+  seeds:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install numpy
+
+      - name: Skip seeds beyond the requested count
+        id: gate
+        run: |
+          if [ "${{ matrix.seed }}" -lt "$SEEDS" ]; then
+            echo "run=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=no" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run every condition for this seed
+        if: steps.gate.outputs.run == 'yes'
+        run: |
+          common="--seed ${{ matrix.seed }} --episodes $EPISODES \
+                  --recover $RECOVER --collect $COLLECT --neurons 96 --hebbian 1"
+
+          # The drift baseline. The `after` measurement is taken later in
+          # training than `before`, and a frozen column moves whenever its input
+          # distribution moves -- sweep 013 lost a run to exactly that. Without
+          # this, drift and damage are the same number.
+          python experiments/growth.py --tag nogrow --grow 0 $common
+
+          # Damage alone: the channels are added and rewired to identically, but
+          # fed zeros, so the new synapses contribute nothing.
+          python experiments/growth.py --tag grow-silent \
+            --n-new 8 --rewire-frac 0.25 --noise 0 $common
+
+          # Damage plus distraction.
+          python experiments/growth.py --tag grow-noise \
+            --n-new 8 --rewire-frac 0.25 --noise 0.02 $common
+
+          # Does the cost track the rewire fraction? A fifth as many synapses
+          # moved should cost roughly a fifth as much; if the cost is flat, the
+          # damage is not coming from the destroyed synapses at all.
+          python experiments/growth.py --tag grow-noise-05 \
+            --n-new 8 --rewire-frac 0.05 --noise 0.02 $common
+
+          # The task cost alone. Eight extra noise channels make delayed XOR
+          # harder whether or not anything was damaged, so this is the level
+          # growth could aspire to rather than a before/after comparison.
+          python experiments/growth.py --tag fresh-noise \
+            --fresh 1 --n-new 8 --noise 0.02 $common
+
+      - name: Fail loudly if a condition produced nothing
+        if: steps.gate.outputs.run == 'yes'
+        run: |
+          for tag in nogrow grow-silent grow-noise grow-noise-05 fresh-noise; do
+            grep -q "\"tag\": \"$tag\"" experiments/growth_results.jsonl \
+              || { echo "no rows for condition '$tag'"; exit 1; }
+          done
+
+      - uses: actions/upload-artifact@v4
+        if: steps.gate.outputs.run == 'yes'
+        with:
+          name: growth-seed-${{ matrix.seed }}
+          path: experiments/growth_results.jsonl
+          retention-days: 14
+
+  aggregate:
+    needs: seeds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install numpy
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: growth-seed-*
+          path: collected
+
+      - name: Combine, report, and run the paired tests
+        run: |
+          cat collected/*/growth_results.jsonl > experiments/growth_results.jsonl
+          python experiments/growth.py --report | tee summary.txt
+
+          # `cost` and `residual` against the drift baseline are the two that
+          # say whether the model was hurt. `recovered` against fresh-noise is
+          # the different claim -- how close growth got to where a column built
+          # at the new width would have been -- and the sweep note warns against
+          # merging them.
+          for pair in "grow-silent nogrow" "grow-noise nogrow" \
+                      "grow-noise-05 nogrow" "grow-noise grow-silent" \
+                      "grow-noise grow-noise-05"; do
+            set -- $pair
+            for metric in cost residual; do
+              echo "" | tee -a summary.txt
+              python experiments/paired_test.py --file experiments/growth_results.jsonl \
+                --metric $metric --a "$1" --b "$2" | tee -a summary.txt
+            done
+          done
+          for pair in "grow-noise fresh-noise" "grow-silent nogrow"; do
+            set -- $pair
+            echo "" | tee -a summary.txt
+            python experiments/paired_test.py --file experiments/growth_results.jsonl \
+              --metric recovered --a "$1" --b "$2" | tee -a summary.txt
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: growth-combined
+          path: |
+            experiments/growth_results.jsonl
+            summary.txt
+          retention-days: 30
+
+      - name: Put the summary in the run page
+        run: |
+          {
+            echo '## plexus: does a trained model survive a new sense?'
+            echo '```'
+            cat summary.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -8,3 +8,4 @@ experiments/*_results.jsonl
 # Present only while a run is mid-flight, or after one was killed.
 .mutation-backup
 experiments/geometry_results.jsonl
+experiments/growth_results.jsonl

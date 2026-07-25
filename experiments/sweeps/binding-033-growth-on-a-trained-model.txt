@@ -1,0 +1,181 @@
+Sweep 033 -- does a trained model survive having a new sense attached?
+=======================================================================
+
+IN PLAIN TERMS
+--------------
+Imagine the network has learned to do something, and then you plug in a new
+sensor -- a channel that did not exist when it was trained. Most artificial
+networks cannot take this: the input layer is a fixed-size matrix and widening
+it means rebuilding and retraining from scratch. Brains manage it routinely.
+
+This architecture is built so that it should be possible, because nothing is
+indexed by input -- every connection names its source by number, so a new source
+is just a new number. That already works on an *untrained* network.
+
+The part nobody has measured is whether a network that has actually learned
+something still knows it afterwards, and there is a specific reason to doubt it:
+making room for the new channels means **throwing away a quarter of the existing
+connections**. If what the network learned lived in those, attaching a sensor
+costs it.
+
+A yes here means capability can be added to a running system without taking it
+down, which is most of the argument for this design outliving a fixed-shape
+network. A no means growth is a thing you do to a blank network only, and the
+claim needs re-stating in much narrower terms.
+
+QUESTION
+--------
+TODO item 5, the open half, quoted exactly:
+
+  "Still open, and the important part: **whether a *trained* model's accuracy
+   survives the growth.** Everything above was measured on a settled random
+   column, and homeostasis recovering is not the same as the learned function
+   surviving."
+
+`Column.add_inputs(n_new, rewire_frac)` moves `rewire_frac` of every branch's
+synapses onto the new channels -- fan-in is fixed at `(N, B, S)`, so growth is
+rewiring rather than accretion. At the default that is **25% of every neuron's
+fan-in reassigned, with the weights on those synapses re-drawn from the initial
+distribution rather than inherited.**
+
+Everything measured so far is on an untrained column: sparsity re-settles
+0.0344 -> 0.0303 on its own, and both old and new channels drive the output
+(153.9 and 59.8 against 0.0 with everything silent). None of that is a claim
+about a learned function.
+
+THE TWO COSTS, AND WHY EACH NEEDS ITS OWN CONDITION
+------------------------------------------------------
+A drop after growth has three possible causes, and they call for different
+responses:
+
+  damage        25% of the learned fan-in is destroyed and re-drawn. Intrinsic
+                to fixed fan-in; would be paid even by a perfect sensor.
+
+  distraction   the new channels inject uninformative drive into the branches
+                that now read them.
+
+  a harder task eight extra noise channels make delayed XOR harder *whatever*
+                happens to the model. This one is not about the model at all,
+                and conflating it with the other two would overstate the damage.
+
+CONDITIONS  (20 seeds, 96 neurons, lr 0, binding on, 300 train + 100 recover)
+--------------------------------------------------------------------------------
+  nogrow         no growth, same episode budget          drift baseline
+  grow-silent    +8 channels fed zeros, rewire 0.25      **damage alone**
+  grow-noise     +8 channels carrying noise, rewire 0.25 damage + distraction
+  grow-noise-05  +8 channels carrying noise, rewire 0.05 does cost track the
+                                                         rewire fraction?
+  fresh-noise    built at the widened width and trained  **the task cost alone**
+                 from scratch for the whole budget
+
+`grow-silent` is what separates damage from distraction: the channels are added
+and rewired to identically, but fed zeros, so the new synapses contribute
+nothing and the only cost left is the destroyed ones.
+
+`fresh-noise` is what separates both from the task getting harder. It has paid
+the task cost and none of the damage, so it is the level growth could aspire to
+rather than a before/after comparison -- its `cost` and `residual` columns are
+reported as 0 by construction and mean nothing.
+
+`nogrow` is not decorative. The `after` measurement is taken later in training
+than `before`, and a frozen column drifts when anything about its input changes
+-- sweep 013 lost a whole run to exactly that. Without `nogrow`, drift and damage
+are the same number.
+
+WHAT IS MEASURED
+----------------
+Linear decodability of the column state at three points: `before` growth,
+`after` it with no recovery, and `recovered` after 100 further episodes.
+
+  cost      = after - before        the immediate hit
+  residual  = recovered - before    what is still missing once it has re-settled
+
+Decodability rather than end-to-end accuracy, because the readout reads *neurons*
+and growth does not touch it -- so an end-to-end number would understate column
+damage. Sweep 009 is the standing warning that a readout can hide a column-level
+difference entirely.
+
+PREDICTION (recorded before the run)
+--------------------------------------
+  nogrow          cost   0.00 +/- 0.01     residual  0.00 +/- 0.02
+  grow-silent     cost  -0.03 to -0.10     residual -0.01 to -0.05
+  grow-noise      cost  -0.05 to -0.13     residual -0.02 to -0.07
+  grow-noise-05   cost  -0.01 to -0.04     residual  0.00 to -0.02
+  fresh-noise     level within 0.03 of `nogrow`'s `before`
+
+**The central claim: the immediate cost is real and measurable, and the residual
+after recovery is much smaller than it -- i.e. the model is damaged and then
+mostly recovers.** Concretely, `grow-noise`'s residual should be under half its
+cost.
+
+**And the supporting claim, which is what makes it mechanism rather than
+anecdote: the cost tracks `rewire_frac`.** `grow-noise-05` rewires a fifth as
+many synapses and should cost roughly a fifth as much. If the cost is flat in
+`rewire_frac`, the damage is not coming from the destroyed synapses and the
+decomposition above is wrong.
+
+The reasoning: sweep 022 established that most of a column's decodability is its
+homeostatic operating point rather than anything learned, and homeostasis is
+exactly what recovers on its own. Binding's own contribution is +0.074, so even
+losing all of it caps the residual near that. A quarter of the fan-in re-drawn
+should cost less than all of binding, because scaling and homeostasis re-settle
+the rest.
+
+WHAT EACH OUTCOME MEANS
+-------------------------
+  cost real, residual   Growth is survivable on a trained model. The honest
+  small                 headline is "attaching a sensor costs X and recovers to
+                        Y in 100 episodes", with both numbers quoted -- not
+                        "growth is free", which is what the untrained-column
+                        result would tempt someone into writing.
+
+  residual ~ cost       The learned function is genuinely destroyed and does not
+                        come back. Then `add_inputs` is a blank-network
+                        operation, TODO item 5 and the README both need
+                        re-stating, and the next question is whether inheriting
+                        the displaced weights instead of re-drawing them helps.
+
+  cost flat in          The damage is not from the destroyed synapses. Most
+  rewire_frac           likely it is the drive change, and the fix is a
+                        different one -- rewire less, or scale the new synapses
+                        in gradually.
+
+  grow-silent ~         Distraction costs nothing and the whole cost is damage.
+  grow-noise            Good news for a real sensor, which would carry signal
+                        rather than noise.
+
+THE OUTCOME MOST LIKELY TO BE MISREAD
+---------------------------------------
+`grow-noise` scoring below `fresh-noise` would be tempting to report as damage,
+and it is only damage *relative to a ceiling that also moved*. The comparison
+that means "the model was hurt" is `grow-* vs nogrow`; the comparison that means
+"growth got you close to where you could have been" is `grow-noise vs
+fresh-noise`. They are different claims and the write-up must not merge them.
+
+WHAT THIS DOES NOT TEST
+-------------------------
+A sensor carrying *useful* information. Every new channel here is noise or
+silence, so nothing measures whether the column can come to exploit a new sense
+-- only whether it survives acquiring one. That is the more interesting question
+and needs a task whose label depends on the new channels, which delayed XOR
+cannot provide without becoming a different benchmark.
+
+Also untested: repeated growth. One graft is not a stream of them, and the
+damage may or may not accumulate.
+
+SETTINGS
+--------
+20 seeds, 96 neurons, lr 0, binding on, 300 training episodes then 100 recovery,
+500 collection episodes per measurement, 8 new channels, noise rate 0.02 on the
+new channels matching the task's own background rate.
+
+The harness asserts in-run that the graft landed -- that some synapse points at
+an appended source, and that driving the appended channels changes the column's
+output. Both were verified to fail when `add_inputs` is broken so that no
+synapse moves. Without them a failed graft would report that growth costs
+nothing, which is the most reassuring possible outcome and a measurement of
+nothing at all.
+
+RESULT -- 20 seeds
+------------------
+Pending. Sweep 030 holds the matrix, and sweep 032 is queued ahead of this.
