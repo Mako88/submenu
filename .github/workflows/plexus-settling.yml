@@ -120,10 +120,27 @@ jobs:
           pattern: settling-seed-*
           path: collected
 
-      - name: Combine and report
+      - name: Combine, report, and run the paired tests
         run: |
           cat collected/*/trajectory_results.jsonl > experiments/trajectory_results.jsonl
           python experiments/trajectory.py --report | tee summary.txt
+          # The first version of this workflow printed the table and stopped, so
+          # sweep 023 produced a +0.051 difference with no p-value -- against a
+          # prediction that one seed had pointed the *other* way. Means across
+          # seeds are not a result here.
+          #
+          # final_sparsity is tested beside final for the reason named in 023's
+          # prediction: a condition running at a different firing rate decodes
+          # differently for reasons that are not about the operating point.
+          for pair in "preset-shuffled preset-task" "preset-shuffled all" \
+                      "preset-task all" "preset-noise preset-task"; do
+            set -- $pair
+            for metric in final final_sparsity; do
+              echo "" | tee -a summary.txt
+              python experiments/paired_test.py --file experiments/trajectory_results.jsonl \
+                --metric $metric --a "$1" --b "$2" | tee -a summary.txt
+            done
+          done
 
       - uses: actions/upload-artifact@v4
         with:

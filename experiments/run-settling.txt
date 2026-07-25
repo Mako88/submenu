@@ -22,3 +22,9 @@ run 2 -- sweep 023: is the settling operating point precomputable? Four
   fifty episodes of every future run are free. One seed says it does not.
   Sweep 022's ablations are dropped -- answered and written up.
   Prediction in experiments/sweeps/binding-023-precomputable.txt.
+
+run 3 -- sweep 023 re-run, for the paired tests run 2 could not produce. The
+  trajectory rows recorded their curve as a dict keyed by checkpoint and
+  paired_test.py reads a flat metric per row, so run 2 reported a +0.051
+  difference with no p-value. Rows now carry `final` and `final_sparsity` and
+  the aggregate runs exact paired permutation tests on both.

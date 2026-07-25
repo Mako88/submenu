@@ -272,10 +272,17 @@ def main() -> None:
         curve[str(done)], sparsity[str(done)] = decodability(
             model, task, args.probe, 11 + args.seed)
 
+    # Flat copies of the last checkpoint, so `paired_test.py` can read them.
+    # Without these the sweep can only report means across seeds, which is not
+    # what this project counts as a result -- sweep 023 was written up with a
+    # +0.051 difference and no p-value because of exactly that omission, and
+    # the effect it inverted had looked the other way at one seed.
     row = dict(tag=args.tag, seed=args.seed, hebbian=args.hebbian,
                episodes=args.episodes, every=args.every, curve=curve,
                sparsity=sparsity, preset_from=args.preset_from,
-               preset_input=args.preset_input, **overrides)
+               preset_input=args.preset_input,
+               final=curve[str(done)], final_sparsity=sparsity[str(done)],
+               **overrides)
     with OUT.open("a") as fh:
         fh.write(json.dumps(row) + "\n")
     pts = " ".join(f"{k}:{v:.3f}" for k, v in sorted(curve.items(), key=lambda kv: int(kv[0])))

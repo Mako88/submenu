@@ -110,6 +110,90 @@ SETTINGS
 20 seeds, 100 episodes, checkpoints every 10, 300 probe episodes, 96 neurons,
 column lr 0, binding off, lateral off, `--preset-from 50`.
 
-RESULT -- 20 seeds
-------------------
-Pending.
+RESULT -- 20 seeds  (PROVISIONAL: no paired test, see below)
+-------------------------------------------------------------
+linear decodability
+ episode        all   preset-noise  preset-shuffled  preset-task
+       0      0.582      0.691          0.803           0.752
+      10      0.813      0.691          0.803           0.752
+      50      0.779      0.691          0.803           0.752
+     100      0.755      0.691          0.803           0.752
+
+sparsity
+       0     0.0020     0.0170         0.0273          0.0217
+      10     0.0218     0.0170         0.0273          0.0217
+     100     0.0296     0.0170         0.0273          0.0217
+
+THE PREDICTION IS REFUTED, IN THE DIRECTION I SAID I WOULD PREFER
+------------------------------------------------------------------
+The central claim was that `preset-shuffled` lands 0.02 to 0.06 *below*
+`preset-task`. It lands **+0.051 above** it -- 0.803 against 0.752 -- and above
+`all`'s 0.755 as well, while running at a firing rate nearer target (0.0273
+against 0.0217).
+
+So on this evidence the operating point is not merely precomputable from input
+that has no task structure: **it is better computed that way.** A twin settled on
+timing-destroyed input hands over a threshold and knee that beat both the twin
+settled on the task and a hundred episodes of ordinary settling.
+
+The refuting condition named in advance was "shuffled within 0.02 of task". The
+actual outcome is outside that band on the other side, which the prediction did
+not enumerate and should have.
+
+WHY ONE SEED POINTED THE OTHER WAY, AND WHAT THAT COSTS
+--------------------------------------------------------
+The prediction said one seed was in hand and that it informed the numbers. At
+seed 0: task 0.833, shuffled 0.722 -- a gap of -0.111, pointing hard the wrong
+way. At 20 seeds the same comparison is +0.051.
+
+That is rule 3's calibration reproducing itself exactly: an effect of +0.059 at
+three seeds went to +0.023 at eight and to zero at twenty, twice. Here a
+-0.111 at one seed went to +0.051 at twenty -- it did not shrink, it reversed.
+
+Stating it plainly because the practice of running one seed before writing a
+prediction is defensible for *designing* conditions and dangerous for *setting*
+expectations, and this is the second time in this project a single seed has
+produced a confident prediction that was wrong.
+
+THIS IS NOT YET A RESULT
+-------------------------
+**There is no paired test.** The settling workflow printed the report table and
+stopped, so what is above is a comparison of means over 20 seeds with no
+p-value. Rule 3 says multi-seed or it did not happen, and it means the paired
+permutation test specifically -- a difference of means is what sweeps 001-010
+would have called a result and were repeatedly wrong to.
+
+The cause was structural: `trajectory.py` recorded its curve as a dict keyed by
+checkpoint, and `paired_test.py` reads a flat metric per row, so the two could
+not be connected. Fixed -- each row now also carries `final` and
+`final_sparsity`, and the workflow runs paired tests on both. `final_sparsity`
+is tested alongside because a condition at a different firing rate decodes
+differently for reasons that are not about the operating point, which is the
+confound this sweep named in advance for `preset-noise`.
+
+Re-running for the p-values. **Nothing above should be quoted until that lands**,
+and the numbers are left here rather than removed so the record shows what was
+measured before it was tested.
+
+THE LADDER RUNG BEHAVED AS PREDICTED
+--------------------------------------
+`preset-noise` reaches 0.691 at sparsity 0.0170, against a 0.03 target -- 57% of
+target rate, under-active exactly as the prediction said it would be. It is the
+lowest of the three and it is *not* clean evidence, for the reason recorded in
+advance. What it does show is that the gap between it and `shuffled` is large
+(0.112), and the only difference between them is that `shuffled` preserves
+per-channel marginals exactly while `noise` is uniform across channels. So
+per-channel structure matters even though timing appears not to.
+
+A MECHANISM WORTH TESTING, NOT ASSERTING
+------------------------------------------
+Shuffled input is temporally uniform; the task is bursty, with cue and go
+periods against a sparse background. A rate controller settling on a bursty
+stream converges to a threshold calibrated for a *mixture* of drive regimes and
+sits at neither; on a stationary stream it converges to one. The sparsity column
+is consistent with that -- shuffled ends at 0.0273 against task's 0.0217, closer
+to the 0.03 target.
+
+That is a hypothesis. The test is direct: measure per-neuron |theta| difference
+between the two twins and check whether the task-settled thresholds are
+systematically higher, which burst adaptation would predict. Not run.
