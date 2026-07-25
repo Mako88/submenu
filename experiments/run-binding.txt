@@ -21,3 +21,11 @@ run 3 -- adds sweep 020: lateral inhibition (Vogels-Sprekeler anti-Hebbian rule
   columns on every condition. Tests the premise behind the whole
   decorrelation direction, which one seed says is backwards.
   Prediction in experiments/sweeps/binding-020-decorrelation.txt.
+
+run 4 -- sweep 021: lateral inhibition end to end. Adds lat-on, latbind-on,
+  latbind-rls and latbind-catchup; drops sweep 018's three schedule conditions
+  and sweep 019's trajectory probe, whose questions are answered and written
+  up. `latbind-on` against `rls-on` is the one that matters -- a local rule
+  under the shipped delta readout against RLS's pooled correlation matrix.
+  Prediction in experiments/sweeps/binding-021-lateral-end-to-end.txt, which
+  predicts it is null and names closing the direction as the consequence.
