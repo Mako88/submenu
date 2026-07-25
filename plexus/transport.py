@@ -102,6 +102,11 @@ class LocalTransport(Transport):
     def modulator(self, t: int) -> np.ndarray:
         return self._mod.gather(t, self._mod_idx, self._mod_lag)
 
+    def grow(self, n_sources: int) -> None:
+        """Widen the source space so appended inputs have somewhere to land."""
+        self._events.grow(n_sources)
+        self.n_sources = self._events.n_sources
+
     def reset(self) -> None:
         self._events.reset()
         self._mod.reset()

@@ -91,28 +91,34 @@ Watch for: homeostasis runs on a slow clock and would need catching up lazily
 too, and `_steps` now counts learning steps only (see `column.py`), which an
 event-driven rewrite must preserve rather than rediscover.
 
-## 5. `Column.add_inputs()` — growing the sensory space at runtime
+## 5. `Column.add_inputs()` — shipped, with one thing still open
 
-Probed by hand and it works: a settled 96-neuron column grown from 16 to 24
-channels re-settled from sparsity 0.0099 to 0.0247 on its own, with both old
-and new channels demonstrably driving the output. Not in the library, no tests.
+In the library with four tests and three mutations. A settled 96-neuron column
+grown from 16 to 24 channels re-settles sparsity 0.0344 → 0.0303 on its own,
+and both old and new channels drive the output (153.9 and 59.8 against 0.0 with
+everything silent).
 
-Cheap here for structural reasons worth keeping: there is no input-shaped
-weight matrix (each synapse names its source by index), the readout reads
-neurons rather than inputs so the output layer is untouched, homeostasis
-absorbs the drive change locally, synaptic scaling makes new synapses compete
-rather than add, and external inputs are always excitatory so Dale's law does
-not enter.
+Cheap for structural reasons worth keeping: there is no input-shaped weight
+matrix (each synapse names its source by index), the readout reads neurons
+rather than inputs so the output layer is untouched, homeostasis absorbs the
+drive change locally, synaptic scaling makes new synapses compete rather than
+add, and external inputs are always excitatory so Dale's law does not enter.
 
-**Append, do not insert.** The substrate is indexed by global source id, so
-inserting channels shifts every neuron's index — which in a distributed run
-means every column agreeing on the shift simultaneously. That is a global
-synchronisation event and violates the design rule. Appending costs nothing:
-no existing index moves and each column rewires whenever it likes.
+**Append, do not insert.** New ids go past the neurons, not at the end of the
+external block — widening that block in place would shift every neuron's index,
+which in a distributed run means every column agreeing on the shift
+simultaneously. That is a global synchronisation event and violates the design
+rule. `test_adding_inputs_appends_and_never_renumbers` asserts it, and
+`EventBuffer.grow` refuses to shrink for the same reason.
 
-Untested and important: whether a *trained* model's accuracy survives the
-growth. The probe used a settled random column, and homeostasis recovering is
-not the same as the learned function surviving.
+Fan-in is fixed at `(N, B, S)`, so growth is **rewiring, not accretion**: a new
+channel earns its way in by displacing an existing connection, which is also
+what stops drive from growing without bound as inputs are added.
+
+Still open, and the important part: **whether a *trained* model's accuracy
+survives the growth.** Everything above was measured on a settled random
+column, and homeostasis recovering is not the same as the learned function
+surviving. That needs a sweep, not a probe.
 
 ## 6. The audit backlog
 

@@ -463,6 +463,16 @@ class Column:
                 (slots * transport.n_sources + self.src[None]).astype(np.int32).reshape(d, -1)
             )
         self._shape = (N, B, S)
+        # Where the external drive vector is written in the source space. One
+        # span at first; `add_inputs` appends further spans past the neurons
+        # rather than widening this one, so the caller still passes a single
+        # concatenated vector and never has to know how it is laid out.
+        self.ext_segments: list[tuple[int, int]] = [(0, cfg.n_external)]
+
+    @property
+    def n_inputs(self) -> int:
+        """External channels this column reads, including any added at runtime."""
+        return sum(length for _, length in self.ext_segments)
 
     # -----------------------------------------------------------------
     def _sample_sources(self, rng, N: int, B: int, S: int) -> np.ndarray:
@@ -581,7 +591,20 @@ class Column:
         #    output before gathering is what guarantees every read goes through
         #    a delay of at least one step.
         if external is not None and cfg.n_external:
-            self.transport.publish_slice(t, 0, external)
+            if len(self.ext_segments) == 1:
+                self.transport.publish_slice(t, 0, external)
+            else:
+                # Channels appended by `add_inputs` live past this column's
+                # neurons, so one caller-facing vector maps onto several spans.
+                if len(external) != self.n_inputs:
+                    raise ValueError(
+                        f"external has {len(external)} channels, column expects "
+                        f"{self.n_inputs} after {len(self.ext_segments) - 1} growth(s)"
+                    )
+                off = 0
+                for start, length in self.ext_segments:
+                    self.transport.publish_slice(t, start, external[off:off + length])
+                    off += length
             self.publish(t)
 
         # 2. Gather delayed input for every synapse, applying Dale sign.
@@ -832,6 +855,94 @@ class Column:
         self.W *= (1.0 + cfg.scaling_lr * (cfg.branch_budget / norm - 1.0)).astype(np.float32)
 
     # -----------------------------------------------------------------
+    def add_inputs(self, n_new: int, rewire_frac: float = 0.25, rng=None) -> np.ndarray:
+        """Grow the sensory space at runtime. Returns the new source ids.
+
+        New channels are **appended to the end of the global source space**, not
+        to the end of the external block. That distinction is the whole design:
+        the external block sits at indices ``[0, n_external)`` with this
+        column's neurons immediately after, so widening the block in place would
+        shift every neuron's id. In a distributed run that means every column
+        agreeing on the shift simultaneously -- a global synchronisation event,
+        and a violation of the rule the architecture exists to obey. Appending
+        moves no existing index and each column may rewire whenever it likes.
+
+        Cheap here for structural reasons worth keeping: there is no
+        input-shaped weight matrix, since each synapse names its source by
+        index; the readout reads neurons rather than inputs, so the output layer
+        is untouched; homeostasis absorbs the drive change locally; synaptic
+        scaling makes the new synapses compete rather than add; and external
+        inputs are always excitatory, so Dale's law does not enter.
+
+        ``rewire_frac`` of each branch's synapses are moved onto the new
+        channels. The fan-in is fixed at ``(N, B, S)``, so growth is rewiring
+        rather than accretion -- a new channel earns its way in by displacing an
+        existing connection, which is also what stops the drive from growing
+        without bound as inputs are added.
+
+        Untested and important: whether a *trained* model's accuracy survives
+        this. What is asserted is that both old and new channels drive the
+        output and that homeostasis re-settles; that is not the same as the
+        learned function surviving.
+        """
+        if n_new < 1:
+            raise ValueError("n_new must be >= 1")
+        rng = self.rng if rng is None else rng
+        cfg = self.cfg
+        N, B, S = self._shape
+
+        start = self.n_sources
+        new_ids = np.arange(start, start + n_new, dtype=np.int64)
+        self.n_sources += n_new
+        self.transport.grow(self.n_sources)
+        self.ext_segments.append((start, n_new))
+
+        # External inputs are excitatory, always. Nothing here is a choice: the
+        # sign of a source is a property of the emitter, and a sensor does not
+        # inhibit.
+        self.source_sign = np.concatenate(
+            [self.source_sign, np.ones(n_new, dtype=np.float32)]
+        )
+
+        n_rewire = max(1, int(round(rewire_frac * S)))
+        # Rewire distinct synapses per branch, so a branch cannot end up with
+        # the same slot chosen twice and a new channel silently under-connected.
+        slots = np.argsort(rng.random((N, B, S)), axis=2)[:, :, :n_rewire]
+        idx = np.indices((N, B, n_rewire))
+        picks = new_ids[rng.integers(0, n_new, size=(N, B, n_rewire))]
+        self.src[idx[0], idx[1], slots] = picks
+        self.delay[idx[0], idx[1], slots] = rng.integers(
+            cfg.delay_min, cfg.delay_max + 1, size=(N, B, n_rewire)
+        )
+        self.syn_sign = self.source_sign[self.src].astype(np.float32)
+        # A rewired synapse is a new connection, so it starts from the same
+        # distribution an initial one does rather than inheriting a weight that
+        # was learned for a different source.
+        self.W[idx[0], idx[1], slots] = np.abs(
+            rng.normal(0.0, 0.4, size=(N, B, n_rewire))
+        ).astype(np.float32)
+        # Traces belong to the connection that is gone.
+        for trace in (self.pre, self.eps, self.elig):
+            trace[idx[0], idx[1], slots] = 0.0
+
+        self.max_delay = int(self.delay.max())
+        if self.transport.depth <= self.max_delay:
+            raise ValueError(
+                f"transport depth {self.transport.depth} must exceed max delay {self.max_delay}"
+            )
+        # The precomputed gather table encodes both the source ids and the
+        # buffer width, and both just changed. Stale here would not raise --
+        # it would silently read the wrong sources, which is the failure mode
+        # this project keeps finding.
+        if self._fast:
+            d = self.transport.depth
+            slot_tbl = (np.arange(d)[:, None, None, None] - self.delay[None]) % d
+            self._flat = (
+                (slot_tbl * self.transport.n_sources + self.src[None])
+                .astype(np.int32).reshape(d, -1)
+            )
+        return new_ids
+
     def reset_state(self, keep_homeostasis: bool = True) -> None:
         """Clear dynamical state and traces between episodes."""
         self.b.fill(0.0)

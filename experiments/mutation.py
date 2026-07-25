@@ -152,6 +152,27 @@ MUTATIONS = [
         "freeze_plasticity_accounts_for_every",
     ),
     (
+        COLUMN,
+        "add_inputs leaves the precomputed gather table stale",
+        "        if self._fast:\n            d = self.transport.depth\n            slot_tbl",
+        "        if False:\n            d = self.transport.depth\n            slot_tbl",
+        "adding_inputs_rebuilds",
+    ),
+    (
+        COLUMN,
+        "add_inputs rewires metadata but no synapse actually moves",
+        "        self.src[idx[0], idx[1], slots] = picks",
+        "        pass",
+        "added_inputs_reach or adding_inputs_appends",
+    ),
+    (
+        ROOT / "plexus" / "events.py",
+        "buffer growth drops events already in flight",
+        "        buf[:, : self.n_sources] = self._buf",
+        "        pass",
+        "growing_the_event_buffer",
+    ),
+    (
         READOUT,
         "readout standardisation reduced to centering",
         "z = ((state - mean) / (std + 1e-12)).astype(np.float32)",

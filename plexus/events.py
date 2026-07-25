@@ -126,6 +126,28 @@ class EventBuffer:
         """
         return np.take(self._buf.reshape(-1), flat_index)
 
+    def grow(self, n_sources: int) -> None:
+        """Widen the source space, preserving everything already in flight.
+
+        New ids are **appended**, never inserted, so no existing source changes
+        index. That is not a convenience: every column addresses the substrate
+        by global source id, so inserting would require every column to agree on
+        the shift at the same instant -- a synchronisation event, and a
+        violation of the one rule the architecture is built on. Appending costs
+        nothing and each column rewires whenever it likes.
+        """
+        if n_sources < self.n_sources:
+            raise ValueError(
+                f"cannot shrink from {self.n_sources} to {n_sources}: sources are "
+                "addressed by global index and shrinking would renumber them"
+            )
+        if n_sources == self.n_sources:
+            return
+        buf = np.zeros((self.depth, n_sources), dtype=np.float32)
+        buf[:, : self.n_sources] = self._buf
+        self._buf = buf
+        self.n_sources = n_sources
+
     def reset(self) -> None:
         self._buf.fill(0.0)
         self._stamp.fill(-1)

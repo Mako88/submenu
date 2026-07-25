@@ -965,6 +965,112 @@ def test_lateral_inhibition_step_is_scaled_to_the_weights():
     assert moved(ColumnConfig.lateral_lr * 4) > 2.0 * rel
 
 
+def _grown(n_new=8, warmup=400, seed=0):
+    cfg = ColumnConfig(n_neurons=48, n_external=16, seed=seed)
+    transport = LocalTransport(16 + 48, cfg.delay_max + 2, cfg.modulator_dim)
+    col = Column(cfg, transport)
+    rng = np.random.default_rng(seed)
+    for t in range(warmup):
+        col.step(t, (rng.random(16) < 0.15).astype(np.float32))
+    before = col.src.copy()
+    new_ids = col.add_inputs(n_new)
+    return col, before, new_ids, warmup
+
+
+def test_added_inputs_reach_the_output():
+    """Growth that does not change what the column computes is not growth.
+
+    The whole point of `add_inputs` is that a channel added at runtime becomes
+    part of the computation. Driving the new channels alone must produce
+    activity, and this is the assertion that fails if `add_inputs` rewires
+    metadata without the forward pass ever reading it -- the same shape of bug
+    as `W` being written by the learning rule and used to compute nothing.
+    """
+    col, _, _, warmup = _grown()
+    n = col.n_inputs
+
+    def drive(mask):
+        col.reset_state()
+        rng, total = np.random.default_rng(7), 0.0
+        for t in range(warmup, warmup + 300):
+            e = (rng.random(n) < 0.15).astype(np.float32) * mask
+            total += float(col.step(t, e).sum())
+        return total
+
+    new_only = drive(np.r_[np.zeros(16), np.ones(n - 16)].astype(np.float32))
+    old_only = drive(np.r_[np.ones(16), np.zeros(n - 16)].astype(np.float32))
+    silent = drive(np.zeros(n, dtype=np.float32))
+    assert silent == 0.0, "the column fired with no input at all"
+    assert new_only > 0.0, "the appended channels drive nothing"
+    assert old_only > 0.0, "growth silenced the original channels"
+
+
+def test_adding_inputs_appends_and_never_renumbers():
+    """No existing source may change index when the input space grows.
+
+    This is the locality rule, not tidiness. Sources are addressed by global id,
+    so inserting channels into the external block would shift every neuron --
+    and in a distributed run, every column would have to agree on that shift at
+    the same instant. Appending past the neurons costs nothing and lets each
+    column rewire whenever it likes.
+
+    Asserted as: every synapse whose source changed now points into the newly
+    added range, and nothing points somewhere else that merely happens to work.
+    """
+    col, before, new_ids, _ = _grown()
+    changed = col.src != before
+    assert changed.any(), "add_inputs rewired nothing"
+    assert np.isin(col.src[changed], new_ids).all(), (
+        "a synapse was moved to a source that is not one of the new channels, "
+        "so existing ids were renumbered"
+    )
+    # Every branch must reach the new channels, or some neurons are blind to
+    # them while the population average looks connected.
+    reaches = np.isin(col.src, new_ids).any(axis=2)
+    assert reaches.all(), f"{(~reaches).sum()} branches got no new-channel synapse"
+
+
+def test_adding_inputs_rebuilds_the_gather_table():
+    """The precomputed index encodes both source ids and buffer width.
+
+    `_flat` is built once at construction under the comment "sources and delays
+    never change", which `add_inputs` makes false. A stale table does not raise
+    -- it silently reads the wrong sources at the wrong offsets, which is the
+    exact class of failure that had `W` disconnected for most of this project's
+    life.
+
+    Compared against the checked `gather` path, which recomputes from `src` and
+    `delay` every step and so cannot go stale.
+    """
+    fast, _, _, warmup = _grown()
+    slow, _, _, _ = _grown()
+    slow._fast = False  # force the recomputed path
+
+    rng_a, rng_b = np.random.default_rng(3), np.random.default_rng(3)
+    n = fast.n_inputs
+    for t in range(warmup, warmup + 200):
+        a = fast.step(t, (rng_a.random(n) < 0.15).astype(np.float32))
+        b = slow.step(t, (rng_b.random(n) < 0.15).astype(np.float32))
+        assert np.array_equal(a, b), f"gather paths diverged at t={t}"
+
+
+def test_growing_the_event_buffer_preserves_what_is_in_flight():
+    """Growth mid-episode must not drop events already emitted.
+
+    Conduction delays are up to 24 steps, so at any moment the buffer holds
+    events that have been sent and not yet read. Reallocating without copying
+    would silently delete them -- one lost timestep of history across the whole
+    population, appearing as a transient the model has no way to attribute.
+    """
+    buf = EventBuffer(n_sources=4, depth=8)
+    buf.write(10, np.array([1.0, 2.0, 3.0, 4.0], dtype=np.float32))
+    buf.grow(6)
+    assert np.allclose(buf.gather(13, np.array([0, 2]), np.array([3, 3])), [1.0, 3.0])
+    assert np.allclose(buf.gather(13, np.array([4, 5]), np.array([3, 3])), [0.0, 0.0])
+    with pytest.raises(ValueError):
+        buf.grow(2)
+
+
 def test_freeze_plasticity_accounts_for_every_mechanism_flag():
     """Adding a mechanism must force a decision about what "frozen" means.
 
