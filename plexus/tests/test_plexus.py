@@ -570,3 +570,169 @@ def test_learnable_time_constants_run_without_breaking_dynamics():
     assert np.all(tau > 0.0)
     assert not np.allclose(before, tau), "lr_tau > 0 but time constants never moved"
     assert np.all(np.isfinite(m.column.v)) and np.all(np.isfinite(m.column.W))
+
+
+# --------------------------------------------------------------------------
+# Engram allocation. Every test here exists because the mechanism failed the
+# property it checks during development -- the whole point of building the
+# diagnostics before believing the mechanism.
+# --------------------------------------------------------------------------
+def _engram_model(neurons=64, episodes=0, seed=0, **kw):
+    task = DelayedXOR()
+    cfg = ColumnConfig(n_neurons=neurons, lr=0.0, seed=seed, engram=True, **kw)
+    model = Plexus(task.n_inputs, task.n_classes, column=cfg, seed=seed)
+    rng = np.random.default_rng(1000 + seed)
+    for _ in range(episodes):
+        model.run_episode(task.episode(rng), learn=True)
+    return task, model, rng
+
+
+def test_engram_off_leaves_the_column_untouched():
+    """The default must be bit-identical to the model without the mechanism.
+
+    New mechanisms default to off so that every previous measurement stays
+    reproducible; a default that quietly changed the dynamics would invalidate
+    eleven sweeps of recorded results without any test failing.
+    """
+    task = DelayedXOR()
+    outs = []
+    for engram in (False, True):
+        cfg = ColumnConfig(n_neurons=32, lr=0.0, seed=0, engram=engram)
+        m = Plexus(task.n_inputs, task.n_classes, column=cfg, seed=0)
+        rng = np.random.default_rng(4)
+        for _ in range(3):
+            m.run_episode(task.episode(rng), learn=True)
+        outs.append(m.column.W.copy())
+    assert not np.allclose(outs[0], outs[1]), "engram=True changed nothing at all"
+
+    cfg = ColumnConfig(n_neurons=32, lr=0.0, seed=0)
+    m = Plexus(task.n_inputs, task.n_classes, column=cfg, seed=0)
+    rng = np.random.default_rng(4)
+    for _ in range(3):
+        m.run_episode(task.episode(rng), learn=True)
+    assert np.array_equal(m.column.W, outs[0]), "the default path is no longer the old path"
+
+
+def test_excitability_reaches_the_threshold():
+    """xi must actually change what the column emits.
+
+    The disconnected-quantity check, in the form that caught the forward-pass
+    bug: perturb the input, assert the output moves. An excitability variable
+    that every diagnostic reports on but nothing downstream reads would look
+    entirely healthy.
+    """
+    task = DelayedXOR()
+
+    def emissions(bump):
+        cfg = ColumnConfig(n_neurons=32, lr=0.0, seed=0, engram=True, excite_drift=0.0)
+        m = Plexus(task.n_inputs, task.n_classes, column=cfg, seed=0)
+        m.column.xi[:16] = bump
+        rng = np.random.default_rng(5)
+        ep = task.episode(rng)
+        m.run_episode(ep, learn=False)
+        return m.column.rate.copy()
+
+    quiet, excited = emissions(0.0), emissions(1.0)
+    assert not np.allclose(quiet, excited), "excitability never reached the threshold"
+    assert excited[:16].mean() > quiet[:16].mean(), "raising xi did not raise activity"
+
+
+def test_recruitment_is_biased_by_excitability():
+    """Regression test for a criterion blind to its own driving variable.
+
+    The first version recruited on ``act_fast > margin * act_slow``. That ratio
+    is self-normalising: a neuron made more excitable raises its own baseline
+    along with its activity, so the criterion cancelled exactly the effect it
+    was meant to detect, and excitability correlated with recruitment at -0.40,
+    i.e. backwards. Any future rewrite of the competition has to keep this.
+    """
+    task, model, rng = _engram_model(neurons=64, episodes=40)
+    col = model.column
+    col.xi.fill(0.0)
+    col.xi_slow.fill(0.0)
+    half = col.cfg.n_neurons // 2
+    col.xi[:half] = 1.5
+
+    tagged = np.zeros(col.cfg.n_neurons)
+    trials = 12
+    for _ in range(trials):
+        col.xi[:half] = 1.5  # hold the bump against drift and allocation drops
+        col.xi[half:] = 0.0
+        model.run_episode(task.episode(rng), learn=True)
+        tagged += col.tag
+    assert tagged[:half].sum() > tagged[half:].sum(), (
+        f"excitable half recruited {tagged[:half].sum():.0f} times vs "
+        f"{tagged[half:].sum():.0f} for the rest -- recruitment ignores excitability"
+    )
+
+
+def test_allocation_recruits_a_minority():
+    """An engram that is the whole population has allocated nothing."""
+    task, model, rng = _engram_model(neurons=64, episodes=60, alloc_frac=0.15)
+    sizes = []
+    for _ in range(40):
+        model.run_episode(task.episode(rng), learn=True)
+        sizes.append(model.column.engram_size)
+    mean = float(np.mean(sizes))
+    assert 0.02 < mean < 0.45, f"recruited {mean:.1%} of the population per event"
+
+
+def test_recruitment_lowers_excitability():
+    """The allocation refractory has to be connected to the tag.
+
+    This is the step with no analogue in a conventional network: being
+    recruited must cost excitability, or successive memories pile onto the same
+    neurons instead of being allocated to different ones.
+    """
+    task, model, rng = _engram_model(neurons=64, episodes=30)
+    col = model.column
+    before = col.xi.copy()
+    model.run_episode(task.episode(rng), learn=True)
+    tag = col.tag
+    assert tag.any(), "nothing was recruited, so the test proves nothing"
+    drop = before - col.xi
+    assert drop[tag].mean() > drop[~tag].mean() + 0.1, (
+        "recruited neurons did not lose excitability relative to the rest"
+    )
+
+
+def test_hebbian_binding_only_touches_recruited_neurons():
+    """Binding must be gated by the tag, and must reach W.
+
+    Checked on the *rows* of W rather than its mean: synaptic scaling holds
+    each branch to a fixed L1 budget, so mean |W| is pinned to
+    branch_budget / n_synapses no matter what the Hebbian term does. A test on
+    the mean would pass identically with the binding removed.
+    """
+    task, model, rng = _engram_model(neurons=64, episodes=30, hebb_lr=0.05)
+    col = model.column
+    col.cfg.scaling_lr = 0.0  # isolate binding from the renormalisation
+    before = col.W.copy()
+    model.run_episode(task.episode(rng), learn=True)
+    tag = col.tag
+    assert tag.any() and not tag.all(), "need a partial engram for this test"
+    moved = np.abs(col.W - before).sum(axis=(1, 2))
+    assert moved[tag].mean() > 0.0, "binding never reached W"
+    assert np.allclose(moved[~tag], 0.0), "unrecruited neurons had their weights changed"
+
+
+def test_recruitment_statistics_advance_once_per_allocation():
+    """The baseline recruitment is scored against must match what is scored.
+
+    Accumulating it every timestep scores a neuron's activity at recruitment
+    time against the distribution of all timesteps -- most of which are nothing
+    like it -- so units that reliably answer the go cue look extraordinary at
+    every allocation and the criterion measures phasicness rather than what the
+    episode engaged. The readout failed in precisely this way once already.
+    """
+    task, model, rng = _engram_model(neurons=32, episodes=0)
+    col = model.column
+    steps = 0
+    for _ in range(3):
+        ep = task.episode(rng)
+        model.run_episode(ep, learn=True)
+        steps += ep.inputs.shape[0]
+    assert col.n_samples == col.n_allocations, (
+        f"{col.n_samples} statistics updates for {col.n_allocations} allocations"
+    )
+    assert col.n_samples < steps, "statistics are advancing per timestep, not per allocation"

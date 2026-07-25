@@ -113,6 +113,42 @@ class ColumnConfig:
     # Inhibitory fraction (Dale's law is enforced on outgoing sign).
     inhibitory_frac: float = 0.2
 
+    # --- Engram allocation ------------------------------------------------
+    # Biology does not spread a memory over whatever happened to be active. It
+    # *allocates* it: in the hours before an event, neurons drift apart in
+    # intrinsic excitability (CREB is the usual marker), the most excitable ~15%
+    # win a competition to be recruited, and being recruited then drops their
+    # excitability for hours so the next memory lands on a different set (Han
+    # et al. 2007; Yiu et al. 2014; Cai et al. 2016). That refractory step is
+    # what stops successive memories from overwriting each other, and it is
+    # exactly the property a reservoir lacks.
+    #
+    # Our homeostasis currently does the opposite: it drives every neuron to
+    # the same firing rate, which erases the excitability differences allocation
+    # depends on. So this is not simply an addition -- it requires the
+    # homeostatic setpoint to become per-neuron, tracking each unit's own
+    # excitability rather than fighting it. `excite_setpoint` is that coupling,
+    # and setting it to 0 recovers today's behaviour with the drift left in,
+    # which is the control the mechanism has to beat.
+    engram: bool = False
+    excite_drift: float = 0.35  # stationary sd of the excitability bias
+    tau_excite: float = 2000.0  # drift timescale, and allocation recovery
+    excite_setpoint: float = 1.0  # how far the homeostatic target follows xi
+    alloc_frac: float = 0.15  # target share of the population recruited
+    alloc_drop: float = 0.6  # excitability lost on being recruited
+    tau_tag_fast: float = 50.0  # window defining "active right now"
+    tau_tag_slow: float = 5000.0  # each neuron's own activity baseline
+    tag_lr: float = 0.05  # adaptation of the per-neuron recruitment margin
+    hebb_lr: float = 0.02  # Hebbian binding within the recruited assembly
+    # How strongly excitability biases the recruitment competition directly,
+    # over and above what it already does by lowering the threshold. It needs a
+    # direct path: routing it only through firing does not work, because a
+    # neuron made more excitable raises its own activity baseline along with its
+    # activity, and a criterion measured against that baseline cancels exactly
+    # the effect it was supposed to detect. Measured at -0.40 correlation
+    # between excitability and recruitment -- backwards -- before this existed.
+    excite_gain: float = 1.0
+
     # Homeostasis. Threshold adaptation is multiplicative so that its step size
     # tracks the neuron's own operating scale rather than a fixed absolute
     # amount, which converges far faster across a heterogeneous population.
@@ -292,6 +328,51 @@ class Column:
         self.engagement = np.full((N, B), cfg.plateau_engagement, dtype=np.float32)
         self.decay_engage = np.float32(np.exp(-cfg.dt / cfg.tau_engagement))
 
+        # --- Engram allocation state ---------------------------------------
+        # `xi` is the excitability bias: a slow drift that makes the population
+        # heterogeneous at any given moment, minus a drop each time the neuron
+        # is recruited. It enters the threshold directly, so it acts on the very
+        # next step rather than waiting for homeostasis to notice.
+        #
+        # `xi_slow` is the neuron's own long-run excitability. The homeostatic
+        # setpoint follows xi *relative to it*, so a neuron that is transiently
+        # more excitable than usual is allowed to fire more, while its baseline
+        # rate is still regulated. Without that reference, the allocation drops
+        # would push the whole population's setpoint down over time.
+        self.xi = np.zeros(N, dtype=np.float32)
+        self.xi_slow = np.zeros(N, dtype=np.float32)
+        self.theta_eff = self.theta
+        self.decay_xi = np.float32(np.exp(-cfg.dt / cfg.tau_excite))
+        # Innovation scaled so the Ornstein-Uhlenbeck process has stationary
+        # standard deviation `excite_drift` regardless of its timescale.
+        self.sigma_xi = np.float32(cfg.excite_drift * np.sqrt(1.0 - self.decay_xi**2))
+        # Fast and slow activity filters, plus the neuron's own variability.
+        # Recruitment is a z-score against these -- how far *this* neuron is
+        # from its own usual state, in units of its own usual fluctuation -- so
+        # the criterion is dimensionless and needs no knowledge of anyone else.
+        #
+        # The variability term is what makes it work. Measured directly, 99.7%
+        # of the column's state vector is an episode-independent common mode;
+        # the part that identifies which cues were presented is a small residual
+        # on top of it (pairwise correlation +0.23 within a cue pattern, -0.08
+        # across). A criterion scaled by the neuron's *magnitude* cannot resolve
+        # a residual that small, and an earlier version that used a ratio
+        # against the mean recruited essentially the same neurons every episode.
+        self.act_fast = np.zeros(N, dtype=np.float32)
+        self.act_slow = np.zeros(N, dtype=np.float32)
+        self.act_var = np.zeros(N, dtype=np.float32)
+        self.n_samples = 0
+        self.decay_fast = np.float32(np.exp(-cfg.dt / cfg.tau_tag_fast))
+        self.decay_slow = np.float32(np.exp(-cfg.dt / cfg.tau_tag_slow))
+        self.decay_stats = np.float32(0.99)  # per allocation, not per step
+        # Per-neuron recruitment margin, adapted to hold each unit's own share
+        # of allocations near `alloc_frac`. This is the local stand-in for the
+        # lateral-inhibition competition biology uses: no neuron can see the
+        # others, but each can see how often it has been winning.
+        self.tag_margin = np.full(N, 1.0, dtype=np.float32)
+        self.tag = np.zeros(N, dtype=bool)
+        self.n_allocations = 0
+
         # Presynaptic terminal state: utilisation (facilitation) and available
         # resources (depression). Modelled per source rather than per synapse --
         # a real terminal's state is shared across the axon's targets, and it
@@ -391,7 +472,7 @@ class Column:
         that near-silent neurons still receive credit.
         """
         cfg = self.cfg
-        u = v - self.theta
+        u = v - self.theta_eff
         fired = u > 0.0
         span = cfg.value_scale - cfg.value_base
         value = np.where(
@@ -484,12 +565,19 @@ class Column:
         # 5. Emission and soft reset. Subtracting the threshold rather than
         #    clearing to zero preserves what the integrator was holding, which
         #    matters for the long-constant neurons that carry working memory.
+        #    The threshold a neuron actually uses is its homeostatic setpoint
+        #    scaled by its current excitability bias; with allocation off the
+        #    two are the same array and nothing changes.
+        if cfg.engram:
+            self.theta_eff = (self.theta * np.exp(-self.xi)).astype(np.float32)
+        else:
+            self.theta_eff = self.theta
         value, h = self._emit(self.v)
         fired = value > 0.0
         if cfg.stp:
             value = self._short_term_plasticity(value, fired)
         self.out = value
-        self.v = (self.v - self.theta * fired).astype(np.float32)
+        self.v = (self.v - self.theta_eff * fired).astype(np.float32)
 
         # 6. Trace updates (all local: pre-activity, post-state, nothing else).
         self.pre *= self.decay_branch
@@ -517,8 +605,48 @@ class Column:
         self.engagement = (
             self.decay_engage * self.engagement + (1.0 - self.decay_engage) * engaged
         ).astype(np.float32)
+        if cfg.engram:
+            # Excitability drifts on its own, slowly. This is the part that has
+            # to happen *before* anything worth remembering does: allocation
+            # works by the population already being unequal when the event
+            # arrives, so the drift is not noise added to the mechanism, it is
+            # the mechanism's input.
+            self.xi = (
+                self.decay_xi * self.xi
+                + self.sigma_xi * self.rng.standard_normal(cfg.n_neurons)
+            ).astype(np.float32)
+            self.xi_slow = (
+                self.decay_slow * self.xi_slow + (1.0 - self.decay_slow) * self.xi
+            ).astype(np.float32)
+            self.act_fast = (
+                self.decay_fast * self.act_fast + (1.0 - self.decay_fast) * self.out
+            ).astype(np.float32)
+            # The baseline and variability that recruitment is scored against
+            # are NOT accumulated here -- see _allocate. Advancing them every
+            # timestep would score a neuron's activity at recruitment time
+            # against the distribution of all timesteps, most of which are
+            # nothing like it. A unit that reliably answers the go cue then
+            # looks extraordinary at every single allocation, and the criterion
+            # measures which neurons are phasic rather than which ones this
+            # episode engaged. The readout failed in exactly this way, by
+            # standardising an episode-level decision vector with per-timestep
+            # variance; statistics have to be gathered over the objects being
+            # scored, not over the substrate they are drawn from.
+
         if self.learning:
-            self.theta *= 1.0 + cfg.homeostatic_lr * (self.rate - cfg.target_rate)
+            if cfg.engram and cfg.excite_setpoint:
+                # A per-neuron setpoint. Uniform-rate homeostasis is what
+                # normally destroys allocation: it reads a transiently excitable
+                # neuron as over-active and raises its threshold until the
+                # excitability is gone. Referencing the target to the neuron's
+                # *own* long-run excitability lets the difference stand while
+                # still regulating the baseline.
+                target = cfg.target_rate * np.exp(
+                    cfg.excite_setpoint * (self.xi - self.xi_slow)
+                )
+            else:
+                target = cfg.target_rate
+            self.theta *= 1.0 + cfg.homeostatic_lr * (self.rate - target)
             np.clip(self.theta, 0.02, 50.0, out=self.theta)
             # Same idea one level down: hold each branch near a target plateau
             # engagement so the dendritic nonlinearity stays in its useful band.
@@ -546,6 +674,15 @@ class Column:
         m = self.transport.modulator(t)
         if not np.any(m):
             return
+
+        # A modulator release is the salience gate: it says *now* is worth
+        # remembering. Allocation reads only that -- not the modulator's sign,
+        # not which class it points at -- so recruitment is unsupervised. That
+        # matters, because the supervised path is the one that has repeatedly
+        # failed to beat a frozen column, and this mechanism does not depend
+        # on it being right.
+        if cfg.engram:
+            self._allocate()
 
         signal = (self.feedback @ m).astype(np.float32)  # (N,)
 
@@ -583,6 +720,69 @@ class Column:
             self.gain_soma = (1.0 - self.decay_soma).astype(np.float32)
             self.tau_soma = (-cfg.dt / np.log(self.decay_soma)).astype(np.float32)
 
+    def _allocate(self) -> None:
+        """Recruit an engram, then make the winners refractory.
+
+        Three things happen, in the order biology does them:
+
+        1.  **Competition.** A neuron recruits itself if it is currently far
+            more active than it usually is. The comparison is against its own
+            baseline, so no ranking, sorting or population statistic is
+            involved -- the criterion is dimensionless and strictly local.
+            The per-neuron margin adapts to hold each unit's share of
+            allocations near ``alloc_frac``, which is the local substitute for
+            the lateral inhibition that enforces the competition in cortex.
+
+        2.  **Binding.** Synapses that were driving a recruited neuron are
+            strengthened. Only excitatory ones -- Hebbian LTP is a
+            glutamatergic phenomenon, and boosting an inhibitory synapse that
+            was active during recruitment would make the assembly *harder* to
+            reactivate, which is the opposite of binding. The additive
+            increment becomes competitive for free: synaptic scaling already
+            holds each branch to a weight budget, so what one synapse gains it
+            takes from its neighbours on the same branch.
+
+        3.  **Refractoriness.** Being recruited costs excitability, so the next
+            allocation lands on a different set. This is the step that makes
+            memories separable instead of superimposed, and it is the one with
+            no analogue anywhere in a conventional network.
+        """
+        cfg = self.cfg
+        # Statistics advance once per allocation, so the window is measured in
+        # allocations and z means "unusual for me, at moments like this one".
+        d = self.decay_stats
+        self.n_samples += 1
+        self.act_slow = (d * self.act_slow + (1.0 - d) * self.act_fast).astype(np.float32)
+        bias = 1.0 - d**self.n_samples
+        dev = self.act_fast - self.act_slow / bias
+        self.act_var = (d * self.act_var + (1.0 - d) * dev**2).astype(np.float32)
+        z = dev / (np.sqrt(self.act_var / bias) + 1e-9)
+        # Excitability adds directly to the competition rather than only tilting
+        # the threshold. `xi_slow` is the reference for the same reason the
+        # homeostatic setpoint uses it: what should win an allocation is a
+        # neuron that is more excitable *than it usually is*, not one that
+        # happens to sit high all the time.
+        drive = z + cfg.excite_gain * (self.xi - self.xi_slow)
+        tagged = drive > self.tag_margin
+        # Additive, because the margin is now a z-score and can legitimately be
+        # negative; a multiplicative step could never cross zero.
+        self.tag_margin += (cfg.tag_lr * (tagged - cfg.alloc_frac)).astype(np.float32)
+        np.clip(self.tag_margin, -20.0, 20.0, out=self.tag_margin)
+        self.tag = tagged
+        self.n_allocations += 1
+        if not tagged.any():
+            return
+
+        self.xi = (self.xi - cfg.alloc_drop * tagged).astype(np.float32)
+        if cfg.hebb_lr > 0.0:
+            # `pre` carries the Dale sign; multiplying it back out recovers the
+            # presynaptic activity itself, which is what Hebb's rule is about.
+            excitatory = self.syn_sign > 0.0
+            self.W += (
+                cfg.hebb_lr * tagged[:, None, None] * (self.pre * self.syn_sign) * excitatory
+            ).astype(np.float32)
+            np.clip(self.W, 0.0, cfg.weight_max, out=self.W)
+
     def _synaptic_scaling(self) -> None:
         """Local multiplicative scaling toward a per-branch weight budget.
 
@@ -609,11 +809,24 @@ class Column:
         self.elig_tau.fill(0.0)
         self.u.fill(self.cfg.stp_u)
         self.res.fill(1.0)
+        # act_fast is dynamical state and goes; xi, its baseline and the
+        # recruitment margin are intrinsic properties that persist across
+        # episodes. They have to: an allocation refractory that reset every
+        # episode would allocate every memory to the same neurons, which is
+        # precisely the failure the mechanism exists to prevent.
+        self.act_fast.fill(0.0)
+        self.tag.fill(False)
         if not keep_homeostasis:
             self.rate.fill(self.cfg.target_rate)
             self.theta.fill(self.cfg.threshold_init)
             self.knee.fill(self.cfg.knee_init)
             self.engagement.fill(self.cfg.plateau_engagement)
+            self.xi.fill(0.0)
+            self.xi_slow.fill(0.0)
+            self.act_slow.fill(0.0)
+            self.act_var.fill(0.0)
+            self.n_samples = 0
+            self.tag_margin.fill(1.0)
 
     @property
     def plateau_engagement(self) -> float:
@@ -628,3 +841,18 @@ class Column:
     def sparsity(self) -> float:
         """Fraction of neurons emitting, averaged over the recent past."""
         return float(self.rate.mean())
+
+    @property
+    def excitability_spread(self) -> float:
+        """Standard deviation of the excitability bias across the population.
+
+        The quantity homeostasis would drive to zero if allowed to. Watching it
+        is the cheapest way to tell whether allocation still has anything to
+        allocate with.
+        """
+        return float(self.xi.std())
+
+    @property
+    def engram_size(self) -> float:
+        """Fraction of the population recruited by the last allocation."""
+        return float(self.tag.mean())

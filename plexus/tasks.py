@@ -22,6 +22,11 @@ class Episode:
     inputs: np.ndarray  # (T, n_inputs) float32
     label: int
     response: np.ndarray  # (T,) bool -- steps where the answer is read out
+    # The underlying cue pattern, when the task has one. Never shown to the
+    # model -- it exists so diagnostics can ask questions the label cannot
+    # answer, such as whether two episodes the model must give the *same*
+    # answer to were nonetheless different events (++ and -- are both parity 0).
+    bits: tuple[int, ...] | None = None
 
 
 class DelayedParity:
@@ -115,7 +120,7 @@ class DelayedParity:
         label = 0
         for b in bits:
             label ^= b
-        return Episode(inputs=x, label=label, response=response)
+        return Episode(inputs=x, label=label, response=response, bits=tuple(bits))
 
 
 class DelayedXOR(DelayedParity):
