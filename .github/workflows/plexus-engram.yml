@@ -26,7 +26,7 @@ on:
         default: '500'
   push:
     paths:
-      - 'experiments/sweeps/engram-**'
+      - 'experiments/sweeps/engram-*.txt'
 
 env:
   SEEDS: ${{ github.event.inputs.seeds || '20' }}
@@ -57,21 +57,28 @@ jobs:
             echo "run=no" >> "$GITHUB_OUTPUT"
           fi
 
-      # Four conditions, chosen so each isolates one claim:
+      # Five conditions, each removing one more piece, so the sweep says where
+      # the effect actually lives:
       #   off        -- the frozen reservoir this has to beat
-      #   alloc      -- recruitment and refractoriness, no weight change
-      #   alloc+hebb -- the full mechanism
-      #   no-refract -- binding without the allocation refractory, which is the
-      #                 ablation that tells us whether rotation is worth what it
-      #                 costs in content-addressing
+      #   full       -- excitability + competition + refractory + tagged binding
+      #   no-refract -- minus the allocation refractory
+      #   tag-only   -- minus the excitability machinery too; competition stays
+      #   hebb-only  -- none of it. Salience-gated Hebbian LTP alone.
       - name: Run all conditions for this seed
         if: steps.gate.outputs.run == 'yes'
         run: |
           common="--seed ${{ matrix.seed }} --episodes $EPISODES --neurons $NEURONS --collect $COLLECT"
           python experiments/engram.py --tag off        --engram 0 $common
-          python experiments/engram.py --tag alloc      --hebb-lr 0 $common
-          python experiments/engram.py --tag alloc+hebb $common
+          python experiments/engram.py --tag full       $common
           python experiments/engram.py --tag no-refract --alloc-drop 0 $common
+          # Sweep 014: strip the mechanism down until it stops working, or
+          # until nothing is left. tag-only keeps the recruitment competition
+          # without the excitability machinery; hebb-only keeps neither, and is
+          # plain salience-gated Hebbian LTP.
+          python experiments/engram.py --tag tag-only \
+            --alloc-drop 0 --excite-drift 0 --excite-gain 0 $common
+          python experiments/engram.py --tag hebb-only \
+            --bind-mode graded --alloc-drop 0 --excite-drift 0 --excite-gain 0 $common
 
       - uses: actions/upload-artifact@v4
         if: steps.gate.outputs.run == 'yes'
@@ -98,10 +105,10 @@ jobs:
         run: |
           cat collected/*/engram_results.jsonl > experiments/engram_results.jsonl
           python experiments/engram.py --report | tee summary.txt
-          # Paired permutation on the two contrasts the mechanism stands or
-          # falls on: does the full mechanism beat the frozen column, and does
-          # the refractory earn its cost.
-          for pair in "alloc+hebb off" "alloc+hebb no-refract" "alloc off"; do
+          # The contrasts sweep 014 turns on: does the stripped mechanism still
+          # beat a frozen column, and does anything the machinery adds survive
+          # a paired test against it.
+          for pair in "hebb-only off" "full off" "full hebb-only" "tag-only hebb-only"; do
             set -- $pair
             echo "" | tee -a summary.txt
             python experiments/paired_test.py --file experiments/engram_results.jsonl \

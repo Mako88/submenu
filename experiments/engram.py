@@ -129,6 +129,7 @@ def main() -> None:
     ap.add_argument("--hebb-lr", type=float, default=0.02)
     ap.add_argument("--alloc-drop", type=float, default=0.6)
     ap.add_argument("--excite-drift", type=float, default=0.35)
+    ap.add_argument("--bind-mode", default="tagged", choices=["tagged", "graded"])
     ap.add_argument("--lr", type=float, default=0.0)
     ap.add_argument("--episodes", type=int, default=400)
     ap.add_argument("--collect", type=int, default=600)
@@ -162,6 +163,7 @@ def main() -> None:
             hebb_lr=args.hebb_lr,
             alloc_drop=args.alloc_drop,
             excite_drift=args.excite_drift,
+            bind_mode=args.bind_mode,
         ),
         seed=args.seed,
     )

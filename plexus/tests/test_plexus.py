@@ -1120,3 +1120,52 @@ def test_drain_shorter_than_the_lag_is_rejected():
     task = DelayedXOR()
     with pytest.raises(ValueError, match="discarding"):
         Plexus(task.n_inputs, task.n_classes, modulator_lag=200, drain_steps=50, seed=0)
+
+
+def _bind_run(bind_mode, episodes=40, neurons=48, seed=0):
+    task = DelayedXOR()
+    cfg = ColumnConfig(n_neurons=neurons, lr=0.0, seed=seed, engram=True, bind_mode=bind_mode)
+    m = Plexus(task.n_inputs, task.n_classes, column=cfg, seed=seed)
+    before = m.column.W.copy()
+    rng = np.random.default_rng(1)
+    for _ in range(episodes):
+        m.run_episode(task.episode(rng), learn=True)
+    return m.column, before
+
+
+def test_graded_binding_reaches_every_neuron():
+    """"graded" must genuinely drop the competition, not just soften it.
+
+    It is the ablation that could delete the entire engram mechanism, so it has
+    to actually be the thing it claims: plain Hebbian LTP gated by salience,
+    with no recruitment anywhere. If it quietly kept tagging, the ablation
+    would be comparing the mechanism against itself.
+    """
+    col, before = _bind_run("graded")
+    moved = np.abs(col.W - before).sum(axis=(1, 2)) > 0.0
+    assert moved.all(), f"only {moved.mean():.0%} of neurons bound; this is still a competition"
+    assert col.engram_size == 0.0, "graded mode reported an engram it did not allocate"
+
+    col, before = _bind_run("tagged")
+    moved = np.abs(col.W - before).sum(axis=(1, 2)) > 0.0
+    assert moved.any(), "tagged mode bound nothing at all"
+
+
+def test_binding_modes_apply_the_same_total_weight_change():
+    """The two modes must differ in mechanism, not in learning rate.
+
+    In tagged mode a fraction `alloc_frac` of neurons receive a unit-weighted
+    update; graded mode scales its activity ratio by `alloc_frac` so the mean
+    increment matches. Without that the ablation would vary two things at once
+    and its outcome would say nothing about which one mattered -- the same
+    defect that made sweep 013 uninterpretable.
+    """
+    tagged, t0 = _bind_run("tagged")
+    graded, g0 = _bind_run("graded")
+    dt = float(np.abs(tagged.W - t0).mean())
+    dg = float(np.abs(graded.W - g0).mean())
+    assert dt > 0 and dg > 0
+    assert abs(dt - dg) / max(dt, dg) < 0.25, (
+        f"tagged moved weights by {dt:.5f} and graded by {dg:.5f}; the modes are "
+        "not scale-matched, so a difference between them would be confounded"
+    )

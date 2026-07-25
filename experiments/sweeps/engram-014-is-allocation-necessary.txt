@@ -1,0 +1,79 @@
+Sweep 014 -- can the engram mechanism be deleted?
+=================================================
+
+QUESTION
+--------
+Sweep 012 found the first mechanism in this project to beat a frozen column:
+alloc+hebb, linear 0.831 vs 0.802, +0.029 on 14/20 seeds, p = 0.0176. Local and
+unsupervised, which is what makes it interesting.
+
+Its own ablations then said the allocation machinery is not what earned it:
+
+  alloc alone (no binding)   0.758, reliably WORSE than off, p = 0.0099
+  no refractory              0.844, if anything better than the full mechanism
+  excite/recruitment corr    -0.012 in the winning condition
+
+So the obvious reading is that salience-gated Hebbian binding carries the whole
+effect and the excitability drift, the recruitment competition and the
+allocation refractory are scaffolding. This sweep tries to establish that,
+because if it holds, most of what was built for sweep 012 should be deleted.
+
+CONDITIONS
+----------
+  off          frozen column, the baseline to beat
+  full         excitability + competition + refractory + tagged binding
+  no-refract   as full, minus the allocation refractory
+  tag-only     competition + tagged binding, no excitability drift, no
+               refractory. Isolates the competition.
+  hebb-only    bind_mode="graded". No competition, no excitability, no
+               refractory, no tag. Every neuron binds in proportion to its own
+               activity relative to its own baseline, gated on a modulator
+               release. Plain Hebbian LTP and nothing else.
+
+hebb-only is scale-matched to the tagged modes by construction -- the graded
+activity ratio is multiplied by alloc_frac so the mean weight increment agrees,
+measured at |dW| 0.0722 vs 0.0724 over 40 episodes. That matters: without it
+the comparison would vary learning rate and mechanism together, which is
+exactly the defect that made sweep 013 uninterpretable, and there is a test
+asserting the match holds.
+
+PREDICTION (recorded before the run)
+------------------------------------
+Primary, moderate-to-high confidence: **hebb-only matches full**, within
++/- 0.02 and with no significant paired difference. If so, the engram apparatus
+comes out -- the drift, the margin adaptation, the refractory, the excitability
+setpoint coupling and roughly 120 lines of column.py.
+
+Named in advance so it cannot be softened afterwards: if hebb-only lands within
+0.02 of full and p > 0.05, that is a deletion, not a "both work, keep both".
+
+Secondary, lower confidence: tag-only sits between them, because the
+competition concentrates binding on the neurons that responded most, and that
+may sharpen the representation slightly even when nothing is allocated in a
+memory sense.
+
+Low confidence, and the one result that would save the mechanism: hebb-only
+beats off but by clearly less than full, with the gap traceable to the
+competition rather than to scale. That would mean recruitment is doing real
+work that the 012 ablations were too coarse to see -- `alloc` alone removes
+binding entirely, which is not the same as removing the competition.
+
+What this sweep CANNOT show: whether allocation pays off on a task that asks
+for memory separation. Delayed XOR asks nothing of it -- one episode, one
+answer, no interference between memories -- so a null here is evidence that
+allocation is useless *on this benchmark*, not in general. The refractory
+demonstrably does the thing it was built for (rotate 0.815 against 1.661
+without it, i.e. engrams overlapping less than independent sampling). If
+hebb-only wins here, the honest move is to delete the machinery from the
+default path and keep the finding recorded, rather than to keep dead code
+warm on the strength of a benchmark that was never asked the question.
+
+SETTINGS
+--------
+20 seeds, 300 episodes, 96 neurons, 500 collection episodes, column lr 0
+throughout so the three-factor rule cannot contribute. Identical to sweep 012
+in every respect, so 012's numbers are directly comparable.
+
+RESULT -- 20 paired seeds
+-------------------------
+Pending.

@@ -140,6 +140,17 @@ class ColumnConfig:
     tau_tag_slow: float = 5000.0  # each neuron's own activity baseline
     tag_lr: float = 0.05  # adaptation of the per-neuron recruitment margin
     hebb_lr: float = 0.02  # Hebbian binding within the recruited assembly
+    # Which postsynaptic factor gates the binding.
+    #   "tagged" -- only recruited neurons bind. The engram mechanism.
+    #   "graded" -- every neuron binds in proportion to its own activity, with
+    #               no competition, no excitability and no refractory. Plain
+    #               Hebbian LTP gated by salience, and nothing else.
+    # The second exists to try to make the first unnecessary. Sweep 012's
+    # ablations already point that way -- allocation without binding is
+    # reliably WORSE than a frozen column (-0.044, p = 0.0099) and removing the
+    # refractory costs nothing (p = 0.15) -- so the machinery has to justify
+    # itself against the simplest thing that could produce the same gain.
+    bind_mode: str = "tagged"
     # How strongly excitability biases the recruitment competition directly,
     # over and above what it already does by lowering the threshold. It needs a
     # direct path: routing it only through firing does not work, because a
@@ -770,8 +781,24 @@ class Column:
         self.n_samples += 1
         self.act_slow = (d * self.act_slow + (1.0 - d) * self.act_fast).astype(np.float32)
         bias = 1.0 - d**self.n_samples
-        dev = self.act_fast - self.act_slow / bias
+        baseline = self.act_slow / bias
+        dev = self.act_fast - baseline
         self.act_var = (d * self.act_var + (1.0 - d) * dev**2).astype(np.float32)
+
+        if cfg.bind_mode == "graded":
+            # No competition, no recruitment, no refractory. Every neuron binds
+            # in proportion to how active it is relative to its own baseline.
+            #
+            # The ratio is scaled by alloc_frac so that the mean increment
+            # matches the tagged mode's -- there, a fraction alloc_frac of
+            # neurons receive a unit-weighted update. Without that the two
+            # conditions would differ in learning rate as well as in mechanism,
+            # and a difference in outcome would say nothing about which.
+            self.tag.fill(False)  # nothing is allocated, and the diagnostic says so
+            post = np.clip(self.act_fast / (baseline + 1e-9), 0.0, 5.0) * cfg.alloc_frac
+            self._bind(post.astype(np.float32))
+            return
+
         z = dev / (np.sqrt(self.act_var / bias) + 1e-9)
         # Excitability adds directly to the competition rather than only tilting
         # the threshold. `xi_slow` is the reference for the same reason the
@@ -798,14 +825,30 @@ class Column:
             return
 
         self.xi = (self.xi - cfg.alloc_drop * tagged).astype(np.float32)
-        if cfg.hebb_lr > 0.0:
-            # `pre` carries the Dale sign; multiplying it back out recovers the
-            # presynaptic activity itself, which is what Hebb's rule is about.
-            excitatory = self.syn_sign > 0.0
-            self.W += (
-                cfg.hebb_lr * tagged[:, None, None] * (self.pre * self.syn_sign) * excitatory
-            ).astype(np.float32)
-            np.clip(self.W, 0.0, cfg.weight_max, out=self.W)
+        self._bind(tagged.astype(np.float32))
+
+    def _bind(self, post: np.ndarray) -> None:
+        """Strengthen the excitatory synapses that were driving each neuron.
+
+        ``post`` is the postsynaptic factor: a 0/1 recruitment tag, or a graded
+        activity ratio. Everything else is identical between the two, which is
+        the point -- it isolates the competition from the binding.
+
+        Only excitatory synapses. Hebbian LTP is a glutamatergic phenomenon,
+        and strengthening an inhibitory synapse that was active during binding
+        would make the assembly *harder* to reactivate, which is the opposite
+        of what binding is for.
+        """
+        cfg = self.cfg
+        if cfg.hebb_lr <= 0.0:
+            return
+        # `pre` carries the Dale sign; multiplying it back out recovers the
+        # presynaptic activity itself, which is what Hebb's rule is about.
+        excitatory = self.syn_sign > 0.0
+        self.W += (
+            cfg.hebb_lr * post[:, None, None] * (self.pre * self.syn_sign) * excitatory
+        ).astype(np.float32)
+        np.clip(self.W, 0.0, cfg.weight_max, out=self.W)
 
     def _synaptic_scaling(self) -> None:
         """Local multiplicative scaling toward a per-branch weight budget.

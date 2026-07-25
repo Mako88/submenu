@@ -91,8 +91,8 @@ MUTATIONS = [
     (
         COLUMN,
         "engram Hebbian binding applied to every neuron, not just the recruited",
-        "cfg.hebb_lr * tagged[:, None, None] * (self.pre * self.syn_sign) * excitatory",
-        "cfg.hebb_lr * (self.pre * self.syn_sign) * excitatory",
+        "self._bind(tagged.astype(np.float32))",
+        "self._bind(np.ones_like(tagged, dtype=np.float32))",
         "hebbian",
     ),
     (
@@ -101,6 +101,13 @@ MUTATIONS = [
         "self.xi = (self.xi - cfg.alloc_drop * tagged).astype(np.float32)",
         "self.xi = self.xi.astype(np.float32)",
         "recruitment_lowers",
+    ),
+    (
+        COLUMN,
+        "graded binding ignores the postsynaptic factor",
+        "cfg.hebb_lr * post[:, None, None] * (self.pre * self.syn_sign) * excitatory",
+        "cfg.hebb_lr * (self.pre * self.syn_sign) * excitatory",
+        "binding",
     ),
     (
         READOUT,
