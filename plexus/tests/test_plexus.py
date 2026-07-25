@@ -538,6 +538,64 @@ class _Jittered:
         self._inner.reset()
 
 
+def test_the_fast_gather_path_agrees_with_the_checked_one():
+    """Every number in this repo comes from `take`; `gather` is the correct one.
+
+    `Column` picks between two implementations of the same read. The checked
+    path, `EventBuffer.gather`, resolves each synapse's (source, delay) and
+    masks any slot that does not actually hold the requested emission time. The
+    fast path, `take`, uses a precomputed flat index and skips that check --
+    profiled at ~46% of runtime, which is why it exists.
+
+    `LocalTransport` sets `dense = True`, so **the fast path is what every
+    experiment, sweep and README number in this project was computed with**, and
+    nothing asserted the two agree. A divergence would not raise: it would
+    quietly mean the results describe a model nobody intended, which is this
+    project's signature failure with two implementations instead of one
+    disconnected quantity.
+
+    What breaks if this stops holding: the flat index encodes both the source
+    ids and the buffer width, so anything that changes either -- `add_inputs`
+    growing the source space, a different `delay_max` changing `depth` -- can
+    desynchronise it from `src`/`delay` while both paths keep running.
+
+    Bit-identical is the right bar and is achievable: on a densely written
+    buffer the mask in `gather` never fires, so the two are reading the same
+    floats by different arithmetic.
+    """
+    task = DelayedXOR()
+
+    def run(fast: bool):
+        m = Plexus(
+            task.n_inputs, task.n_classes,
+            column=ColumnConfig(n_neurons=32, lr=0.004, seed=0, hebbian=True,
+                                lateral=True),
+            seed=0,
+        )
+        assert m.column._fast, "LocalTransport should be selecting the fast path"
+        m.column._fast = fast
+        rng = np.random.default_rng(4)
+        outs = []
+        for _ in range(3):
+            ep = task.episode(rng)
+            m.run_episode(ep, learn=True)
+            outs.append(m.column.out.copy())
+        return outs, m.column.W.copy()
+
+    fast_out, fast_w = run(True)
+    slow_out, slow_w = run(False)
+
+    for a, b in zip(fast_out, slow_out):
+        assert np.array_equal(a, b), (
+            "the fast take path and the checked gather path disagree on the "
+            "column output -- every recorded result uses the fast one"
+        )
+    assert np.array_equal(fast_w, slow_w), (
+        "the fast take path and the checked gather path disagree on the "
+        "learned weights"
+    )
+
+
 def test_delivery_jitter_does_not_change_a_distributed_run():
     """Late, reordered packets must compute exactly what punctual ones do.
 

@@ -179,6 +179,13 @@ MUTATIONS = [
         "added_inputs_reach or adding_inputs_appends",
     ),
     (
+        COLUMN,
+        "the fast gather index is off by one source (fast path diverges silently)",
+        "                (slots * transport.n_sources + self.src[None]).astype(np.int32).reshape(d, -1)",
+        "                (slots * transport.n_sources + self.src[None] + 1).astype(np.int32).reshape(d, -1)",
+        "fast_gather_path",
+    ),
+    (
         ROOT / "plexus" / "events.py",
         "a never-delivered packet reads as a stale echo instead of silence",
         "        return np.where(self._stamp[slots] == emitted_at, vals, 0.0)",
