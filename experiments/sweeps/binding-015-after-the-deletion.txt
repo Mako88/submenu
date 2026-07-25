@@ -1,0 +1,61 @@
+Sweep 015 -- does the mechanism still work after the code around it was deleted?
+================================================================================
+
+QUESTION
+--------
+Sweep 014 measured salience-gated Hebbian binding at linear 0.876 against a
+frozen column's 0.802. That number came from a condition called `hebb-only`:
+bind_mode="graded" inside `_allocate`, with excite_drift, excite_gain and
+alloc_drop all zeroed, threading through a recruitment path that was being
+told to do nothing.
+
+The engram allocator was then deleted, and the mechanism was *rewritten* as a
+standalone `_bind`. So 0.876 is a number produced by code that no longer
+exists. Nothing has yet measured the code that does.
+
+This is not a formality. A refactor that silently changed the mechanism is
+precisely the failure this project is built against -- a quantity that looks
+connected and is not -- and the deletion touched the statistics timescale, the
+baseline bias correction, the reset behaviour and the scale factor's name. The
+unit tests assert the three factors reach the weights; they do not assert the
+mechanism is worth 0.074.
+
+PREDICTION (recorded before the run)
+------------------------------------
+High confidence: `on` reproduces 0.876 +/- 0.01 and `off` reproduces 0.802
++/- 0.01, with a paired difference near +0.074 at p < 0.001. The deletion was
+meant to be behaviour-preserving for the surviving path.
+
+If `on` lands materially below 0.876, the refactor changed the mechanism and
+the diff is the place to look, not the hyperparameters. Naming that in advance
+because the tempting response to a smaller number is to tune it back up, and
+that would bury the regression instead of finding it.
+
+`off` is the sharper check of the two. It shares no code with the mechanism at
+all -- hebbian=False is the pre-existing path -- so if it moves from 0.802 by
+more than seed noise, the deletion touched something it had no business
+touching, and every result in this project is affected rather than just this
+one.
+
+WHAT ALSO CHANGED, AND WHY THIS SWEEP EXISTS AT ALL
+----------------------------------------------------
+The previous version of this workflow was renamed from plexus-engram.yml by
+substituting the script name and nothing else, so it went on passing
+--engram, --alloc-drop, --excite-drift, --excite-gain and --bind-mode to a
+script that accepts none of them. Every seed job died on its first line.
+
+The mutation harness catches this class of drift for tests -- it reports
+"source moved, update the mutation" and fails -- and a workflow had no
+equivalent. The seed job now greps its own output for a row per condition and
+fails if either is missing, so a run that measured nothing can no longer
+aggregate into a confident empty table.
+
+SETTINGS
+--------
+20 seeds, 300 episodes, 96 neurons, 500 collection episodes, column lr 0
+throughout so the three-factor rule cannot contribute. Identical to sweeps 012
+and 014, so all three are directly comparable.
+
+RESULT -- 20 paired seeds
+-------------------------
+Pending.

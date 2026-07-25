@@ -1,9 +1,9 @@
-name: plexus engram
+name: plexus binding
 
-# Same reason as the plasticity sweep: this project has twice produced a
-# "breakthrough" at three seeds that decayed to nothing by twenty. The engram
-# mechanism currently shows +0.10 linear decodability at one seed, which is
-# exactly the size of effect that has evaporated before.
+# Sweep 014 measured salience-gated Hebbian binding at linear 0.876 against a
+# frozen column's 0.802, and the engram allocator around it was then deleted.
+# The mechanism was *rewritten* in the course of that deletion, so 0.876 is a
+# number produced by code that no longer exists. This re-measures it.
 
 on:
   workflow_dispatch:
@@ -26,7 +26,7 @@ on:
         default: '500'
   push:
     paths:
-      - 'experiments/sweeps/engram-*.txt'
+      - 'experiments/sweeps/binding-*.txt'
 
 env:
   SEEDS: ${{ github.event.inputs.seeds || '20' }}
@@ -57,33 +57,29 @@ jobs:
             echo "run=no" >> "$GITHUB_OUTPUT"
           fi
 
-      # Five conditions, each removing one more piece, so the sweep says where
-      # the effect actually lives:
-      #   off        -- the frozen reservoir this has to beat
-      #   full       -- excitability + competition + refractory + tagged binding
-      #   no-refract -- minus the allocation refractory
-      #   tag-only   -- minus the excitability machinery too; competition stays
-      #   hebb-only  -- none of it. Salience-gated Hebbian LTP alone.
-      - name: Run all conditions for this seed
+      # Two conditions. The whole mechanism is one flag now, which is the point.
+      - name: Run both conditions for this seed
         if: steps.gate.outputs.run == 'yes'
         run: |
           common="--seed ${{ matrix.seed }} --episodes $EPISODES --neurons $NEURONS --collect $COLLECT"
-          python experiments/binding.py --tag off        --engram 0 $common
-          python experiments/binding.py --tag full       $common
-          python experiments/binding.py --tag no-refract --alloc-drop 0 $common
-          # Sweep 014: strip the mechanism down until it stops working, or
-          # until nothing is left. tag-only keeps the recruitment competition
-          # without the excitability machinery; hebb-only keeps neither, and is
-          # plain salience-gated Hebbian LTP.
-          python experiments/binding.py --tag tag-only \
-            --alloc-drop 0 --excite-drift 0 --excite-gain 0 $common
-          python experiments/binding.py --tag hebb-only \
-            --bind-mode graded --alloc-drop 0 --excite-drift 0 --excite-gain 0 $common
+          python experiments/binding.py --tag off --hebbian 0 $common
+          python experiments/binding.py --tag on  --hebbian 1 $common
+
+      # A run that produced no rows would otherwise aggregate to a confident
+      # empty table. The previous version of this workflow passed flags that
+      # binding.py does not accept, and every seed died on its first line.
+      - name: Fail loudly if a condition produced nothing
+        if: steps.gate.outputs.run == 'yes'
+        run: |
+          for tag in off on; do
+            grep -q "\"tag\": \"$tag\"" experiments/binding_results.jsonl \
+              || { echo "no rows for condition '$tag'"; exit 1; }
+          done
 
       - uses: actions/upload-artifact@v4
         if: steps.gate.outputs.run == 'yes'
         with:
-          name: engram-seed-${{ matrix.seed }}
+          name: binding-seed-${{ matrix.seed }}
           path: experiments/binding_results.jsonl
           retention-days: 14
 
@@ -98,26 +94,22 @@ jobs:
       - run: pip install numpy
       - uses: actions/download-artifact@v4
         with:
-          pattern: engram-seed-*
+          pattern: binding-seed-*
           path: collected
 
-      - name: Combine, report, and test the pairs that matter
+      - name: Combine, report, and run the paired test
         run: |
           cat collected/*/binding_results.jsonl > experiments/binding_results.jsonl
           python experiments/binding.py --report | tee summary.txt
-          # The contrasts sweep 014 turns on: does the stripped mechanism still
-          # beat a frozen column, and does anything the machinery adds survive
-          # a paired test against it.
-          for pair in "hebb-only off" "full off" "full hebb-only" "tag-only hebb-only"; do
-            set -- $pair
+          for metric in linear mlp; do
             echo "" | tee -a summary.txt
             python experiments/paired_test.py --file experiments/binding_results.jsonl \
-              --metric linear --a "$1" --b "$2" | tee -a summary.txt
+              --metric $metric --a on --b off | tee -a summary.txt
           done
 
       - uses: actions/upload-artifact@v4
         with:
-          name: engram-combined
+          name: binding-combined
           path: |
             experiments/binding_results.jsonl
             summary.txt
@@ -126,7 +118,7 @@ jobs:
       - name: Put the summary in the run page
         run: |
           {
-            echo '## plexus: engram allocation'
+            echo '## plexus: salience-gated Hebbian binding'
             echo '```'
             cat summary.txt
             echo '```'
