@@ -1,0 +1,15 @@
+Sentinel for .github/workflows/plexus-settling.yml.
+
+Editing this file starts a 20-seed run of the settling ablation. It exists so
+that writing a *result* into experiments/sweeps/ does not re-run the matrix that
+produced it -- GitHub path filters cannot tell a file being added from one being
+edited, so the trigger has to live where results are never written.
+
+run 1 -- sweep 022: what is the +0.197 that homeostatic settling alone buys?
+  Six conditions per seed. Ablates the three adapting quantities (somatic
+  threshold, dendritic knee, synaptic scaling) one at a time, plus two preset
+  conditions that hand the column a settled twin's threshold and knee and then
+  switch adaptation off -- separating "homeostasis found an operating point"
+  from "homeostasis kept adapting". One seed says it is the operating point:
+  a preset column starts at 0.767 against 0.567 and does not move.
+  Prediction in experiments/sweeps/binding-022-settling.txt.

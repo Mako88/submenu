@@ -1,0 +1,122 @@
+Sweep 022 -- what is the +0.197 that homeostasis alone buys?
+============================================================
+
+QUESTION
+--------
+Sweep 019 surfaced it as a side effect and nobody asked. A column with `lr=0`,
+no binding and no lateral inhibition -- no learning rule of any kind -- climbs
+from 0.582 to 0.779 linear decodability over its first fifty episodes and then
+plateaus. That is **+0.197, more than twice what salience-gated Hebbian binding
+adds on top of it**, and this project has no account of it.
+
+It matters beyond curiosity. Every mechanism measured here is measured as a
+delta on top of that settling, so if the settling is most of the effect, effort
+spent on rules layered above it is being spent in the wrong place. And if the
+state it arrives at can be reached without the fifty episodes, that is a
+straightforward win available today.
+
+Exactly three things adapt in that condition:
+
+  somatic threshold   theta, multiplicative, targeting `target_rate`
+  dendritic knee      per-branch, targeting `plateau_engagement`
+  synaptic scaling    per-branch renormalisation of W to `branch_budget`
+
+So the question is an ablation, not a hypothesis.
+
+WHY THE OBVIOUS ABLATION DOES NOT ANSWER IT
+--------------------------------------------
+Measured at one seed, 20 episodes, before designing the rest of this sweep:
+
+  condition        decodability@20   sparsity
+  all                    0.800         0.029
+  no-knee                0.600         0.029
+  no-scaling             0.633         0.028
+  no-theta               0.567         0.004
+  none                   0.567         0.002
+
+The bottom two rows are **not results**. Without threshold adaptation the column
+falls to a fifth of its target firing rate and is effectively silent, and a
+silent column decodes at its starting value for reasons that have nothing to do
+with the mechanism under test. Reporting "threshold homeostasis contributes
+nothing" from that row would be a conclusion drawn from a disconnected quantity
+-- the exact failure this project is built against.
+
+The sparsity column is in the probe for this reason and is printed next to
+decodability rather than on request.
+
+THE CONTROL THAT DOES ANSWER IT
+--------------------------------
+Separate the two things homeostasis does: it *finds* an operating point, and it
+*keeps* adapting. `--preset-from N` settles a twin column -- same seed, so the
+same weights and the same wiring -- for N episodes with everything adapting,
+copies its `theta` and `knee` onto the column being measured, and only then
+switches adaptation off. Sparsity is preserved and what is removed is the
+ongoing adaptation.
+
+One seed, `--preset-from 50`:
+
+  condition        decodability@0    @20    sparsity@20
+  preset-frozen          0.767      0.767      0.020
+  theta-preset           0.767      0.733      0.028
+
+Against `all` starting at 0.567 and reaching 0.800 after 20 episodes.
+
+**At episode 0, with no adaptation running at all, a column handed the converged
+threshold and knee is already at 0.767.** The +0.197 looks like it is the
+operating point rather than the settling process -- homeostasis is not learning
+anything, it is locating the values at which a pre-existing random column is
+readable.
+
+PREDICTION (recorded before the 20-seed run)
+---------------------------------------------
+  all              0.582 -> 0.780 by episode 50, flat after   (replicates 019)
+  preset-frozen    0.76 to 0.80 at episode 0, and FLAT throughout. This is the
+                   sharp one. If ongoing adaptation matters, this curve must
+                   climb; if the operating point is the whole story, it does not
+                   move at all.
+  theta-preset     within 0.02 of preset-frozen. Knee and scaling contribute
+                   little once theta is right.
+  no-knee          0.60 to 0.68, sparsity healthy at 0.025 to 0.032
+  no-scaling       0.62 to 0.70, sparsity healthy
+  no-theta         flat at its episode-0 value, sparsity below 0.008 --
+                   recorded as an uninterpretable condition rather than a null,
+                   and included precisely so that is on the record
+
+Stated so it can be wrong: **if `preset-frozen` starts high and stays flat, the
++0.197 is a per-neuron operating point -- a few hundred scalars -- and not a
+learned trajectory.** The fifty episodes are search, not accumulation.
+
+CONSEQUENCE, NAMED IN ADVANCE
+------------------------------
+If that holds, the next question is immediate and cheap: does the twin need
+*task* input to find those values, or would any input with matching statistics
+do? If random input suffices, the operating point is precomputable and fifty
+episodes of every future run are free. That is sweep 023 and it should not be
+folded into this one.
+
+If instead `preset-frozen` climbs, then ongoing adaptation is doing real work
+across training and the +0.197 is a genuine unsupervised learning effect -- in
+which case it is the largest one in the project and the mechanisms layered above
+it deserve re-examination against it rather than against a frozen baseline.
+
+WHAT THIS DOES NOT SETTLE
+--------------------------
+The preset column has had fifty episodes of unsupervised exposure through its
+twin, so "free" is the wrong word until sweep 023 runs. What is being claimed is
+narrower and still substantial: that the thing carried forward is a small set of
+per-neuron scalars rather than a trajectory through weight space. Nothing here
+touches labels -- the twin sees no error signal, and `lr=0` throughout.
+
+Absolute levels will sit below sweep 019's because the probe uses fewer
+collection episodes. Compare shapes and gaps across conditions, not levels
+against 019.
+
+SETTINGS
+--------
+20 seeds, 100 episodes, checkpoints every 10, 300 probe episodes, 96 neurons,
+column lr 0, binding off, lateral off. `--preset-from 50`, matching where sweep
+019 measured the plateau.
+
+RESULT -- 20 paired seeds
+-------------------------
+Pending.

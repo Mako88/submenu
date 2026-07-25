@@ -58,6 +58,32 @@ def main() -> None:
     ap.add_argument("--probe", type=int, default=300)
     ap.add_argument("--neurons", type=int, default=96)
     ap.add_argument("--seed", type=int, default=0)
+    # Sweep 022. The frozen column climbs 0.582 -> 0.779 over its first fifty
+    # episodes with no learning rule running at all, which is more than twice
+    # what binding adds and has never been explained. Exactly three things adapt
+    # in that condition, so each gets an off switch and the question becomes an
+    # ablation rather than a hypothesis. `None` means "leave the default".
+    ap.add_argument("--homeostatic-lr", type=float, default=None,
+                    help="somatic threshold adaptation rate; 0 disables it")
+    ap.add_argument("--knee-lr", type=float, default=None,
+                    help="dendritic knee adaptation rate; 0 disables it")
+    ap.add_argument("--scaling-lr", type=float, default=None,
+                    help="synaptic scaling rate; 0 disables it")
+    ap.add_argument("--lateral", type=int, default=0)
+    # Disabling threshold homeostasis outright does not answer the question it
+    # looks like it answers. Measured at one seed: sparsity collapses from 0.029
+    # to 0.004 and decodability sits at its episode-0 value, so the column is
+    # silent rather than unhelped, and "threshold adaptation contributes
+    # nothing" read off that is a conclusion about a dead column.
+    #
+    # This separates the two things the mechanism does. Settle a twin column --
+    # same seed, so the same weights and the same wiring -- for N episodes with
+    # everything adapting, copy its threshold and knee onto this one, and only
+    # then switch adaptation off. The operating point is preserved and what is
+    # removed is the *ongoing* adaptation, which is the actual question.
+    ap.add_argument("--preset-from", type=int, default=0,
+                    help="settle a twin column for N episodes and adopt its "
+                         "threshold and knee before measuring")
     ap.add_argument("--report", action="store_true")
     args = ap.parse_args()
 
@@ -65,42 +91,99 @@ def main() -> None:
         rows = [json.loads(x) for x in OUT.read_text().splitlines() if x.strip()]
         tags = sorted({r["tag"] for r in rows})
         checkpoints = sorted({c for r in rows for c in map(int, r["curve"])})
-        print(f"{'episode':>8s}" + "".join(f"{t:>12s}" for t in tags) + "        gap")
-        for c in checkpoints:
-            cells, vals = "", {}
-            for t in tags:
-                v = [r["curve"][str(c)] for r in rows if r["tag"] == t and str(c) in r["curve"]]
-                vals[t] = float(np.mean(v)) if v else float("nan")
-                cells += f"{vals[t]:12.3f}"
-            gap = vals.get("on", float("nan")) - vals.get("off", float("nan"))
-            print(f"{c:8d}{cells}{gap:+11.3f}")
+
+        def table(field: str, fmt: str) -> None:
+            print(f"{'episode':>8s}" + "".join(f"{t:>16s}" for t in tags))
+            for c in checkpoints:
+                cells = ""
+                for t in tags:
+                    v = [r[field][str(c)] for r in rows
+                         if r["tag"] == t and str(c) in r.get(field, {})]
+                    cells += format(float(np.mean(v)) if v else float("nan"), fmt)
+                print(f"{c:8d}{cells}")
+
+        print("linear decodability")
+        table("curve", ">16.3f")
+        # Always printed next to it, never on request: an ablation that silences
+        # the column would otherwise read as a clean null on the table above.
+        if any("sparsity" in r for r in rows):
+            print("\nsparsity (firing fraction) -- a column at ~0 or ~1 is dead,")
+            print("and its decodability says nothing about the mechanism")
+            table("sparsity", ">16.4f")
         n = len({r["seed"] for r in rows})
         print(f"\n{n} seeds")
         return
 
     task = DelayedXOR()
-    model = Plexus(
-        task.n_inputs, task.n_classes,
-        column=ColumnConfig(
-            n_neurons=args.neurons, lr=0.0, seed=args.seed, hebbian=bool(args.hebbian)
-        ),
-        seed=args.seed,
-    )
+    overrides = {
+        name: value
+        for name, value in (("homeostatic_lr", args.homeostatic_lr),
+                            ("knee_lr", args.knee_lr),
+                            ("scaling_lr", args.scaling_lr))
+        if value is not None
+    }
+    def build(**extra):
+        return Plexus(
+            task.n_inputs, task.n_classes,
+            column=ColumnConfig(
+                n_neurons=args.neurons, lr=0.0, seed=args.seed,
+                hebbian=bool(args.hebbian), lateral=bool(args.lateral),
+                **{**overrides, **extra}
+            ),
+            seed=args.seed,
+        )
+
+    model = build()
+    if args.preset_from:
+        # The twin adapts with every default in force -- the overrides apply
+        # only to the column being measured, or the preset would inherit the
+        # very ablation it exists to compensate for.
+        twin = build(homeostatic_lr=ColumnConfig.homeostatic_lr,
+                     knee_lr=ColumnConfig.knee_lr,
+                     scaling_lr=ColumnConfig.scaling_lr)
+        twin.train(task, args.preset_from,
+                   rng=np.random.default_rng(7000 + args.seed), report_every=10**9)
+        # Assert the preset landed, in the run rather than in a unit test. The
+        # whole condition's meaning depends on it: a preset that silently failed
+        # would reproduce the `none` condition -- a dead column at its starting
+        # value -- and the sweep would report "ongoing adaptation contributes
+        # nothing" from a column that never had the operating point at all.
+        #
+        # The bar catches total failure, not insufficient settling: one episode
+        # already moves theta by 7%, five by 45%, thirty by 63%. Anything under
+        # 1% means the twin did not train.
+        moved = float(np.abs(twin.column.theta / model.column.theta - 1.0).mean())
+        if moved < 0.01:
+            raise SystemExit(
+                f"--preset-from {args.preset_from} left theta within {moved:.4f} "
+                "of its initial value, so there is nothing to preset. The twin "
+                "did not settle; the condition would be meaningless."
+            )
+        model.column.theta[:] = twin.column.theta
+        model.column.knee[:] = twin.column.knee
     rng = np.random.default_rng(1000 + args.seed)
 
-    curve = {}
+    curve, sparsity = {}, {}
     done = 0
     # Checkpoint at 0 as well: it is the frozen column, and both conditions must
     # agree there or the probe is measuring something other than binding.
     curve[str(done)] = decodability(model, task, args.probe, 11 + args.seed)
+    # Recorded alongside, because the sweep 022 ablations can kill the column
+    # rather than merely fail to help it. A silent or saturated column decodes
+    # at chance for a reason that has nothing to do with the mechanism under
+    # test, and "homeostasis contributes nothing" read off a dead column is a
+    # conclusion drawn from a disconnected quantity.
+    sparsity[str(done)] = float(model.column.sparsity)
     while done < args.episodes:
         step = min(args.every, args.episodes - done)
         model.train(task, step, rng=rng, report_every=10**9)
         done += step
         curve[str(done)] = decodability(model, task, args.probe, 11 + args.seed)
+        sparsity[str(done)] = float(model.column.sparsity)
 
     row = dict(tag=args.tag, seed=args.seed, hebbian=args.hebbian,
-               episodes=args.episodes, every=args.every, curve=curve)
+               episodes=args.episodes, every=args.every, curve=curve,
+               sparsity=sparsity, preset_from=args.preset_from, **overrides)
     with OUT.open("a") as fh:
         fh.write(json.dumps(row) + "\n")
     pts = " ".join(f"{k}:{v:.3f}" for k, v in sorted(curve.items(), key=lambda kv: int(kv[0])))
