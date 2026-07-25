@@ -1,0 +1,71 @@
+Sweep 013 -- does a late modulator actually cost anything?
+==========================================================
+
+WHY THIS EXISTS
+---------------
+Found by the audit in experiments/sweeps/AUDIT.md, not by a bug. The
+measurement was never wrong; it was narrower than the claim resting on it.
+
+"Latency tolerance" has been covering two different claims:
+
+  (a) inter-column CONDUCTION DELAY is free. Measured: 2ms -> 150ms costs
+      -0.048 across 5 delays x 4 seeds. Frozen columns, so no learning-path bug
+      can touch it. Valid.
+
+  (b) the eligibility traces absorb a LATE MODULATOR, so credit assignment
+      survives a wide-area network.
+
+(b) is the one the architecture rests on, and it has never been run. Every
+recorded sweep set MODULATOR_LAG=0. It appears in a unit test and as a
+condition in experiments/ablation.py, and that is all.
+
+The two are not interchangeable. A longer conduction delay on a frozen
+reservoir is close to just a different random projection, which is why (a) came
+out flat and why it is not very surprising that it did. A late modulator is a
+different kind of problem: the trace has to still hold what produced the
+decision when the feedback finally lands, and tau_eligibility is 70ms against a
+lag of 200 steps. There is a real mechanism that could fail here.
+
+QUESTION
+--------
+Does a 200-step modulator lag change the plastic-vs-frozen comparison, relative
+to the same comparison at zero lag?
+
+Note what this can and cannot show. The rule is already null at zero lag
+(five sweeps, most recently -0.001 at p=0.97), so this cannot demonstrate that
+learning *survives* the lag -- there is no effect left to preserve. What it can
+show is whether the lag makes things actively WORSE, which is the failure mode
+the eligibility trace is claimed to prevent. A rule that is merely inert at
+zero lag and actively harmful at 200 would mean the trace is not doing the job
+it is described as doing, and that is worth knowing regardless of whether the
+rule ever starts working.
+
+PREDICTION (recorded before the result)
+---------------------------------------
+The lag makes no significant difference, because there is no effect at zero lag
+for it to degrade. Confidence high on that, and it is a weak prediction.
+
+The interesting number is the frozen condition, which should be *identical*
+across lag settings -- a frozen column ignores the modulator entirely. If
+frozen accuracy moves between the two runs by more than seed noise, something
+reads the modulator that should not, and that is a locality bug rather than a
+latency result.
+
+Second prediction, lower confidence: mean |dW| per episode in the plastic
+condition falls under lag, because a modulator arriving 200 steps after a trace
+with a 70ms constant lands on a trace decayed by exp(-200/70) = 0.06. If that
+is what happens, the honest conclusion is that tau_eligibility and the lag
+budget are the same number doing two jobs, which the config docstring already
+flags as the obvious next design step, and this would be the measurement that
+forces it.
+
+SETTINGS
+--------
+20 seeds, 400 episodes, 24 neurons, plastic lr 5e-3, tau_elig 70,
+MODULATOR_LAG=200, SURROGATE=graded, ELIG_MODE=magnitude, READOUT_RULE=delta.
+Identical to sweep 008 in every respect except the lag, so 008 is the control
+and no separate zero-lag run is needed.
+
+RESULT -- 20 paired seeds
+-------------------------
+Pending.

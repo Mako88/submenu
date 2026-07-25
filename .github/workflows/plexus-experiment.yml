@@ -62,7 +62,13 @@ env:
   EPISODES: ${{ github.event.inputs.episodes || '400' }}
   PLASTIC_LR: ${{ github.event.inputs.plastic_lr || '0.005' }}
   TAU_ELIG: ${{ github.event.inputs.tau_elig || '70' }}
-  MODULATOR_LAG: ${{ github.event.inputs.modulator_lag || '0' }}
+  # Sweep 013: raised from 0 to test the half of the latency claim that has
+  # never been run. Every recorded sweep until now used 0, so "the eligibility
+  # traces absorb a late modulator" was an argument with no measurement under
+  # it. Set back to 0 once 013 is recorded -- leaving it at 200 would silently
+  # change every subsequent push-triggered sweep, which is sweep 003's mistake
+  # with the sign flipped.
+  MODULATOR_LAG: ${{ github.event.inputs.modulator_lag || '200' }}
   NEURONS: ${{ github.event.inputs.neurons || '24' }}
   # These defaults are what push-triggered sweeps actually run, since such runs
   # carry no inputs. Getting one wrong silently changes the experiment: sweep

@@ -229,9 +229,18 @@ nothing, and the sign is negative: the 150 ms condition scored slightly *higher*
 than the 2 ms one. Seed-to-seed spread within a single condition (±0.06–0.10)
 dwarfs any difference between conditions.
 
-This is the architectural claim, measured rather than asserted. It holds because
-delay is not lag the model is fighting — it is a parameter the model already
-had. A peer 150 ms away is read the same way a peer 2 ms away is read: through
+This is *half* the architectural claim, measured rather than asserted, and the
+half worth being careful about. What is measured here is that **conduction
+delay between columns is free**, on frozen columns. The other half — that the
+eligibility traces absorb a late *modulator*, so credit assignment survives a
+wide-area network — is the harder claim and the one the design actually rests
+on, and it has not been run at twenty seeds. `modulator_lag` exists, is
+exercised by a unit test and by `experiments/ablation.py`, and every recorded
+sweep ran it at zero. Until that changes, this table should not be read as
+covering it. See `experiments/sweeps/AUDIT.md`.
+
+The measured half holds because delay is not lag the model is fighting — it is
+a parameter the model already had. A peer 150 ms away is read the same way a peer 2 ms away is read: through
 a conduction delay, addressed by emission time. Nothing waits, so nothing
 degrades. (The slight upward trend is not significant here, but it is the
 direction the design predicts: a wider spread of delays enriches the temporal
@@ -350,9 +359,14 @@ with it the label is 0.86 decodable. That is the main positive result.
 paired seeds put the difference at −0.003 with p = 0.79.
 
 Two readings are worth separating. The *locality* claims — no synchronisation
-barrier, emission-time addressing, latency tolerance through eligibility traces —
+barrier, emission-time addressing, tolerance of inter-column conduction delay —
 are structural and hold regardless of whether the learning rule helps. What is
 refuted is that this particular rule is worth running on this task.
+
+One item on that list has to be moved off it: *latency tolerance through
+eligibility traces* is an argument, not a measurement. It is the mechanism by
+which a stale modulator is supposed to be harmless, and nothing in the recorded
+sweeps has tested it.
 
 That was first blamed on the task leaving nothing to do, since a *random* column
 already makes delayed XOR ~0.86 linearly decodable. Sweep 002 tested that

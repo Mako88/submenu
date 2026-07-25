@@ -58,6 +58,27 @@ plausible-looking numbers.
    paired permutation) and the 20-seed CI matrix for anything that will be
    acted on.
 
+8. **When a bug is fixed, re-examine every decision that was taken before it.**
+   A fix does not only correct the future; it retroactively removes the
+   evidence for choices already made. Defaults, abandoned directions and
+   "settled" questions all keep standing on their own long after the
+   measurement under them has been invalidated, because nothing in the code
+   points back at the run that justified them.
+
+   So a bug fix is not finished when the tests pass. It is finished when
+   `experiments/sweeps/AUDIT.md` has been updated with what the fix
+   invalidated, and each affected decision has been marked re-validated,
+   superseded, or pending.
+
+   The distinction that does most of the work: **a measurement of the frozen
+   column is unaffected by a bug in the learning rule; a measurement of the
+   plastic condition is not.** Sort by that before assuming the worst.
+
+   Be equally careful in the other direction. A direction abandoned because it
+   "did not help" may have been tested through a broken mechanism, and the most
+   expensive mistake available here is to permanently discard an idea on the
+   strength of a measurement that was never valid.
+
 ## Conventions
 
 - The design rule the whole architecture serves: **no operation may require
