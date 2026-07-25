@@ -590,6 +590,15 @@ reads it next.*
   after their questions were answered, costing roughly six minutes of every
   seed to reproduce numbers already in the notes. Sweep 021 dropped them. The
   sweep notes are the record; CI is for open questions.
+
+  > *Calibration, second instance and much worse.* Stacking sweeps 030, 034,
+  > 035 and 036 into `plexus-binding.yml` without retiring anything took a seed
+  > from 12 conditions to **48**. Sweeps 026 and 030 accounted for 17 of them —
+  > the whole modulator-lag block, both `tau_branch` lag arms and all three tag
+  > conditions — every one of which had its answer already written down. Cut
+  > back to 31. The failure is easy to miss because each addition is individually
+  > justified; nothing prompts the subtraction, so **retire in the same commit
+  > that adds**, not later.
 - **Workflow triggers are all sentinels now** (`experiments/run-*.txt`).
   Triggering on the sweep notes meant that *recording a result* re-ran the
   matrix that produced it — GitHub path filters cannot distinguish a file being
