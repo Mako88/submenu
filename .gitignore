@@ -9,3 +9,4 @@ experiments/*_results.jsonl
 .mutation-backup
 experiments/geometry_results.jsonl
 experiments/growth_results.jsonl
+experiments/headroom_results.jsonl
