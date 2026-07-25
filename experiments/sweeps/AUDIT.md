@@ -101,10 +101,19 @@ does not cover what it is cited for.
 | `PRETRAIN` under a corrected learning rate | `plexus-experiment.yml`, `pretrain=400` | not yet run; held until the engram matrix clears CI |
 | `elig_gate` against the corrected RMS scale | new sweep | not yet run |
 
-## A note on this file's own reliability
+## How to add an entry
 
-The first draft of it listed the latency result as stale, on the reasoning that
-it predated `ac364c0`. Reading `latency.py` showed `--lr` defaults to 0.0, so
-the sweep ran frozen and the fix could not have touched it. The commit-order
-heuristic is a way to *find* candidates, not a way to settle them -- every
-entry here needs the code checked, not just the dates compared.
+Commit order finds candidates. Reading the code settles them. Never mark an
+entry from the dates alone.
+
+The latency result is the worked example of why. It predates two fixes, which
+puts it squarely in the suspect pile on chronology; reading `latency.py` shows
+`--lr` defaults to 0.0, so the sweep ran frozen and neither fix could reach it.
+Chronology said stale, the code said valid, and the code was right. Then
+reading it a second time surfaced something the date check would never have
+found at all -- the measurement is sound but narrower than the claim built on
+it, which turned out to be the more useful finding of the two.
+
+So: date-sort to build the candidate list, then open the experiment and check
+what it actually ran. Mark each entry valid, stale, superseded, or pending, and
+name the line of code that decides it.
