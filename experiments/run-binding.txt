@@ -1,22 +1,24 @@
-Sweep 030 -- can the latency window be bought, and what does it cost?
+Sweep 034 -- is tau_branch a real improvement, or compensation for a tail?
 
-Two routes, one matrix, so they are comparable rather than measured a week
-apart against different baselines.
+Sweep 030's control condition produced the largest single-parameter effect
+in this project: tau_branch 60 worth +0.218 and 120 worth +0.298, with
+binding off entirely. Larger than homeostatic settling's +0.197 and than
+every learning rule combined.
 
-  tau_branch 60 / 120   widens the window by changing the forward path's own
-                        integration filter. Windows measured at 28.7 and ~37
-                        steps against 11.9 at the default. Costs whatever
-                        changing the column's computation costs, which is
-                        unmeasured and is half of what this sweep prices.
+But every condition in 030 ran at drain_steps 200, where the baseline is
+0.620 against the tail-free 0.802. A 15-step filter forgets everything
+across 200 silent steps and a 120-step one does not, so the effect may be
+compensation for a handicap the standard setup does not impose. Same shape
+as the baseline-shift error sweep 026 already paid for.
 
-  bind_tau_pre 300      gives the binding rule its own presynaptic trace, so
-  + tau_act_fast 300    the forward path is provably untouched. Window measured
-                        at 154 steps, with 40% of the update surviving lag 150.
+These conditions remove the tail and look again, and carry their own link
+back to 030 so nothing depends on numbers from another run. tb240 is
+predicted to fail -- the task's cues are 100 steps apart and a 240-step
+memory cannot separate them.
 
-The headline is on-tag-lag150. Two conditions have already failed at that
-lag -- on-lag150 at +0.001 (p = 0.88) and on-lag150-slow at +0.000
-(p = 1.0000) -- so a win there is a real result and a loss costs a config
-flag that ships off by default.
+Prediction, recorded before the run: helps at drain 0, but by +0.02 to
++0.10 rather than +0.20 to +0.30, with an interior optimum near 30-60. So
+mostly compensatory and partly real.
 
-Prediction, references and what each outcome means:
-experiments/sweeps/binding-030-buying-the-window.txt
+Full prediction and what each outcome means:
+experiments/sweeps/binding-034-is-tau-branch-general.txt

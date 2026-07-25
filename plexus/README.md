@@ -274,6 +274,59 @@ specific:
   assignment would need a trace the *rule* maintains, rather than one the
   forward path happens to leave lying around.
 
+### Sweep 030 priced both routes, and inverted the prediction on each
+
+**The forward-path route works.** With `tau_branch` at 60, binding still pays at
+lags where the default pays nothing — measured against a reference at the *same*
+`tau_branch`, 20 paired seeds:
+
+| | gain over matched reference | | |
+|---|---|---|---|
+| lag 0 | +0.082 | 19/20 | p = 0.0000 |
+| lag 25 | **+0.062** | 20/20 | p = 0.0000 |
+| lag 50 | **+0.037** | 17/20 | p = 0.0000 |
+
+At the default `tau_branch` the lag-25 comparison is null (+0.016, p = 0.1610).
+So **regional latency — 25 to 50 steps, a rack to a metro area — is now measured
+to work rather than hoped for.** Nothing reaches 150.
+
+**The trace-the-rule-owns route is refuted.** `bind_tau_pre = 300` reaches a
+154-step window in the direct probe, and it does not pay: its lag-150 gain is
++0.019 at **p = 0.0794, null**, and giving binding its own wide trace costs
+**−0.099 at lag 0** on 0/20 seeds. A 154-step window scores activity from
+essentially the whole episode, so binding strengthens whatever was active at
+*any* point rather than what was active *then* — and that temporal specificity is
+what made the mechanism work. The flag stays in the library, off by default; it
+should not be described as a way to buy latency tolerance.
+
+Together the two say something neither says alone: **a wider plasticity window
+helps only when the forward path is wide enough to match it.**
+
+### An accident worth its own sweep: `tau_branch` is worth more than anything else measured
+
+The same sweep's *control* produced the largest single-parameter effect in this
+project. With binding off entirely, widening the branch filter is worth:
+
+| | decodability | vs `tau_branch` 15 | |
+|---|---|---|---|
+| `tau_branch` 15 | 0.620 | — | |
+| `tau_branch` 60 | 0.838 | **+0.218** | 20/20, p = 0.0000 |
+| `tau_branch` 120 | 0.918 | **+0.298** | 20/20, p = 0.0000 |
+
+That is larger than homeostatic settling's +0.197 and larger than every learning
+rule combined. It was found by accident, as the cost control for something else,
+and the prediction had it going the *other way*.
+
+**It is not yet a general result, and must not be quoted as one.** Every
+condition above runs at `drain_steps 200`, where the baseline is 0.620 against
+the 0.802 the tail-free configuration measures. So `tau_branch` may be
+*compensating for the drain tail* — 200 silent steps is a long time for a
+15-step filter to forget across, and a 120-step one forgets less — rather than
+improving the column generally. Reading +0.298 as a general improvement would
+repeat exactly the baseline-shift error of sweep 026. Sweep 034 sweeps
+`tau_branch` at `drain_steps 0` against the standing 0.802, and until it runs
+this is a result about a configuration.
+
 The three-factor rule's `tau_eligibility` is the mechanism the original claim
 was about, and it is worth −0.003 at p = 0.79 with no lag at all — so it cannot
 carry the claim either. **The distribution thesis holds for inference across

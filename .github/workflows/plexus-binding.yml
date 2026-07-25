@@ -178,6 +178,30 @@ jobs:
           # The headline: intercontinental lag, on the mechanism that works.
           python experiments/binding.py --tag on-tag-lag150 --modulator-lag 150 $tag $lag
 
+          # Sweep 034. Sweep 030's *control* -- tau_branch with binding off --
+          # produced +0.218 at 60 and +0.298 at 120, larger than settling's
+          # +0.197 and than every learning rule combined. But every condition
+          # there ran at drain 200, where the baseline is 0.620 against the
+          # tail-free 0.802, so tau_branch may be compensating for 200 silent
+          # steps rather than improving the column. Same shape as the error
+          # sweep 026 paid for. These conditions remove the tail and look again.
+          #
+          # tb240 is predicted to FAIL: the task's cues are 100 steps apart and
+          # a 240-step memory cannot separate them. A condition predicted to
+          # fail is worth more than four predicted to succeed, and if it does
+          # not degrade then the filter is not doing what its name says.
+          nb="--hebbian 0 $common"
+          for tb in 15 30 60 120 240; do
+            python experiments/binding.py --tag tb$tb-drain0 \
+              --tau-branch $tb --drain-steps 0 $nb
+          done
+          # Its own link back to sweep 030, so this sweep does not rely on
+          # numbers from another run to be comparable.
+          python experiments/binding.py --tag tb15-drain200 \
+            --tau-branch 15 --drain-steps 200 $nb
+          python experiments/binding.py --tag tb120-drain200 \
+            --tau-branch 120 --drain-steps 200 $nb
+
           # Sweep 016: the same two conditions scored end to end, by the online
           # readout, rather than by an offline decoder. Everything measured so
           # far is representation quality, and sweep 009 is the standing warning
@@ -235,7 +259,9 @@ jobs:
           for tag in off on off-lag0 off-lag150 on-lag0 on-lag25 on-lag50 on-lag150 on-lag150-slow \
                      off-tb60-lag0 on-tb60-lag0 on-tb60-lag25 on-tb60-lag50 \
                      off-tb120-lag0 on-tb120-lag0 on-tb120-lag50 \
-                     on-tag-lag0 on-tag-lag25 on-tag-lag150; do
+                     on-tag-lag0 on-tag-lag25 on-tag-lag150 \
+                     tb15-drain0 tb30-drain0 tb60-drain0 tb120-drain0 \
+                     tb240-drain0 tb15-drain200 tb120-drain200; do
             grep -q "\"tag\": \"$tag\"" experiments/binding_results.jsonl \
               || { echo "no rows for condition '$tag'"; exit 1; }
           done
@@ -280,7 +306,10 @@ jobs:
                       "on-tb60-lag25 on-lag25" \
                       "on-tag-lag0 off-lag0" "on-tag-lag25 off-lag0" \
                       "on-tag-lag150 off-lag0" \
-                      "on-tag-lag0 on-lag0" "on-tag-lag25 on-tb60-lag25"; do
+                      "on-tag-lag0 on-lag0" "on-tag-lag25 on-tb60-lag25" \
+                      "tb30-drain0 tb15-drain0" "tb60-drain0 tb15-drain0" \
+                      "tb120-drain0 tb15-drain0" "tb240-drain0 tb15-drain0" \
+                      "tb120-drain200 tb15-drain200" "tb15-drain0 off"; do
             set -- $pair
             for metric in linear; do
               echo "" | tee -a summary.txt

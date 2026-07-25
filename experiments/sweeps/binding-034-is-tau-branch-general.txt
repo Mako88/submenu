@@ -1,0 +1,166 @@
+Sweep 034 -- is `tau_branch` a real improvement, or compensation for a tail?
+============================================================================
+
+IN PLAIN TERMS
+--------------
+Sweep 030 went looking for a way to tolerate a late learning signal, and its
+*control condition* -- the boring one, there only so the interesting numbers had
+something to be compared against -- produced the largest single effect anyone has
+measured in this project. Turning up one filter, which controls how long each
+dendritic branch remembers its input, was worth more than every learning rule
+combined and more than the homeostatic tuning that was previously the biggest
+thing here.
+
+That is either the most useful accident so far or a mirage, and which one it is
+depends on a detail. Every condition in that sweep ran with a long silent gap
+tacked onto the end of each episode -- 200 steps of nothing, needed so that a
+late signal has somewhere to arrive. A branch that remembers for 15 steps forgets
+everything across a gap that long. One that remembers for 120 steps does not.
+
+So the improvement may be real, or it may be the filter merely surviving a
+handicap that the standard setup does not impose. This sweep removes the gap and
+looks again. It is the difference between "we found a much better setting" and
+"we found a workaround for a problem we introduced".
+
+QUESTION
+--------
+Sweep 030, 20 paired seeds, binding off, `drain_steps 200` throughout:
+
+    tau_branch 15      0.620
+    tau_branch 60      0.838     +0.218   20/20   p = 0.0000
+    tau_branch 120     0.918     +0.298   20/20   p = 0.0000
+
+For scale: homeostatic settling is worth +0.197 (sweep 022), salience-gated
+binding +0.074 (sweeps 015-025), lateral inhibition +0.028 (sweep 020), and the
+designed three-factor rule -0.003 (sweeps 006-010). **A forward-path constant
+nobody has ever tuned is worth more than all of them together.**
+
+THE CONFOUND, WHICH IS THE ENTIRE REASON FOR THIS SWEEP
+---------------------------------------------------------
+`drain_steps 200` appends 200 silent steps to every episode. It exists so a
+modulator arriving 150 steps late still lands inside the run, and sweep 026
+pinned it across all conditions so that lag comparisons are not secretly tail
+comparisons.
+
+But the *baseline* it produces is 0.620, against the **0.802** that sweeps
+015-025 measure with no tail. So the tail costs 0.182 on its own, and
+`tau_branch 120` recovers 0.298 of decodability in a regime that had 0.182
+artificially removed. Two readings fit every number in sweep 030:
+
+  general      a longer branch filter is simply better, and the standard
+               `tau_branch = 15` has been leaving 0.2-0.3 of decodability on the
+               table since the project began.
+
+  compensatory a longer branch filter forgets less across 200 silent steps, so
+               it recovers ground the tail took away and does nothing once the
+               tail is gone.
+
+These imply completely different actions -- change the default, versus change
+nothing -- and sweep 030 cannot tell them apart, because it has no `drain 0`
+condition at any `tau_branch` other than the implicit standing one.
+
+**This is the same shape as the error sweep 026 already paid for**: a parameter
+measured in a regime whose baseline had moved, reported as though the baseline
+had not. Recording that explicitly, because the temptation to quote +0.298 is
+strong and the number is currently about a configuration rather than about the
+model.
+
+CONDITIONS  (20 seeds, 300 episodes, 96 neurons, lr 0, binding off)
+----------------------------------------------------------------------
+  tb15-drain0     tau_branch 15,  drain 0     reproduces the standing 0.802
+  tb30-drain0     tau_branch 30,  drain 0
+  tb60-drain0     tau_branch 60,  drain 0     **the sweep**
+  tb120-drain0    tau_branch 120, drain 0
+  tb240-drain0    tau_branch 240, drain 0     past the cue spacing; should fail
+
+  tb15-drain200   tau_branch 15,  drain 200   reproduces sweep 030's 0.620
+  tb120-drain200  tau_branch 120, drain 200   reproduces sweep 030's 0.918
+
+The last two are there so this sweep contains its own link to sweep 030 rather
+than relying on numbers from another run. If they do not reproduce, something
+else changed and nothing here is comparable.
+
+`tb240` is included because it should be bad, and a condition predicted to fail
+is worth more than four predicted to succeed. The task's cues are 100 steps
+apart with a 25-step burst; a filter with a 240-step memory cannot separate cue
+one from cue two, so decodability should fall. If it does *not* fall, the filter
+is not doing what its name says and the whole interpretation is wrong.
+
+Binding is off in every condition. This sweep is about the forward path alone,
+and adding a plasticity rule would only make it harder to read.
+
+PREDICTION (recorded before the run)
+--------------------------------------
+  tb15-drain0     0.802     (established; anything else voids the sweep)
+  tb30-drain0     0.80 to 0.86
+  tb60-drain0     0.82 to 0.90
+  tb120-drain0    0.78 to 0.88
+  tb240-drain0    0.55 to 0.72     -- should be clearly worse
+  tb15-drain200   0.620     (reproduces sweep 030)
+  tb120-drain200  0.918     (reproduces sweep 030)
+
+**The central claim: `tau_branch` helps at `drain 0` too, but by much less than
++0.298 -- somewhere between +0.02 and +0.10 at its best setting, rather than
++0.20 to +0.30.** So the effect is predicted to be *partly* general and *mostly*
+compensatory.
+
+The reasoning: the task holds cues 100 steps apart, so integrating over a longer
+window genuinely should help hold the first cue until the second arrives, and 15
+steps is plainly short for that. But most of sweep 030's effect has to be tail
+compensation, because the tail alone costs 0.182 and a filter that spans it
+recovers most of what it took.
+
+**And the shape matters as much as the size: with the tail gone the optimum
+should be interior** -- best somewhere around 30-60, falling by 240 -- whereas
+sweep 030 is monotone increasing across every setting it tried. A monotone curve
+at `drain 0` too would mean the filter is not trading anything off, which would
+be surprising and would need explaining rather than celebrating.
+
+WHAT EACH OUTCOME MEANS
+-------------------------
+  helps at drain 0     A real and large finding, and an embarrassing one: the
+  by +0.20 or more     default has been wrong since the project started and every
+                       number in the repo was measured with a badly-set forward
+                       path. Everything would need re-running at the better
+                       setting before any of it can be compared.
+
+  helps by +0.02       Predicted. `tau_branch` is worth tuning, the default moves
+  to +0.10             modestly, and sweep 030's +0.298 gets re-described as
+                       mostly tail compensation. The latency result from 030 is
+                       untouched either way, because it was measured against a
+                       matched reference at the same `tau_branch`.
+
+  no effect at         Purely compensatory. Then sweep 030's control number is a
+  drain 0              fact about `drain_steps` and not about the column, the
+                       README paragraph gets rewritten, and the interesting
+                       remaining question is why 200 silent steps cost 0.182 at
+                       all.
+
+  hurts at drain 0     The standard setting is already near-optimal and the
+                       original cost prediction in sweep 030 was right after all,
+                       just measured in a regime that inverted it.
+
+  tb240 does not       The branch filter is not integrating over the window its
+  degrade              constant says. Distrust every reading above and check the
+                       filter directly before interpreting anything.
+
+WHAT THIS DOES NOT TEST
+-------------------------
+Whether `tau_branch` interacts with the mechanisms. Binding is off throughout, so
+if a longer filter changes what binding can do -- and sweep 030 hints it might,
+since binding's gain shrank from +0.082 at `tau_branch 60` to +0.011 at 120 as
+its reference approached ceiling -- that is a separate matrix.
+
+Nor does it revisit the latency result. Sweep 030's lag conditions were each
+measured against a reference at their own `tau_branch`, so whatever this sweep
+finds about the general level, **+0.062 at lag 25 and +0.037 at lag 50 stand**.
+
+SETTINGS
+--------
+20 seeds, 300 episodes, 500 collection episodes, 96 neurons, lr 0, binding and
+lateral off. `drain_steps` 0 or 200 as stated, `tau_act_fast` at its default 50
+throughout since sweep 026 established it is not the lever.
+
+RESULT -- 20 paired seeds
+-------------------------
+Pending.
