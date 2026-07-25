@@ -216,3 +216,143 @@ If `on-lag0 vs off-lag0` comes back null, the mechanism does not survive the
 tail and the lag question needs a different configuration entirely -- which
 would itself be worth knowing, and is a finding about `drain_steps` rather than
 about latency.
+
+================================================================================
+RESULT -- THE RE-RUN, 20 paired seeds
+================================================================================
+With `--drain-steps` corrected to 0 as the default and the two missing lag-0
+references added at the same 200-step tail as every lag condition:
+
+  off-lag0        0.620   eff_rank 20.611   sparsity 0.020
+  off-lag150      0.620   eff_rank 20.611   sparsity 0.020
+  on-lag0         0.747   eff_rank 15.283   sparsity 0.021
+  on-lag25        0.636   eff_rank 19.104   sparsity 0.020
+  on-lag50        0.631   eff_rank 20.273   sparsity 0.020
+  on-lag150       0.621   eff_rank 20.605   sparsity 0.020
+  on-lag150-slow  0.620   eff_rank 20.625   sparsity 0.020
+
+  off-lag150     vs off-lag0    +0.000    0/20   p = 1.0000
+  on-lag0        vs off-lag150  +0.127   19/20   p = 0.0000
+  on-lag25       vs off-lag150  +0.016   12/20   p = 0.1610   null
+  on-lag50       vs off-lag150  +0.011   10/20   p = 0.4184   null
+  on-lag150      vs off-lag150  +0.001    7/20   p = 0.8849   null
+  on-lag150-slow vs off-lag150  +0.000    9/20   p = 1.0000   null
+  on-lag150-slow vs on-lag150   -0.001    7/20   p = 0.8719   null
+
+THE MISSING REFERENCE CHANGES THE READING COMPLETELY
+------------------------------------------------------
+`on-lag0` beats `off-lag150` by **+0.127 on 19 of 20 seeds at p = 0.0000**. So
+binding works fine at drain 200 -- better in absolute terms than the +0.074 it
+gives at drain 0, from a baseline the tail has dropped to 0.620.
+
+That is the condition the first run omitted, and without it the identical set of
+nulls could equally have meant "binding produces nothing in this regime". It
+does not. **The nulls at lag 25 and beyond are a decay of a real gain, which is
+what this sweep set out to measure and could not previously claim.**
+
+  lag      gain      as a fraction of the lag-0 gain
+    0    +0.127      1.00
+   25    +0.016      0.13    (null)
+   50    +0.011      0.09    (null)
+  150    +0.001      0.01    (null)
+
+`eff_rank` tells the same story independently and monotonically: 15.28 at lag 0
+against the 20.61 baseline, then 19.10, 20.27, 20.61. The mechanism's structural
+footprint fades on the same schedule as its decodability gain.
+
+THE CENTRAL CLAIM IS REFUTED IN ITS NUMBER AND CONFIRMED IN ITS FORM
+----------------------------------------------------------------------
+Predicted, from `act_fast` decaying at `tau_act_fast = 50`:
+
+  lag 25   retain 0.61  ->  gain +0.043 to +0.058     measured +0.016  (0.13)
+  lag 50   retain 0.37  ->  gain +0.023 to +0.043     measured +0.011  (0.09)
+  lag 150  retain 0.05  ->  gain +0.000 to +0.013     measured +0.001  (0.01)
+
+The decay is real and exponential, and it is **four times faster than
+predicted**. At lag 25 the prediction expected 61% of the gain to survive; 13%
+did. Only the lag-150 band, which predicted approximately nothing, contained the
+answer -- and a band that wide is not evidence.
+
+AND THE SECOND CLAIM -- THE ONE THAT MATTERED -- IS FLATLY REFUTED
+-------------------------------------------------------------------
+`on-lag150-slow` raises `tau_act_fast` from 50 to 250 and was predicted to
+restore +0.038 to +0.063 of gain at intercontinental lag. It restored
+**+0.000, on 9/20 seeds, at p = 1.0000** -- and is indistinguishable from
+`on-lag150` too, so the parameter did not move the outcome at all.
+
+This is the outcome the note named in advance as "the one that would most change
+the project and the one to be most careful not to explain away": decay with no
+recovery. Latency tolerance for the mechanism that works is **not** the tunable
+parameter the note hoped for.
+
+WHY, MEASURED RATHER THAN ARGUED  (experiments/lagwindow.py)
+--------------------------------------------------------------
+Both failures have one cause, and it was sitting in the rule the whole time.
+`_bind` commits a **product of two traces with different time constants**:
+
+    dW  ~  post x pre
+    post = act_fast / baseline     tau_act_fast = 50
+    pre  = the branch filter       tau_branch   = 15     <-- never named
+
+A product decays at the sum of the rates, so the window is
+
+    1/tau_eff = 1/tau_act_fast + 1/tau_branch    ->    tau_eff = 11.5, not 50
+
+`experiments/lagwindow.py` measures this directly -- the actual size of the
+weight update binding commits, as a function of how late the modulator arrives
+-- across three parameter settings:
+
+    tau_act_fast   tau_branch    product predicts    measured (tail fit)
+         50            15             11.54               11.87   (+2.9%)
+        250            15             14.15               15.25   (+7.8%)
+         50            60             27.27               28.68   (+5.2%)
+
+Every one within 8%, and every one *above* the prediction by a few per cent --
+`post` is clipped at 5.0, so the earliest lags sit on the ceiling and contribute
+no decay, which biases any fit slightly wide. `act_fast` alone (50, 250, 50) and
+`pre` alone (15, 15, 60) are both refuted at every setting, by margins of 3x to
+17x rather than by per cent.
+
+The window is the product, and **a product is dominated by its shorter
+constant**, which is why raising `tau_act_fast` five times over widened the
+window from 11.9 to 15.3 -- 28%, against a lag of 150. `on-lag150-slow` was
+tuning the term that was not limiting.
+
+WHAT THIS COSTS AND WHAT IT BUYS
+----------------------------------
+The lever is `tau_branch`, and raising it 15 -> 60 widens the window 11.9 -> 28.7,
+while raising `tau_act_fast` 50 -> 250 buys 11.9 -> 15.3. Five times the one
+parameter is worth less than four times the other, and that ratio is the whole
+finding:
+a factor of 2.4 for a factor of 4. So latency tolerance *is* buyable -- but not
+from a plasticity setting. `tau_branch` is the branch filter in the **forward
+path**: it sets how the column integrates its input in the first place, not how
+it learns. Buying latency tolerance here means changing what the column
+computes, and whether a column with `tau_branch = 60` still decodes anything is
+not known.
+
+That is sweep 030, and it is now a sharp question with an arithmetic prediction
+attached instead of a hope.
+
+A note on the honest ceiling: even at `tau_branch = 60` the window is 29 steps.
+Intercontinental lag at 1ms/step is 150. Nothing in this family of parameters
+reaches it, and the recovery would have to come from somewhere else entirely --
+holding the modulator's arrival against a longer trace that the *rule* keeps,
+rather than one the forward path happens to leave lying around.
+
+THE PROBE HAD THE PROJECT'S OWN BUG IN IT FIRST
+-------------------------------------------------
+`lagwindow.py`'s first version measured a single binding event and reported
+`tau_eff = 15.4` -- exactly `tau_branch`, with `act_fast` contributing no decay
+whatsoever. That looked like a clean finding and was an artefact of the
+instrument.
+
+On the *first* `_bind` call, `act_slow` has had exactly one update, so the
+sample-count debias returns `act_fast` itself and `post = act_fast / baseline`
+is identically 1.0 regardless of what the activity was. The probe had divided
+the quantity it was measuring by itself -- standards rule 7, in the measuring
+device rather than the mechanism, and one call away from being written up as a
+result about binding. Fixed with a `warmup` of binding events before the
+measured one; the docstring keeps the number so the next person reads it where
+they would trip over it.
+

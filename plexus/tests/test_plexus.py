@@ -840,6 +840,67 @@ def test_binding_rate_decays_when_asked_to():
     )
 
 
+def test_binding_latency_window_is_set_by_the_shorter_of_its_two_traces():
+    """`tau_branch` sets how late a modulator may arrive, not `tau_act_fast`.
+
+    `_bind` commits a *product* of two traces that decay at different rates --
+    `post` from `act_fast` (tau_act_fast, 50) and `pre` from the branch filter
+    (tau_branch, 15). A product decays at the sum of the rates, so the window is
+    `1/(1/50 + 1/15) = 11.5` steps, and is dominated by whichever constant is
+    shorter.
+
+    What breaks if this stops holding: sweep 026 predicted binding's gain would
+    survive a late modulator in proportion to `exp(-lag/tau_act_fast)`, and
+    bought a `tau_act_fast = 250` condition to restore it at intercontinental
+    lag. It restored **+0.000 at p = 1.0000**, because five times the wrong
+    constant widens the window from 11.9 steps to 15.3 while four times
+    `tau_branch` widens it to 28.7. `experiments/lagwindow.py` measures the
+    three settings directly: 11.87, 15.25, 28.68 against a product prediction of
+    11.54, 14.15, 27.27.
+
+    Both traces are asserted, in both directions, because each failure mode is
+    live. Drop `pre` from the rule and `tau_branch` stops mattering; drop the
+    activity factor and `tau_act_fast` does. And the third assertion is the one
+    that would have caught sweep 026's prediction before it was run: widening
+    `tau_act_fast` alone must *not* be enough.
+    """
+    def retained(lag, **kw):
+        def magnitude(steps):
+            col = _bind_column(**kw)
+            col.act_slow[:] = 0.1
+            col.n_samples = 500  # bias correction settled, so baseline ~= 0.1
+            # 0.2 against a 0.1 baseline puts `post` at 2.0, well under the
+            # clip at 5.0 -- on the ceiling the ratio would not decay at all
+            # and the test would measure the clip instead of the traces.
+            col.act_fast[:] = 0.2 * col.decay_fast**steps
+            col.pre[:] = 0.5 * col.decay_branch**steps
+            before = col.W.copy()
+            col._bind()
+            return float(np.abs(col.W - before).sum())
+
+        at_zero = magnitude(0)
+        assert at_zero > 0.0, "nothing bound at lag 0"
+        return magnitude(lag) / at_zero
+
+    base = retained(25)
+    slow_act = retained(25, tau_act_fast=250.0)
+    slow_branch = retained(25, tau_branch=60.0)
+
+    assert slow_act > 1.2 * base, (
+        f"raising tau_act_fast 5x retained {slow_act:.3f} against {base:.3f} -- "
+        "the activity trace is not reaching the update at all"
+    )
+    assert slow_branch > 1.8 * slow_act, (
+        f"tau_branch 4x retained {slow_branch:.3f} but tau_act_fast 5x retained "
+        f"{slow_act:.3f} -- the presynaptic trace is not setting the window"
+    )
+    assert slow_act < 1.8 * base, (
+        f"raising tau_act_fast 5x retained {slow_act:.3f} against {base:.3f}, "
+        "which would mean latency tolerance is buyable from the plasticity "
+        "constant alone -- sweep 026 predicted exactly that and measured +0.000"
+    )
+
+
 def test_probing_does_not_perturb_training():
     """Measuring the column mid-training must leave the training untouched.
 

@@ -35,9 +35,33 @@ emerges. Every number in this repo is a number about that one task.
 
 Three benchmarks would each open something currently invisible:
 
-- **Capacity scaling.** Does the binding gain grow, hold or vanish with column
-  size? Measured only at 96 neurons. If it vanishes at 1024, the mechanism is
-  a small-column artefact and everything downstream of it changes.
+- **Capacity scaling.** **Measured — sweep 028, and the gain holds.** +0.078 /
+  +0.060 / +0.066 at 48 / 96 / 192 neurons, 20 paired seeds, all p ≤ 0.0001.
+  Flat, which is what the architecture requires: fan-in is fixed at 8 × 16
+  regardless of `N`, so a mechanism whose per-neuron operation does not change
+  with size should have no size-dependent effect. The mechanistic prediction was
+  written down in advance and beat a one-seed pilot that showed the gain rising
+  to +0.200 — that rise was decoder starvation, and the `48-thin` control (same
+  column, decoder starved to the largest column's samples-per-feature) came back
+  **null at p = 0.0684**, which is what rules starvation out as the source.
+
+  Two things it did not settle, both now the live half of this item:
+
+  - **384 neurons is uninformative, because the task ran out.** `off-384` reaches
+    0.973 and there is no headroom left for a gain to appear in (+0.020). The
+    same ceiling shows in effective rank: 8× the neurons buys 15.8 → 20.5
+    dimensions with binding off, 9.3 → 10.4 with it on. Re-running this matrix at
+    1024 on delayed XOR would produce two numbers near 1.0 and no information.
+    **The capacity question above 192 needs 3-cue parity or another task with
+    more to say**, which is what the rest of this item is about.
+  - **Binding may have a fixed dimensional ceiling.** `on` eff_rank is 9.3, 9.6,
+    10.3, 10.4 across a factor of eight in column size. Sweep 020 read the
+    halving at 96 neurons as consolidation; four sizes make it look like a
+    ceiling near ten that merely happens to be half of 17.6 at `N = 96`. Good
+    while the readout is starved, and exactly what would stop the mechanism
+    scaling to a task needing more than ten dimensions. Whether the ceiling
+    belongs to binding or to delayed XOR is unmeasured and is the first thing a
+    harder task would answer.
 - **Continual learning.** Built and measured — sweep 024, and the answer is that
   **there is no forgetting here to study.** Two tasks that are the same
   computation over a permuted sensory mapping, 20 seeds: every condition loses
@@ -362,7 +386,7 @@ evidence that a later fix invalidated.
 
 | item | why it matters |
 |---|---|
-| `modulator_lag` at 20 seeds, `drain_steps` pinned | **The architecture's headline claim.** That eligibility traces absorb a late modulator has never been measured — sweep 013 tried and was confounded by the drain tail. Currently an argument, not a result. |
+| ~~`modulator_lag` at 20 seeds, `drain_steps` pinned~~ | **Measured — sweep 026, and the claim does not hold.** Binding's gain is +0.127 at lag 0 (19/20, p = 0.0000) and null from lag 25 onward. The tolerance window is **12 steps**, set by the *product* of `act_fast` (τ 50) and the branch filter (τ 15), not by `tau_act_fast` alone — measured directly by `experiments/lagwindow.py` at 11.87 / 15.25 / 28.68 against a product prediction of 11.54 / 14.15 / 27.27. Raising `tau_act_fast` 5× restored **+0.000**. |
 | `PRETRAIN=0` | Rests solely on sweep 004, which ran before the eligibility-normaliser fix with the effective learning rate ~5× high. The reasoning behind pretraining was sound and it has never been tested under a correct rate. |
 | `elig_gate=1.0` | Expressed as a multiple of the trace RMS, chosen when that RMS was tracking 4.6e-3 against an actual 2.4e-2. The number was picked against a scale that no longer exists. |
 | `tau_eligibility=70` | Matched to a readout that decided on a window average. It now decides on the trace itself. The justification no longer describes the thing it was matched to. |
@@ -394,10 +418,16 @@ develop it and not the same as having done it.
   which it does not. `peer_frac` sets this directly and has never been swept
   against a bandwidth budget.
 - **Batch events over the latency budget.** 150 ms of tolerance is measured and
-  free, so ~100 ms of events can go in one packet. At 1 ms granularity, headers
-  would swamp 4-byte payloads; batching amortises them over tens of thousands
-  of events. Latency tolerance is not just survivable, it is what makes the
-  packet economics work.
+  free *for conduction delay between columns*, so ~100 ms of events can go in
+  one packet. At 1 ms granularity, headers would swamp 4-byte payloads;
+  batching amortises them over tens of thousands of events. Latency tolerance is
+  not just survivable, it is what makes the packet economics work.
+
+  **This applies to inference traffic only.** Sweep 026 measured the modulator
+  path separately and its window is 12 steps, not 150 — so a batching scheme
+  that delays the salience broadcast by 100 ms deletes the one learning
+  mechanism that works. The two paths have different budgets and a transport
+  that treats them as one will silently take learning with it.
 - **Memory is the binding constraint, not compute.** 16 bytes per synapse
   (`W` plus three traces). Cortex-scale is ~2 PB, so ~31,000 machines just to
   hold state. Trimming per-synapse state — fp16, or traces kept only for

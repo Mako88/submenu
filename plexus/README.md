@@ -231,13 +231,55 @@ dwarfs any difference between conditions.
 
 This is *half* the architectural claim, measured rather than asserted, and the
 half worth being careful about. What is measured here is that **conduction
-delay between columns is free**, on frozen columns. The other half — that the
-eligibility traces absorb a late *modulator*, so credit assignment survives a
-wide-area network — is the harder claim and the one the design actually rests
-on, and it has not been run at twenty seeds. `modulator_lag` exists, is
-exercised by a unit test and by `experiments/ablation.py`, and every recorded
-sweep ran it at zero. Until that changes, this table should not be read as
-covering it. See `experiments/sweeps/AUDIT.md`.
+delay between columns is free**, on frozen columns.
+
+### A late modulator is not free, and the window is 12 steps
+
+The other half — that a late *modulator* still lands on the synapses that
+earned it, so learning survives a wide-area network — is the harder claim and
+the one the design actually rests on. Sweep 026 ran it at twenty seeds on the
+one mechanism that works, and **it does not hold.**
+
+| modulator lag | binding's gain | as a fraction of lag 0 | |
+|---|---|---|---|
+| 0 | **+0.127** | 1.00 | 19/20 seeds, p = 0.0000 |
+| 25 | +0.016 | 0.13 | p = 0.1610, null |
+| 50 | +0.011 | 0.09 | p = 0.4184, null |
+| 150 — intercontinental | +0.001 | 0.01 | p = 0.8849, null |
+| 150, `tau_act_fast` 250 | +0.000 | 0.00 | p = 1.0000, null |
+
+The cause is measured directly by `experiments/lagwindow.py` rather than
+inferred from the decodability drop. `_bind` commits a **product of two traces**
+with different time constants — `act_fast` (`tau_act_fast`, 50) and the branch
+filter (`tau_branch`, 15) — and a product decays at the sum of the rates:
+
+    1/tau_eff = 1/tau_act_fast + 1/tau_branch    →    tau_eff = 11.5 steps
+
+Measured against three parameter settings, the product predicts 11.54 / 14.15 /
+27.27 and the probe returns **11.87 / 15.25 / 28.68**. Either trace alone is
+wrong by 3× to 17×.
+
+So the window is dominated by the *shorter* constant, and the consequences are
+specific:
+
+- **`tau_act_fast` is not the lever.** Raising it 5× widens the window from 11.9
+  steps to 15.3. Sweep 026 predicted that condition would restore most of the
+  gain at lag 150; it restored +0.000.
+- **`tau_branch` is the lever**, and it costs something. Raising it 15 → 60
+  widens the window to 28.7 steps — but `tau_branch` is the branch filter in the
+  *forward* path, so buying latency tolerance means changing what the column
+  computes, not how it learns. Whether that column still decodes anything is
+  unmeasured.
+- **Nothing in this family reaches 150 steps.** Intercontinental credit
+  assignment would need a trace the *rule* maintains, rather than one the
+  forward path happens to leave lying around.
+
+The three-factor rule's `tau_eligibility` is the mechanism the original claim
+was about, and it is worth −0.003 at p = 0.79 with no lag at all — so it cannot
+carry the claim either. **The distribution thesis holds for inference across
+columns and does not currently hold for learning.** That is a narrower result
+than this README asserted for most of the project's life, and it is the
+measured one.
 
 The measured half holds because delay is not lag the model is fighting — it is
 a parameter the model already had. A peer 150 ms away is read the same way a peer 2 ms away is read: through
@@ -381,6 +423,48 @@ error signal that failed eleven times.
 
 20 paired seeds throughout, column `lr=0` so the three-factor rule contributes
 nothing (`experiments/sweeps/engram-014`, `binding-015` … `binding-017`).
+
+**The +0.074 carries a collection budget with it.** Every offline row above uses
+500 collection episodes for the decoder. Sweep 028 re-measured the same column
+at 1200 and got 0.853 → 0.913, a gain of **+0.060**. Neither number is wrong;
+the difference is the part of the gain that comes from binding making the
+representation *cheaper to fit* rather than better, which shrinks as the decoder
+stops being starved. Quote the collection budget alongside the number, and do
+not transfer it to a differently-sized probe.
+
+### The gain holds across column size, and the task runs out before the column does
+
+Sweep 028, 20 paired seeds, 1200 collection episodes, fan-in fixed at 8 × 16 so
+each neuron's local computation is identical at every size:
+
+| neurons | without | with | Δ | p |
+|---|---|---|---|---|
+| 48 | 0.734 | 0.812 | **+0.078** | 0.0001 |
+| 96 | 0.853 | 0.913 | **+0.060** | 0.0000 |
+| 192 | 0.897 | 0.963 | **+0.066** | 0.0000 |
+| 384 | 0.973 | 0.993 | +0.020 | 0.0000 |
+| 48, decoder starved to 384's samples/feature | 0.642 | 0.694 | +0.052 | 0.0684 — **null** |
+
+The gain is flat across 48–192, which is what the architecture requires: fan-in
+does not change with `N`, so a mechanism whose per-neuron operation is identical
+at every size should have no size-dependent effect. A one-seed pilot had shown
+the gain *rising* (+0.027 / +0.040 / +0.200); that was decoder starvation, and
+the last row is the control that establishes it — starving the smallest column's
+decoder did **not** inflate its gain.
+
+The +0.020 at 384 is not a mechanism result. `off-384` reaches 0.973, so there
+was no headroom for a larger gain to appear in. The same saturation shows up in
+effective rank: 8× the neurons buys **15.8 → 20.5** dimensions with binding off
+and **9.3 → 10.4** with it on. Neither is running out of column; both are running
+out of things a delayed-XOR episode can be about. **The size question is answered
+up to 192 and needs a harder task above it.**
+
+One uncomfortable corollary: binding pins the representation to ~10 effective
+dimensions almost regardless of column size. Sweep 020 read the 17.4 → 9.6
+halving at 96 neurons as consolidation; across four sizes it looks less like a
+halving and more like a *fixed ceiling*. That is good where the readout is
+starved — which is every measurement here — and it is exactly what would stop
+the mechanism scaling to a task needing more than ten dimensions. Untested.
 
 **The third row is why the other rows needed explaining.** End to end with the
 shipped delta readout, the +0.074 representation gain arrives as +0.007. It is
@@ -654,10 +738,12 @@ barrier, emission-time addressing, tolerance of inter-column conduction delay �
 are structural and hold regardless of whether the learning rule helps. What is
 refuted is that this particular rule is worth running on this task.
 
-One item on that list has to be moved off it: *latency tolerance through
-eligibility traces* is an argument, not a measurement. It is the mechanism by
-which a stale modulator is supposed to be harmless, and nothing in the recorded
-sweeps has tested it.
+One item on that list used to have to be moved off it: *latency tolerance
+through eligibility traces* was an argument, not a measurement. Sweep 026 has
+now measured it, on binding rather than on the three-factor rule, and the answer
+is that the tolerance window is **12 steps** — see "A late modulator is not
+free" above. The argument was not merely untested; it named the wrong time
+constant, and the parameter it proposed to widen is the one that cannot help.
 
 That was first blamed on the task leaving nothing to do, since a *random* column
 already makes delayed XOR ~0.86 linearly decodable. Sweep 002 tested that

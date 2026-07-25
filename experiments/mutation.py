@@ -221,6 +221,27 @@ MUTATIONS = [
         "z = (state - mean).astype(np.float32)",
         "standardisation",
     ),
+    # The two traces binding multiplies together. Each mutation leaves the
+    # *other* trace intact, so the rule still runs, still writes structured
+    # weights, and still passes most of the binding suite -- what it loses is
+    # one of the two constants that set how late a modulator may arrive, which
+    # is the quantity sweep 026 got wrong by tuning the term that was not
+    # limiting.
+    (
+        COLUMN,
+        "presynaptic trace flattened in binding (latency window loses tau_branch)",
+        "rate * post[:, None, None] * (self.pre * self.syn_sign) * excitatory",
+        "rate * post[:, None, None] * (np.ones_like(self.pre) * self.syn_sign) "
+        "* excitatory",
+        "latency_window or synapses_were_driving",
+    ),
+    (
+        COLUMN,
+        "activity factor flattened in binding (latency window loses tau_act_fast)",
+        "post = np.clip(self.act_fast / (baseline + 1e-9), 0.0, 5.0) * cfg.bind_scale",
+        "post = np.ones_like(self.act_fast) * cfg.bind_scale",
+        "latency_window or how_active",
+    ),
 ]
 
 
