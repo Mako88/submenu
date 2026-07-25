@@ -73,4 +73,83 @@ enough" the next question rather than another hyperparameter.
 
 RESULT -- 20 paired seeds
 -------------------------
-Pending.
+condition    episodes            accuracy   vs off    p
+off          300, no binding     0.709
+flat         300 bind            0.715      +0.007   0.6834
+decay-99     300 bind, x0.99/ev  0.723      +0.014   0.2159
+decay-98     300 bind, x0.98/ev  0.715      +0.006   0.5593
+phase        150 bind +150 idle  0.731      +0.023   0.1008
+catchup      300 bind +150 idle  0.770      +0.063   0.0013   (sweep 017)
+
+  phase vs decay-98: +0.016, 13/20, p = 0.2322.  No difference.
+
+**Every condition inside the 300-episode budget is null.** Only the 450-episode
+catchup works. The gain is not free.
+
+All three predictions were wrong. `phase` was predicted at 0.750-0.780 with
+high confidence it would beat flat significantly; it reached 0.731 at p = 0.10.
+`decay-98` was predicted 0.740-0.775 and probably significant; it reached 0.715,
+which is flat's number exactly. `decay-99` was the one I bet against, and it
+was null -- but so was everything else, so being right about it was not
+insight.
+
+WHAT THE NUMBERS ACTUALLY SAY
+------------------------------
+The prediction's named branch was "binding needs a consolidation phase the
+architecture cannot schedule for itself". That is close but not quite what the
+data shows, and the difference matters.
+
+Line them up by what each condition spends:
+
+  flat      300 bind,   0 idle  -> 0.715
+  phase     150 bind, 150 idle  -> 0.731
+  catchup   300 bind, 150 idle  -> 0.770
+
+The idle period is worth something only on top of a *full* binding budget.
+Taking 150 episodes of binding away to pay for it gives back almost all of the
+gain. So the finding is not "binding must stop" -- it is that **binding needs
+roughly 300 episodes to do its work, and the readout needs a static period
+after that, and the two cannot be paid for out of one budget.**
+
+That also explains why decay failed at both rates. A decaying schedule spends
+its late episodes binding weakly, which is the worst of both: not enough
+binding to finish, not static enough for the readout to settle.
+
+A CONFOUND IN `phase`, RECORDED RATHER THAN GLOSSED
+----------------------------------------------------
+`phase` varies two things at once -- binding duration and idle duration -- so on
+its own it cannot separate "the stop came too early" from "the binding was too
+short". The comparison against catchup resolves it, since catchup holds binding
+at 300 and only adds idle time, but that is an argument across sweeps rather
+than within one. A cleaner design would have held binding fixed and varied only
+the idle period. Noting it because the same mistake in sweep 013 cost a whole
+run, and this time the cross-sweep comparison happens to rescue it.
+
+NOT DOING THE OBVIOUS THING
+----------------------------
+The obvious move is to sweep bind-episodes across 200/250/300 and find where it
+crosses significance. The prediction ruled that out in advance, and it stands:
+after a null and two follow-ups, adding hyperparameters until one is
+significant is how a project talks itself into a result. Twenty seeds and a
+p-value do not protect against searching over conditions.
+
+What is established is enough to act on: **binding buys about +0.06 end to end,
+and costs about 50% more training episodes to collect.** That is a real,
+quantified trade rather than a free lunch, and it should be described that way.
+
+WHAT THIS MAKES INTERESTING
+----------------------------
+Why binding needs ~300 episodes at all. It writes into W on every modulator
+release, and the baseline it scores against converges early, so the late
+episodes contribute progressively less -- yet cutting them in half clearly
+hurts. Something is still accumulating late that the diagnostics do not
+currently measure.
+
+That is a question about the mechanism rather than about a schedule, and it is
+answerable directly: track linear decodability of the column *during* training
+rather than only at the end, and see when the 0.802 -> 0.876 gain actually
+lands. If it lands by episode 150, the problem is the readout and `phase`
+should have worked. If it lands late, binding is genuinely slow and the next
+question is why.
+
+That measurement comes before any further schedule.

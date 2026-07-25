@@ -372,7 +372,8 @@ error signal that failed eleven times.
 | MLP decodability (offline) | 0.987 | 0.999 | +0.012 | 0.0001 |
 | end to end, delta readout | 0.709 | 0.715 | +0.007 | 0.68 |
 | end to end, RLS readout | 0.759 | 0.803 | **+0.043** | 0.0063 |
-| end to end, binding frozen then readout allowed to converge | 0.707 | 0.770 | **+0.063** | 0.0013 |
+| end to end, binding frozen then readout allowed to converge (+150 episodes) | 0.707 | 0.770 | **+0.063** | 0.0013 |
+| end to end, same 300-episode budget: decaying rate, or bind-then-stop | 0.709 | 0.715–0.731 | +0.006 … +0.023 | 0.10–0.56 |
 
 20 paired seeds throughout, column `lr=0` so the three-factor rule contributes
 nothing (`experiments/sweeps/engram-014`, `binding-015` … `binding-017`).
@@ -386,11 +387,30 @@ are worth nothing when there is no binding, and +0.063 when there is. The
 readout does not need more time in general; it needs time against a column that
 has stopped moving.
 
-That is a real limitation, stated as one: a system that must stop learning
+**And the gain is not free.** Sweep 018 tried to buy it inside the same
+episode budget — a decaying binding rate, and binding for the first half then
+stopping — and every condition was null. Lining up what each spends says why:
+
+| | binding | idle | accuracy |
+|---|---|---|---|
+| flat | 300 | 0 | 0.715 |
+| bind-then-stop | 150 | 150 | 0.731 |
+| full + catch-up | 300 | 150 | 0.770 |
+
+The idle period pays only on top of a *full* binding budget; taking binding
+episodes away to fund it gives back nearly all the gain. So the honest headline
+is a trade, not a free lunch: **binding buys about +0.06 end to end and costs
+about 50% more training episodes to collect.**
+
+That is also a real limitation stated as one: a system that must stop learning
 before its readout can use what it learned has deferred continual learning
-rather than solved it. The fix is likely to separate the timescales — biology
-consolidates on a slower clock than the synaptic changes it consolidates — and
-that is the next experiment, not a footnote.
+rather than solved it.
+
+The next question is why binding needs ~300 episodes at all, and it is a
+question about the mechanism rather than the schedule — measurable by tracking
+decodability *during* training instead of only at the end. Deliberately not
+next: sweeping the stop point until something crosses significance. Twenty
+seeds and a p-value do not protect against searching over conditions.
 
 The mechanism also arrived by way of one that was deleted. This began as an
 engram allocator — excitability drift, a recruitment competition, an allocation
