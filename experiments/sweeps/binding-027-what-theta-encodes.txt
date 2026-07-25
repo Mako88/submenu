@@ -1,0 +1,121 @@
+Sweep 027 -- what do theta and the knee actually encode?
+========================================================
+
+IN PLAIN TERMS
+--------------
+The single biggest effect in this project is not learning. It is each neuron
+settling on a sensitivity setting -- two numbers per neuron -- and that turns
+out to be worth more than every learning rule combined.
+
+Nobody knows what those numbers are *for*. Two guesses are already dead: it is
+not the network poised at a critical point (025), and it is not simply getting
+the firing rate right (023).
+
+This asks the sharpest remaining question. Take a settled network and shuffle
+the settings between neurons -- same numbers, wrong owners. If it still works,
+the settings are just a *recipe* and you could generate them from scratch. If it
+falls apart, each neuron genuinely needs its own, matched to the inputs it
+happens to have.
+
+The two answers point in completely different directions, which is what makes
+this worth running.
+
+QUESTION
+--------
+Sweep 022 established the +0.197 that homeostatic settling buys is an operating
+point rather than a trajectory: a column handed a settled twin's `theta` and
+`knee` reads 0.752 against 0.582 with nothing adapting. Sweep 023 established it
+is better found on input with the task's timing destroyed (+0.051, p = 0.0032).
+Sweep 025 eliminated criticality (m_excess 0.001-0.004, every comparison null,
+while decodability moved 0.121).
+
+Two explanations gone, and the object is two vectors of 96 numbers. TODO calls
+characterising them the obvious next move, and it is.
+
+CONDITIONS  (20 seeds, 100 episodes, 96 neurons, lr 0, preset from a shuffled-input twin)
+-------------------------------------------------------------------------------------------
+  all              no preset, everything adapting          the 022/023 baseline
+  preset-both      theta and knee both preset              the 023 result, 0.803
+  preset-theta     theta only; knee left at `knee_init`
+  preset-knee      knee only; theta left at `threshold_init`
+  preset-permuted  both preset, then permuted across neurons
+
+`preset-permuted` is the sweep. One permutation is applied to *both* vectors, so
+each neuron receives a matched `(theta, knee)` pair belonging to some other
+neuron rather than two unrelated numbers -- mismatching them as well would
+confound "wrong owner" with "internally inconsistent", and only the first is the
+question. The distribution of both quantities is preserved **exactly**; the only
+thing destroyed is which neuron owns which.
+
+PREDICTION (recorded before the run)
+--------------------------------------
+**One seed says permuting does not hurt -- 0.806 against 0.722 unpermuted -- and
+I am predicting against it.**
+
+Saying that plainly because a single seed has now produced three claims that 20
+seeds corrected: sweep 020's ordering, sweep 023's sign, and sweep 024's
+magnitude, which reached four files as a statement of fact before it was
+measured. Running one seed to check the plumbing is fine. Letting it set an
+expectation has a 0-for-3 record in this project, so the prediction is made on
+mechanism instead.
+
+The mechanism says the assignment should matter. Membrane time constants are
+drawn log-uniformly across 12-320ms, fan-in is sampled independently per neuron,
+and Dale signs are drawn per source -- so two neurons in the same column see
+genuinely different drive distributions. A threshold that is correct for a 300ms
+integrator with excitatory-heavy fan-in should be wrong for a 15ms one. If the
+settling process is fitting each neuron to its own inputs, permuting must cost
+something.
+
+  all              0.755  (established)
+  preset-both      0.803  (established, sweep 023)
+  preset-permuted  0.70 to 0.76 -- a loss of 0.04 to 0.10 against preset-both
+  preset-theta     0.62 to 0.70
+  preset-knee      0.62 to 0.70
+
+**The central claim: permuting costs at least 0.04, and neither vector alone
+reaches within 0.05 of both together.**
+
+WHAT EACH OUTCOME MEANS
+-------------------------
+  permuting hurts     The settling is per-neuron fitting. The operating point is
+                      not portable and cannot be generated -- it has to be
+                      found, per column, against that column's own wiring. The
+                      50-episode cost stands and sweep 023's "precomputable" is
+                      narrower than it sounded: precomputable from *any input*,
+                      but not without the column.
+
+  permuting is free   Then the settling is producing a *distribution*, not an
+                      assignment, and the whole thing collapses to sampling
+                      theta and knee from the right shape at initialisation --
+                      no settling, no twin, no fifty episodes, on any column of
+                      any size. That would be the largest practical result the
+                      project has produced, and one seed already points at it,
+                      which is exactly why it needs twenty before anyone says so.
+
+  permuting helps     What the one seed shows. If it survives, the settled
+                      assignment is actively *worse* than a random one drawn
+                      from the same distribution, which would mean homeostasis
+                      is fitting each neuron to something that does not
+                      generalise -- overfitting, in a thermostat. That reading
+                      is strange enough that the first response should be to
+                      check the permutation is really being applied, not to
+                      write it up.
+
+WHAT THIS CANNOT SAY
+---------------------
+Nothing about *why* a distribution would suffice, if it does. And nothing about
+columns of other sizes -- everything here is 96 neurons, and "sample from the
+right distribution" is a claim that would need testing at 1024 before it is
+worth acting on.
+
+SETTINGS
+--------
+20 seeds, 100 episodes, checkpoints every 10, 300 probe episodes, 96 neurons,
+lr 0, binding and lateral off, `--preset-from 50 --preset-input shuffled`.
+Permutation seeded per model seed, so every condition faces one draw and not a
+lucky one.
+
+RESULT -- 20 seeds
+------------------
+Pending.

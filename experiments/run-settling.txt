@@ -28,3 +28,22 @@ run 3 -- sweep 023 re-run, for the paired tests run 2 could not produce. The
   paired_test.py reads a flat metric per row, so run 2 reported a +0.051
   difference with no p-value. Rows now carry `final` and `final_sparsity` and
   the aggregate runs exact paired permutation tests on both.
+
+run 4 -- sweep 027: what do theta and knee actually encode? Two explanations are
+  already eliminated -- not criticality (sweep 025), not rate calibration (023,
+  where the condition sitting exactly on target decodes worst of three). Three
+  new conditions: theta alone, knee alone, and both preset then *permuted across
+  neurons* -- one permutation applied to both vectors so each neuron gets a
+  matched pair belonging to some other neuron.
+
+  The permutation preserves the distribution exactly and destroys only ownership.
+  If it is free, the settling produces a recipe rather than a fit, and the whole
+  thing collapses to sampling theta and knee at initialisation -- no twin, no
+  fifty episodes, any column size. That would be the largest practical result
+  the project has produced.
+
+  One seed says permuting does not hurt. The prediction bets against it on
+  mechanism, and says so: a single seed has produced three claims that twenty
+  seeds corrected (020's ordering, 023's sign, 024's magnitude), so it is 0-for-3
+  and the mechanistic prior wins. Prediction in
+  experiments/sweeps/binding-027-what-theta-encodes.txt.

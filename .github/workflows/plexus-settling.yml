@@ -87,6 +87,21 @@ jobs:
           python experiments/trajectory.py --tag preset-noise \
             --preset-input noise    $frozen $common
 
+          # Sweep 027: what do theta and knee actually encode? Two explanations
+          # are already eliminated -- not criticality (025), not rate calibration
+          # (023). `preset-permuted` is the sweep: one permutation applied to
+          # both vectors, so each neuron gets a matched pair belonging to some
+          # *other* neuron. Distribution preserved exactly, ownership destroyed.
+          # If that is free, the settling produces a recipe rather than a fit and
+          # collapses to sampling at initialisation.
+          shuf="$frozen --preset-input shuffled"
+          python experiments/trajectory.py --tag preset-theta \
+            --preset-what theta $shuf $common
+          python experiments/trajectory.py --tag preset-knee \
+            --preset-what knee $shuf $common
+          python experiments/trajectory.py --tag preset-permuted \
+            --preset-shuffle 1 $shuf $common
+
           # Sweep 022's ablations are answered and written up. Dropped, per the
           # housekeeping rule that CI is for open questions and the sweep notes
           # are the record.
@@ -94,7 +109,8 @@ jobs:
       - name: Fail loudly if a condition produced nothing
         if: steps.gate.outputs.run == 'yes'
         run: |
-          for tag in all preset-task preset-shuffled preset-noise; do
+          for tag in all preset-task preset-shuffled preset-noise \
+                     preset-theta preset-knee preset-permuted; do
             grep -q "\"tag\": \"$tag\"" experiments/trajectory_results.jsonl \
               || { echo "no rows for condition '$tag'"; exit 1; }
           done
@@ -133,7 +149,9 @@ jobs:
           # prediction: a condition running at a different firing rate decodes
           # differently for reasons that are not about the operating point.
           for pair in "preset-shuffled preset-task" "preset-shuffled all" \
-                      "preset-task all" "preset-noise preset-task"; do
+                      "preset-task all" "preset-noise preset-task" \
+                      "preset-permuted preset-shuffled" "preset-theta preset-shuffled" \
+                      "preset-knee preset-shuffled"; do
             set -- $pair
             for metric in final final_sparsity; do
               echo "" | tee -a summary.txt

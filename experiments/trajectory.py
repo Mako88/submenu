@@ -170,6 +170,21 @@ def main() -> None:
     # column being measured always runs the real task.
     ap.add_argument("--preset-input", default="task",
                     choices=["task", "shuffled", "noise"])
+    # Sweep 027. Sweeps 022-023 established that the settling gain is carried by
+    # theta and knee, and eliminated two explanations for what they encode -- not
+    # criticality (025), not rate calibration (023, where the condition sitting
+    # exactly on target decodes worst of the three).
+    #
+    # These split the remaining possibilities. `--preset-what` asks which of the
+    # two vectors carries it. `--preset-shuffle` permutes the values across
+    # neurons, which preserves their distribution *exactly* while destroying
+    # which neuron got which -- so it separates "the spread of thresholds
+    # matters" from "each neuron needs its own".
+    ap.add_argument("--preset-what", default="both",
+                    choices=["both", "theta", "knee"])
+    ap.add_argument("--preset-shuffle", type=int, default=0,
+                    help="permute preset values across neurons: same "
+                         "distribution, wrong owner")
     ap.add_argument("--report", action="store_true")
     args = ap.parse_args()
 
@@ -250,8 +265,19 @@ def main() -> None:
                 "of its initial value, so there is nothing to preset. The twin "
                 "did not settle; the condition would be meaningless."
             )
-        model.column.theta[:] = twin.column.theta
-        model.column.knee[:] = twin.column.knee
+        theta, knee = twin.column.theta.copy(), twin.column.knee.copy()
+        if args.preset_shuffle:
+            # One permutation applied to both, so a neuron receives a matched
+            # (theta, knee) pair from some *other* neuron rather than two
+            # unrelated ones. Mismatching them as well would confound "wrong
+            # owner" with "internally inconsistent", and only the first is the
+            # question.
+            perm = np.random.default_rng(9000 + args.seed).permutation(len(theta))
+            theta, knee = theta[perm], knee[perm]
+        if args.preset_what in ("both", "theta"):
+            model.column.theta[:] = theta
+        if args.preset_what in ("both", "knee"):
+            model.column.knee[:] = knee
     rng = np.random.default_rng(1000 + args.seed)
 
     curve, sparsity = {}, {}
@@ -280,7 +306,8 @@ def main() -> None:
     row = dict(tag=args.tag, seed=args.seed, hebbian=args.hebbian,
                episodes=args.episodes, every=args.every, curve=curve,
                sparsity=sparsity, preset_from=args.preset_from,
-               preset_input=args.preset_input,
+               preset_input=args.preset_input, preset_what=args.preset_what,
+               preset_shuffle=args.preset_shuffle,
                final=curve[str(done)], final_sparsity=sparsity[str(done)],
                **overrides)
     with OUT.open("a") as fh:
