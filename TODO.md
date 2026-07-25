@@ -38,18 +38,65 @@ goal is a model that learns.
 4. **When in doubt, ask what would make the thing learn**, not what would make
    the record more accurate.
 
-### The plan, in order
+### The north star, stated so the ordering can be derived from it
+
+1. **Primary — a neural network distributed across the internet at scale, with
+   the potential to lead toward AGI.**
+2. **Secondary — replace LLMs, or pieces of them, to reduce the need for
+   massive data centres.**
+
+**And one clarification that changes the priorities materially:** raw efficiency
+against a GPU is *not* the deciding question. The world already has billions of
+idle devices. A model that is less efficient per FLOP but runs on hardware that
+already exists and is already paid for can still meet goal 2. So "would a GPU
+win" stops being a blocker and becomes a footnote — what matters instead is
+whether the thing works on *consumer devices that are unreliable, heterogeneous
+and constantly leaving*.
+
+### The plan, in order — revised against the north star above
 
 1. Collect sweeps 035 / 036 / 037 (in flight).
-2. **Defer 032 and 033.** They are good questions about a substrate that already
-   works; neither moves the learning problem.
-3. **Fix the benchmark first — this is the blocker for everything else.** See
-   item 11.
-4. Re-read e-prop and SORN properly and write down exactly what differs from
-   what is implemented here. Do not build from memory of them.
-5. Build **one** mechanism, off by default, with a connection test, a mutation
-   and a prediction written before it runs. Current pick: **dendritic error**,
-   because the branch structure it needs already exists.
+2. **Defer 032 and 033.** Good questions about a substrate that already works;
+   neither moves the learning problem.
+3. **Fix the measuring instrument — item 11, in progress.** Still first: without
+   it we cannot tell whether *any* mechanism works. But see the refinement in
+   item 11 about what a predictive objective needs, which is not quite the same
+   benchmark.
+4. **Is the substrate predictable at all? — item 13, the new first mechanism
+   question.** Before building a predictive objective, measure whether a frozen
+   column's own state predicts its next input. If it does not, the direction is
+   dead and it costs one probe to find out instead of a month.
+5. Re-read e-prop and SORN properly. Do not build from memory of them.
+6. Build **one** mechanism, off by default, connection test, mutation, and a
+   prediction written before it runs.
+
+**The mechanism pick has changed from dendritic error to a predictive /
+self-supervised local objective**, and the reasoning is worth keeping:
+
+- **It removes the broadcast entirely.** The hardest measured constraint in this
+  project is that binding's credit window is 12 steps, and nothing reaches the
+  150 that intercontinental lag needs. A predictive objective has *no signal to
+  be late* — each neuron's error comes from comparing its own prediction against
+  its own next input. The latency problem is dissolved rather than worked
+  around.
+- **It is the same objective family as an LLM.** Next-token prediction is
+  next-input prediction. If goal 2 is replacing pieces of an LLM, matching the
+  objective is worth a great deal more than matching the biology.
+- **It needs no labels.** A network running on strangers' devices cannot assume
+  a labelled target at every node. Self-supervision is the only objective that
+  survives that, and it is a *goal-1* requirement rather than a preference.
+
+Dendritic error stays as the second pick: it is the natural way to *deliver* a
+predictive error through the branch structure once there is one to deliver.
+
+### What the north star promotes and demotes
+
+| item | was | now | why |
+|---|---|---|---|
+| 8 — would a GPU beat this | open counter-argument | **effectively closed** | Efficiency is not the deciding question; existing idle hardware is the point. Already measured overhead-bound, which is enough. |
+| churn — a leaving machine as a lesion | a bullet inside item 7 | **promoted, own item** | On consumer devices, machines leaving is the *normal case*, not an edge case. Never tested. |
+| `peer_frac` / bandwidth per machine | a bullet inside item 7 | **promoted** | The make-or-break number for home broadband, and never swept. |
+| 5 — growth on a trained model | queued sweep 033 | deferred | Substrate question, not a learning one. |
 
 ### Prior work to pull from
 
@@ -84,6 +131,7 @@ question in plain language, with where it stands. Detail is below.
 | 7 | Does it actually work spread across machines? | Still never tried on real machines. But the property it depends on is now **measured**: delivery jitter below `delay_min` leaves a distributed run bit-identical, and above it does not |
 | 8 | Would a single GPU just beat this? | **The premise was wrong.** Not bandwidth-bound — 17 % of DRAM peak at 96 neurons, working set fits in L2. It is overhead-bound, so the comparison cannot be made until the code is near *some* limit |
 | 9 | Which claims in the record were never measured? | New, and it caught **all four** of DESIGN.md's headline departures. Two sweeps queued (036, 037), the routed modulator and the bandwidth premise both **refuted** |
+| 13 | **Is the substrate predictable at all?** | **NEW — the gate on the whole pivot.** If a frozen column's state does not predict its own next input, a predictive objective has nothing to learn from. One probe settles it |
 | 11 | **Is the benchmark why nothing learns?** | **NEW, and the blocker for everything.** A frozen random column already scores 0.802 on delayed XOR. There is almost nothing left for a learning rule to win |
 | 12 | What here is actually novel, and would we start the same way again? | **NEW.** Most components are prior art. Honest answer written below |
 | 10 | Should `tau_branch` be 60 rather than 15? | **Known better setting, deliberately not adopted.** +0.056 at p = 0.0004 (sweep 034). Changing it invalidates every standing number as a comparison set, so re-baselining is a decision to take on purpose |
@@ -785,6 +833,15 @@ noise, distractors) and column size, and report the **linear→MLP gap** for a
 frozen column in each configuration. Pick the configuration with the largest
 gap that is not at chance, and make it the standard benchmark.
 
+**Refinement forced by the pivot.** The linear→MLP gap is the right criterion
+for a *classification* objective, which is what every mechanism so far has been
+scored against. A predictive objective is scored differently — what matters
+there is whether the column's own state predicts its own next input, and how
+linearly. That is item 13, and it is a different measurement on the same
+substrate. The grid here is still worth having, because it tells us where the
+substrate saturates regardless of objective, but **it does not by itself choose
+the benchmark for a predictive rule.**
+
 Then — and this is the part that makes it worth doing — **re-run the mechanisms
 that are already known to work on the new benchmark.** Binding's +0.074 and
 lateral's +0.028 were measured where there was 0.198 of headroom. If they scale
@@ -873,6 +930,67 @@ a random reservoir cannot already do. That reframes the north star from "biology
 but better" to **"what is the largest class of problems learnable using only
 local information and bounded asynchrony?"** — which is a question the locality
 work already done actually serves.
+
+## 13. Is the substrate predictable at all?
+
+*In plain terms: the plan is to switch from "tell the network the right answer"
+to "have the network predict what it is about to see". That only works if the
+network's own state actually contains a hint of what comes next. If it does not,
+there is nothing for a predicting rule to learn from, and it is much cheaper to
+find that out with one probe than after building the mechanism.*
+
+**This is the gate on the whole pivot, and it should be run before anything is
+built.**
+
+### Why a predictive objective is the pick
+
+- **It removes the broadcast.** Binding's credit window is measured at 12 steps;
+  `tau_branch 60` buys 25–50; nothing reaches the 150 that intercontinental lag
+  needs. A predictive objective has no signal that can be late — the error is
+  local by construction. This dissolves the project's hardest measured
+  constraint rather than working around it.
+- **It matches the LLM objective.** Next-token prediction is next-input
+  prediction.
+- **It needs no labels**, which a network on strangers' devices cannot assume.
+
+### What to measure
+
+For a **frozen** column, exactly parallel to item 11:
+
+    linear_next   how well a logistic readout predicts the input at t+k from the
+                  column state at t
+    mlp_next      the same with a small nonlinear decoder
+    gap           mlp_next - linear_next
+
+at several horizons `k` (1, 5, 20, 50 steps), and against a **shuffled control**
+— the same decoder predicting a *time-shuffled* input stream, which fixes the
+level that means "no predictive information at all". Without that control, any
+non-zero score reads as success when it may only be the marginal statistics of
+the input.
+
+### What each outcome means
+
+  linear_next high        The substrate predicts its input trivially, and a
+                          predictive rule has nothing to add. Same trap as
+                          delayed XOR being 0.802 before learning.
+
+  gap large,              **The regime the pivot needs.** The information is
+  mlp_next well above     there and not linearly accessible, which is what a
+  the shuffled control    learning rule can fix.
+
+  both at the shuffled    The column's state carries no information about its
+  control                 own future. A predictive objective has nothing to
+                          learn from, **the pivot is dead as specified**, and
+                          the honest next question is whether that is a property
+                          of this substrate or of a task whose inputs are mostly
+                          Poisson noise.
+
+The last outcome is the one worth being most careful about, and it has a very
+plausible cause: `DelayedParity` fills most timesteps with independent Poisson
+noise, which is *unpredictable by construction*. So a null here may say more
+about the benchmark than about the model — which is precisely why item 11 and
+item 13 are the same piece of work approached from two sides, and why both come
+before any mechanism is built.
 
 ## Housekeeping
 
