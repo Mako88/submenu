@@ -574,7 +574,54 @@ advantage were better rate calibration, the condition closest to the 0.03 target
 would decode best. It does not: ordinary settling sits exactly on target and
 decodes 0.048 *worse*. **The firing-rate ordering and the decodability ordering
 do not match**, which rules out the confound in the strongest available form and
-leaves what θ and the knee actually carry unexplained.
+left what θ and the knee actually carry unexplained.
+
+### θ is a power law in each neuron's own membrane time constant
+
+Two sweeps closed that gap. Sweep 027 asked whether the operating point is a
+*recipe* — a distribution of thresholds any neuron could draw from — or a
+*fit* to each particular neuron. One permutation applied to both θ and the knee,
+so every neuron receives a matched pair belonging to some other neuron:
+distribution preserved exactly, ownership destroyed.
+
+| | decodability | firing rate |
+|---|---|---|
+| operating point in place | 0.803 | 0.027 |
+| same values, permuted between neurons | 0.673 | 0.060 |
+
+**−0.130 on 0 of 20 seeds, p = 0.0000**, and the permuted column fires at double
+its target rate. So it is a per-neuron fit, not a recipe — which raised the
+obvious next question: a fit to *what*?
+
+A direct probe answered it. θ is a power law in that neuron's own membrane time
+constant, `θ = 5.927·τ^−0.748`, with log-log r = **−0.974** over six seeds —
+90% of θ's variance from one static, local, construction-time property.
+
+Sweep 029 then used the formula instead of settling, at 20 seeds:
+
+| | decodability at episode 0 | after 100 episodes |
+|---|---|---|
+| ordinary settling | 0.582 | 0.755 |
+| **θ from the formula, frozen** | **0.757** | 0.757 |
+| θ from a settled twin, frozen | 0.763 | 0.763 |
+
+The formula is **null against a settled twin's thresholds** (−0.006, 8/20 seeds,
+p = 0.7672). A closed-form expression in each neuron's own τ is indistinguishable
+from fifty episodes of homeostatic search.
+
+**So the +0.197 — the largest single effect in this project, bigger than every
+learning rule combined — is available at construction time from a one-line
+function of a static local property.** It is not learning, and it is not
+emergence in any sense that required the system to run. It is a fixed point the
+neurons have by construction, which the homeostatic loop finds by search because
+nothing had told it the answer.
+
+Two honest limits. **The knee is not computable yet**: adding a settled twin's
+knee to the formula reaches 0.786, statistically level with the full settled
+operating point (p = 0.1997), but the knee still has to come from somewhere.
+And **the exponent is fitted, not derived** — −0.748 comes from six seeds at 96
+neurons on one task, so every claim here should be read as "a power law in τ
+whose exponent must be refitted per configuration until something derives it".
 
 ### It is not criticality either
 

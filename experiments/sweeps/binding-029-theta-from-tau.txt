@@ -116,4 +116,112 @@ experiments/trajectory.py.
 
 RESULT -- 20 seeds
 ------------------
-Pending.
+Linear decodability. The `preset-*` and `tau-init*` conditions are frozen in
+every adaptation, so they are constant across checkpoints by construction -- what
+carries the finding is their *level*, which is a real comparison (the sweep 022
+lesson, applied rather than re-learned).
+
+  condition          ep 0    ep 100    sparsity
+  all                0.582    0.755     0.030     the settling trajectory
+  tau-init           0.757    0.757     0.024     **theta from the formula**
+  tau-init-adapt     0.757    0.779     0.030     formula, then allowed to adapt
+  tau-init-knee      0.786    0.786     0.023     formula + a twin's knee
+  preset-theta       0.763    0.763     0.028     theta from a settled twin
+  preset-shuffled    0.803    0.803     0.027     the full settled operating point
+  preset-task        0.752    0.752     0.022
+  preset-noise       0.691    0.691     0.017
+  preset-permuted    0.673    0.673     0.060
+  preset-knee        0.566    0.566     0.002
+
+  tau-init       vs preset-theta      -0.006    8/20   p = 0.7672   **null**
+  tau-init-knee  vs preset-shuffled   -0.018    6/20   p = 0.1997   null
+  tau-init-adapt vs all               +0.024   13/20   p = 0.0678   null
+
+THE FORMULA IS AS GOOD AS SETTLING, FOR THETA
+-----------------------------------------------
+`tau-init` computes each neuron's threshold as `theta = 5.927 * tau^-0.748` at
+construction, from that neuron's own membrane time constant and nothing else --
+no data, no twin, no settling. It reaches **0.757**, against **0.763** for
+`preset-theta`, which obtains its thresholds by settling an actual twin column
+for fifty episodes and copying them over. The paired difference is **-0.006 on
+8 of 20 seeds at p = 0.7672.**
+
+**The closed-form expression is indistinguishable from fifty episodes of
+homeostatic search.**
+
+Put against the trajectory it replaces, which is the comparison that matters:
+
+  a settling column       0.582 at episode 0  ->  0.755 after 100 episodes
+  the formula             0.757 at episode 0, immediately, frozen
+
+The +0.197 that sweep 022 found homeostatic settling to be worth -- the largest
+single effect in this project, larger than every learning rule combined -- is
+**available at construction time from a one-line function of each neuron's own
+membrane constant.**
+
+PREDICTION SCORECARD: THE CENTRAL CLAIM HELD, FIRST TIME
+----------------------------------------------------------
+  predicted  tau-init        0.72 to 0.78     measured 0.757   in band
+  predicted  tau-init-knee   0.76 to 0.80     measured 0.786   in band
+  predicted  tau-init-adapt  0.78 to 0.82     measured 0.779   just below
+
+  central claim: "tau-init-knee lands within 0.04 of preset-shuffled's 0.803"
+                 measured 0.786, a gap of 0.017                 CONFIRMED
+
+  supporting:    "tau-init should land near 0.763 if the formula is as good as
+                 a settled theta"
+                 measured 0.757, null against it at p = 0.7672  CONFIRMED
+
+This is the first sweep in the project whose central claim was stated in advance
+and came back confirmed. Sweep 027 was the first where a mechanistic prediction
+beat the pilot it was checking; this is the first where the prediction was simply
+right. Recorded because the previous nineteen sweeps are mostly a record of the
+opposite, and the base rate is the point.
+
+WHAT IT DOES NOT ESTABLISH, AND THE PART THAT IS STILL A TWIN
+---------------------------------------------------------------
+**The knee is not computable yet.** `tau-init-knee` reaches 0.786 -- within
+0.017 of the full settled operating point, null at p = 0.1997 -- but it gets its
+knee by copying a settled twin's. So the honest statement is:
+
+  theta   computable at construction, from tau alone            DONE
+  knee    still requires settling or a twin                     OPEN
+
+`preset-knee` at 0.566 with sparsity 0.002 shows why the knee cannot simply be
+left alone: a column with the right knee and a default theta is nearly silent and
+decodes worse than anything else in the table. The two have to be set together,
+and only one of them has a formula.
+
+**Adapting from the formula is not detectably better than adapting from
+scratch.** `tau-init-adapt` reaches 0.779 against `all`'s 0.755, +0.024 at
+p = 0.0678 -- directionally right, not significant. What it *does* do is start
+at 0.757 instead of 0.582, so the hundred episodes buy nothing they were not
+already given. The prediction said "reaching it in far fewer than 50 episodes";
+the truth is it starts there and then wanders, which is a stronger statement than
+the one predicted and worth saying in those terms rather than as a near-miss on
+a band.
+
+**And the exponent is still fitted, not derived.** -0.748 came from six seeds at
+96 neurons on one task. Whether it is universal or a property of this
+configuration is untested, and every claim above should be read as "a power law
+in tau whose exponent must be refitted per configuration until something derives
+it". That is the first thing to check at another column size, and it is now
+cheap: `--theta-from-tau 1` at 48 and 192 neurons against the same references.
+
+WHY THIS MATTERS BEYOND THE NUMBER
+------------------------------------
+Sweep 023 found the operating point is better obtained from structureless input
+than from the task, so it is not acquired. Sweep 025 refuted criticality as the
+explanation. Sweep 027 found it is a *per-neuron fit* -- permuting it between
+neurons costs 0.130 on 0/20 seeds -- and therefore not a recipe.
+
+Those three together said: per-neuron, not task-specific, not criticality. This
+one supplies what was missing -- **the per-neuron quantity it is a function of.**
+Each neuron's threshold is a power law in its own membrane time constant, which
+is a local, static property fixed at construction. Nothing has to be searched,
+nothing has to be shared, and nothing has to run first.
+
+That is also the sharpest answer this project has produced to whether the
+homeostatic gain is "learning". It is not. It is a fixed point that a
+one-parameter family of neurons has by construction, which the homeostatic loop
+finds by search because nobody had told it the answer.

@@ -7,7 +7,7 @@ question in plain language, with where it stands. Detail is below.
 |---|---|---|
 | 1 | Does any of this survive a task that asks more than one puzzle? | **Forgetting: answered — nothing forgets, so there is nothing to fix.** Capacity: untouched. Emergent structure: criticality refuted, simpler answer standing |
 | 2 | What is lateral inhibition actually doing? | Works (+0.037), best result in the project with it — but the reason it was built is refuted and the real mechanism is unknown |
-| 3 | Is the "settling" the network does for free precomputable? | **Yes, and better from static than from the task.** Why, is open |
+| 3 | Is the "settling" the network does for free precomputable? | **Yes — and for θ it is a closed form.** `θ = 5.927·τ^−0.748` matches a settled twin (p = 0.77). The knee is still open |
 | 4 | Can we skip the work that isn't doing anything? | **Measured.** Not at neuron level (81% are active) — at connection level. Worth ~2× now, ~5× at scale. Demoted from "biggest lever" |
 | 5 | Can we add new senses to a running network? | Built and tested. Open: does a *trained* model survive it |
 | 6 | Which old decisions rest on evidence a later fix destroyed? | Six items, tracked in AUDIT.md |
@@ -138,11 +138,32 @@ Three benchmarks would each open something currently invisible:
     initialisation, and 023's "precomputable" means *from any input*, not
     *without the column*. θ carries +0.181 of the +0.221; the knee adds +0.041.
 
-    Still open: **what is θ fitted to?** Not criticality (025), not rate alone
-    (023). The direct test is to correlate each neuron's settled θ against its
-    own properties — membrane τ, fan-in, excitatory fraction of its sources,
-    mean drive — and see which predicts it. **A probe, not a sweep; needs no
-    CI.** This is the next thing to build.
+    **Answered — θ is a power law in the neuron's own membrane time constant.**
+    The probe correlated each neuron's settled θ against its own properties and
+    τ carries it: `θ = 5.927·τ^−0.748`, log-log r = **−0.974** over six seeds,
+    90% of θ's variance from one static construction-time property.
+
+    Sweep 029 then used the formula instead of settling, at 20 seeds. `tau-init`
+    reaches **0.757**, null against a settled twin's thresholds (−0.006, 8/20,
+    p = 0.7672), where ordinary settling starts at 0.582 and needs 100 episodes
+    to reach 0.755. **The +0.197 is available at construction time from a
+    one-line function of a local static property**, so it is neither learning nor
+    emergence — it is a fixed point the neurons have by construction that the
+    homeostatic loop finds by search because nothing told it the answer.
+
+    Two things this leaves open, and they are now the live half of this item:
+
+    - **The knee is not computable.** `tau-init-knee` reaches 0.786, level with
+      the full settled operating point (p = 0.1997), but its knee is copied from
+      a settled twin. `preset-knee` alone sits at 0.566 with sparsity 0.002, so
+      the two must be set together and only one has a formula. **Run the same
+      probe for the knee**: correlate each branch's settled knee against its own
+      properties. Cheap, and the obvious next thing.
+    - **The exponent is fitted, not derived.** −0.748 came from six seeds at 96
+      neurons on one task. Refit at 48 and 192 against the same references —
+      `--theta-from-tau 1` makes this nearly free — and if the exponent moves
+      with column size it is a property of this configuration rather than of the
+      neuron model.
 
 ## 2. What is lateral inhibition actually doing?
 
