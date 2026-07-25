@@ -419,14 +419,56 @@ So sweep 018's reading was wrong in an instructive way: binding was never the
 bottleneck, which is why no binding schedule could fix it. The delta readout
 needs roughly 300 episodes against a settled column. RLS is a faster readout
 and delivers +0.043 with no schedule change at all — but needs a globally
-pooled matrix that does not decompose (sweep 011). **Local decorrelation inside
-the column is now what two independent results point at.**
+pooled matrix that does not decompose (sweep 011).
 
 One thing nobody had measured, visible only in the trajectory: the frozen
 condition climbs from 0.582 to 0.779 over the first fifty episodes, on
 homeostatic settling alone. **+0.197 of decodability from threshold and knee
 adaptation with no learning rule of any kind** — more than twice what binding
 adds, and entirely unexplained.
+
+### What shape the representation is, and why decorrelating it was the wrong idea
+
+Sweeps 011 and 019 both pointed at the same next step: decorrelate inside the
+column, locally, so a cheap readout could extract what RLS extracts by pooling.
+Sweep 020 built the mechanism — the Vogels–Sprekeler anti-Hebbian rule on the
+inhibitory synapses that already exist — and, before tuning it, measured the
+premise. Mean pairwise correlation and effective rank had never been recorded
+for this model at all. Twenty paired seeds:
+
+| condition | linear | MLP | mean \|corr\| | effective rank (of 96) |
+|---|---|---|---|---|
+| neither | 0.802 | 0.987 | 0.178 | 17.40 |
+| lateral inhibition | 0.830 | 0.990 | 0.175 | 17.14 |
+| binding | 0.876 | 0.999 | 0.255 | 9.64 |
+| both | **0.913** | **1.000** | 0.256 | 9.38 |
+
+**Binding raises correlation by +0.077 and nearly halves effective rank, while
+raising linear decodability by +0.074.** All three at p = 0.0000, and on the two
+shape metrics it is 20/20 and 0/20 seeds — there is no seed where it goes the
+other way. The mechanism that works does not decorrelate. It **consolidates**:
+it collapses the state onto fewer, more strongly co-varying directions, and
+that is what makes it linearly readable.
+
+So the reasoning behind the whole direction is refuted. Sweep 011's measurement
+stands — RLS does gain by carrying a pooled correlation matrix, and that gain
+does not decompose per column. The inference drawn from it, *therefore the
+column needs decorrelating*, does not follow.
+
+Lateral inhibition itself survived, by the branch its own prediction named as
+the one that would save it: **+0.037 on top of binding, p = 0.0005**, taking
+linear decodability past 0.9 for the first time. But it does not get to keep its
+rationale. Alone it moves correlation by −0.004 and effective rank by −0.265 of
+17.4 (null, p = 0.09); added to binding it moves correlation not at all
+(p = 0.40) and effective rank *down* by 0.258 — the opposite of decorrelation.
+**It improves the representation while moving neither decorrelation metric in
+the direction decorrelation predicts.** What it is doing is unmeasured and
+deliberately left that way in the code rather than filled in with a plausible
+story.
+
+Whether any of that reaches the model's actual output is untested: sweep 020 ran
+no end-to-end condition, and binding's own +0.074 offline gain arrived as
++0.007. Sweep 021 is that measurement.
 
 The mechanism also arrived by way of one that was deleted. This began as an
 engram allocator — excitability drift, a recruitment competition, an allocation

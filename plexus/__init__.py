@@ -10,7 +10,7 @@ Following the rule -- rather than following biology's chemistry -- lets us keep
 what neurons compute while dropping what neurons merely had to cope with.
 """
 
-from .column import Column, ColumnConfig
+from .column import Column, ColumnConfig, freeze_plasticity
 from .distributed import DistributedPlexus
 from .events import Event, EventBuffer
 from .network import Plexus, TrainReport
@@ -33,4 +33,5 @@ __all__ = [
     "DelayedXOR",
     "Episode",
     "TemporalPatterns",
+    "freeze_plasticity",
 ]

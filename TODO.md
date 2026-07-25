@@ -33,18 +33,33 @@ Three benchmarks would each open something currently invisible:
 - **Emergent structure.** The original motivation and still entirely
   unmeasured. Needs a metric before it needs an experiment.
 
-## 2. Lateral inhibition, for local decorrelation
+## 2. What is lateral inhibition actually doing?
 
-Two independent results now point here. Sweep 011 found the RLS readout's gain
-requires a globally pooled correlation matrix that does not decompose into
-per-column pieces. Sweep 019 found the readout, not the mechanism, is what is
-slow: the representation gain is complete by episode 150 and the delta readout
-needs roughly 300 episodes against a settled column to use it.
+Built to decorrelate. Sweep 020 measured it not decorrelating — mean
+correlation moves −0.004 alone and not at all on top of binding, effective rank
+moves *down* rather than up — while raising linear decodability by +0.028 alone
+and +0.037 on top of binding (p = 0.0005). It is kept on the measurement, and
+its explanation is open.
 
-Decorrelating *inside* the column — which lateral inhibition does, locally and
-with obvious biological warrant — would let a cheap local readout extract what
-RLS extracts by pooling. That is the same +0.043 without breaking the design
-rule.
+The decorrelation reasoning that put it here is refuted and recorded as such:
+what works is **consolidation**. Binding raises correlation by +0.077 and halves
+effective rank while gaining +0.074, on 20/20 and 0/20 seeds respectively. Sweep
+011's finding stands — RLS gains by pooling correlations — but "therefore the
+column needs decorrelating" does not follow from it.
+
+Two things are open, in order:
+
+- **Does it pay end to end?** Sweep 021, running. `latbind-on` against `rls-on`
+  asks whether a local rule under the shipped delta readout reaches what a
+  pooled correlation matrix reaches. Sweep 016 is the reason not to assume:
+  binding's +0.074 offline arrived as +0.007. The prediction, recorded before
+  the run, is that it does not, and names closing the direction as the
+  consequence.
+- **What is the mechanism?** Sparsity is flat (0.031 → 0.034), so it is not a
+  gross activity change. Candidates worth a direct probe: per-unit dynamic
+  range, which units respond at all rather than how they covary, or a second
+  consolidating force by another route — which the effective-rank direction
+  mildly favours. None is measured; none should be written down until one is.
 
 ## 3. Why does homeostatic settling alone buy +0.197?
 
@@ -162,6 +177,11 @@ needs to be argued on grounds other than cost.
   trajectory probe was added. It is not a minute per condition — a condition
   that trains 300 episodes costs far more than one that evaluates. Estimate
   from what each condition *does*, not from how many there are.
+- **Retire conditions once their sweep is written up.** Sweep 018's three
+  schedule conditions and 019's trajectory probe kept running for two sweeps
+  after their questions were answered, costing roughly six minutes of every
+  seed to reproduce numbers already in the notes. Sweep 021 dropped them. The
+  sweep notes are the record; CI is for open questions.
 - **Workflow triggers are all sentinels now** (`experiments/run-*.txt`).
   Triggering on the sweep notes meant that *recording a result* re-ran the
   matrix that produced it — GitHub path filters cannot distinguish a file being

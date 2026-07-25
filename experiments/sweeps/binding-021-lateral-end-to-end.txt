@@ -1,0 +1,125 @@
+Sweep 021 -- does lateral inhibition pay anything the model can actually use?
+=============================================================================
+
+QUESTION
+--------
+Sweep 020 measured lateral inhibition offline and it helped: +0.028 alone and
++0.037 on top of binding, taking linear decodability to 0.913. It also refuted
+the reason it was built. It does not decorrelate -- correlation moves by -0.004
+alone and not at all on top of binding, and effective rank goes *down* rather
+than up.
+
+That leaves the mechanism standing on a measurement with no explanation, and
+leaves the thing it was built for completely untested. Lateral inhibition was
+proposed so that a cheap local readout could extract what RLS extracts by
+pooling a correlation matrix that sweep 011 showed does not decompose. Sweep 020
+ran no end-to-end condition at all.
+
+Sweep 016 is the standing reason not to assume: binding's +0.074 offline gain
+arrived end to end as +0.007. Offline decodability and accuracy have come apart
+in both directions in this project already.
+
+CONDITIONS  (all 300 episodes, 20 seeds, 96 neurons, column lr 0)
+------------------------------------------------------------------
+Existing, as the paired baselines:
+
+  e2e-off      0.709   nothing on, delta readout
+  e2e-on       0.715   binding, delta readout
+  rls-off      0.759   nothing on, RLS readout
+  rls-on       0.803   binding, RLS readout
+  catchup-off  0.707   nothing on, +150 readout-only episodes
+  catchup-on   0.770   binding, +150 readout-only episodes
+
+New:
+
+  lat-on           lateral only, delta readout
+  latbind-on       lateral + binding, delta readout
+  latbind-rls      lateral + binding, RLS readout
+  latbind-catchup  lateral + binding, +150 readout-only episodes
+
+**`latbind-on` against `rls-on` is the whole sweep.** If a local rule under the
+shipped delta readout reaches what a pooled correlation matrix reaches, the
+destination was right even though the route was wrong, and the one standing
+exception to the locality rule can be dropped.
+
+PREDICTION (recorded before the run)
+------------------------------------
+The offline-to-online transfer ratio is measurable from what binding already
+did. Binding's offline gain over off is +0.074, and it arrived as:
+
+  delta readout    +0.007   ratio 0.09
+  RLS readout      +0.043   ratio 0.58
+  catch-up         +0.063   ratio 0.85
+
+Lateral + binding is +0.111 offline over off. Applying the same ratios:
+
+  lat-on           0.705 to 0.725, NULL against e2e-off (p > 0.05)
+  latbind-on       0.715 to 0.735, NULL against e2e-on
+  latbind-rls      0.810 to 0.835, beating rls-off, probably not rls-on
+  latbind-catchup  0.790 to 0.820, beating catchup-on
+
+So: **`latbind-on` null, and nowhere near `rls-on`'s 0.803.** Confidence high,
+and the reason is mechanical rather than extrapolated. The argument for
+decorrelation helping a delta rule is that gradient descent converges slowly on
+correlated features, which is exactly what RLS fixes by whitening. Sweep 020
+measured lateral not decorrelating -- so the property that would have made the
+delta readout converge faster is absent, and there is no mechanism left by which
+this should work. Sweep 019 adds the second reason: the delta readout's problem
+is sample efficiency against a *settled* column, and lateral is one more rule
+keeping the column moving.
+
+FAILURE RESPONSE, NAMED IN ADVANCE
+-----------------------------------
+**If `latbind-on` is null against `e2e-on`, the "local decorrelation replaces
+RLS" programme is closed and recorded as closed.** Not parked pending a rate
+sweep. The premise was refuted in 020 and the payoff would then have failed in
+021, which is two independent measurements against it. The README stops naming
+it as the next step and the TODO item is replaced by what is actually open: what
+lateral is doing, and why homeostatic settling alone buys +0.197.
+
+Lateral inhibition itself stays either way -- it is a measured +0.037 on the
+representation. What closes is the claim about what it is for.
+
+WHAT WOULD SAVE IT
+-------------------
+`latbind-on` at 0.77 or above, i.e. reaching catch-up territory with no
+catch-up phase. That would mean lateral helps the readout track a representation
+that is still moving, which is a different and more interesting property than
+decorrelation, and would need measuring directly rather than inferring from
+accuracy.
+
+WHAT THIS SWEEP DROPS, AND WHY
+-------------------------------
+The trajectory probe (019) and the three schedule conditions (018: decay-99,
+decay-98, phase) come out of the matrix. Both questions are answered and
+recorded, and re-running them costs roughly six minutes of every seed to
+reproduce numbers already written down. The sweep notes are the record; CI is
+for open questions.
+
+A CHANGE THIS SWEEP FORCED
+---------------------------
+The catch-up condition froze the column by setting `cfg.hebbian = False`. That
+was correct while binding was the only rule writing to W. Adding a second one
+would have made every `latbind-catchup` run report "the readout converged
+against a static column" while lateral inhibition kept changing it underneath --
+a condition whose name was false, which is the failure mode this project is
+built against rather than an inconvenience.
+
+Fixed structurally rather than by remembering: `freeze_plasticity` clears every
+registered flag, and `test_freeze_plasticity_accounts_for_every_mechanism_flag`
+enumerates ColumnConfig's boolean fields and fails if one is in neither
+`PLASTICITY_FLAGS` nor `NON_PLASTICITY_FLAGS`. A future mechanism cannot be
+added without deciding what "frozen" means for it. Both are in
+`experiments/mutation.py`.
+
+No recorded result is affected: every catch-up condition ever run had lateral
+off and `lr=0`, so there was nothing for the omission to leak.
+
+SETTINGS
+--------
+20 seeds, 300 episodes, 96 neurons, column lr 0, drain-steps 0, lateral_lr at
+its default 0.02 -- the value sweep 020 measured, not retuned for this.
+
+RESULT -- 20 paired seeds
+-------------------------
+Pending.

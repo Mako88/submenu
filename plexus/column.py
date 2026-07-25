@@ -163,24 +163,29 @@ class ColumnConfig:
     # the inhibitory synapse between them strengthens. Neurons that fire
     # together get pushed apart.
     #
-    # This is the Vogels-Sprekeler rule (Vogels et al. 2011), and the reason it
-    # is worth trying here is specific. Sweep 010 found a readout with a pooled
-    # correlation matrix gains +0.032; sweep 011 found that gain does not
-    # decompose into per-column pieces, so it costs the locality rule. Sweep 019
-    # found the readout, not the mechanism, is the bottleneck -- the
-    # representation is finished by episode 150 and the delta rule needs ~300
-    # episodes to use it. Decorrelating *inside* the column would let a cheap
-    # local readout extract what RLS extracts by pooling.
-    #
-    # Every quantity is one synapse's own: `pre` is its presynaptic trace,
-    # `fired` is its own postsynaptic unit. Nothing is pooled, so unlike the RLS
-    # matrix this does not break the rule. The `- target_rate` term is what
+    # This is the Vogels-Sprekeler rule (Vogels et al. 2011). Every quantity is
+    # one synapse's own: `pre` is its presynaptic trace, `fired` is its own
+    # postsynaptic unit. Nothing is pooled, so unlike the RLS correlation matrix
+    # this does not break the locality rule. The `- target_rate` term is what
     # makes it self-limiting rather than runaway: inhibition grows only while
     # the target fires above its homeostatic setpoint.
     #
-    # Off by default. The claim that it decorrelates is a claim about mean
-    # pairwise correlation, and that is what experiments/binding.py measures --
-    # not decodability, which is downstream and would not say which part worked.
+    # It was built to decorrelate, and **it does not**. Sweep 020, 20 seeds:
+    # it raises linear decodability by +0.028 alone (p = 0.0297) and by +0.037
+    # on top of binding (p = 0.0005), while moving mean |correlation| by -0.004
+    # and effective rank by -0.265 of 17.4 -- the latter null at p = 0.09. Added
+    # to binding it moves correlation not at all (p = 0.40) and effective rank
+    # *down* by 0.258 (p = 0.0030), which is the opposite of decorrelation.
+    #
+    # So this is kept on its measurement and not on its rationale. What it is
+    # actually doing is unmeasured, and no explanation should be written here
+    # until something measures one. The reasoning that motivated it -- sweep 011
+    # showing RLS's pooled correlation matrix does not decompose, hence "the
+    # column needs decorrelating" -- is recorded as refuted in sweep 020: the
+    # mechanism that helps most consolidates instead, raising correlation by
+    # +0.077 and halving effective rank while gaining +0.074.
+    #
+    # Off by default.
     lateral: bool = False
     # Normalised, so that `lateral_lr` means "this fraction of the weight scale
     # per event" rather than being hostage to how large `pre` happens to be.
@@ -259,6 +264,35 @@ class ColumnConfig:
             raise ValueError("delay_min must be >= 1 (a synapse cannot read the present)")
         if self.delay_max < self.delay_min:
             raise ValueError("delay_max must be >= delay_min")
+
+
+# Every boolean flag that switches on a rule which writes to W. `freeze_plasticity`
+# clears all of them, and a test asserts this tuple accounts for every boolean
+# field on ColumnConfig except NON_PLASTICITY_FLAGS -- so adding a mechanism
+# without deciding which list it belongs in fails the suite rather than silently
+# leaking into conditions that claim the column has stopped learning.
+#
+# This exists because the sweep 017 catch-up condition cleared `hebbian` by hand.
+# That was correct for exactly as long as binding was the only such rule; sweep
+# 020 added a second, and "the column is frozen" would have quietly become false
+# in every catch-up condition run after it.
+PLASTICITY_FLAGS = ("hebbian", "lateral")
+
+# Booleans that gate dynamics rather than learning. `stp` changes what the column
+# computes on every step and is not switched off by freezing.
+NON_PLASTICITY_FLAGS = ("stp",)
+
+
+def freeze_plasticity(cfg: ColumnConfig) -> None:
+    """Stop every rule that writes to W, in place.
+
+    Not the same as freezing the column: homeostasis, synaptic scaling and the
+    knee keep adapting, and sweep 019 measured those alone moving decodability
+    by +0.197 over fifty episodes. What this pins is the *learning*.
+    """
+    cfg.lr = 0.0
+    for flag in PLASTICITY_FLAGS:
+        setattr(cfg, flag, False)
 
 
 class Column:

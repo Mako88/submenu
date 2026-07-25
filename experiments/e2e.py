@@ -19,7 +19,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from plexus import ColumnConfig, DelayedXOR, Plexus  # noqa: E402
+from plexus import ColumnConfig, DelayedXOR, Plexus, freeze_plasticity  # noqa: E402
 
 OUT = Path(__file__).resolve().parent / "e2e_results.jsonl"
 
@@ -51,6 +51,9 @@ def main() -> None:
                     help="bind only for the first N episodes, then continue "
                          "training the readout alone within the SAME episode "
                          "budget (sweep 018)")
+    ap.add_argument("--lateral", type=int, default=0,
+                    help="lateral inhibition, Vogels-Sprekeler (sweep 020/021)")
+    ap.add_argument("--lateral-lr", type=float, default=0.02)
     ap.add_argument("--catchup", type=int, default=0,
                     help="episodes of readout-only training after the column is "
                          "frozen, to test whether a moving representation is what "
@@ -78,7 +81,8 @@ def main() -> None:
         column=ColumnConfig(
             n_neurons=args.neurons, lr=args.lr, tau_eligibility=args.tau_elig,
             elig_mode=args.elig_mode, surrogate=args.surrogate, seed=args.seed,
-            hebbian=bool(args.hebbian), hebb_decay=args.hebb_decay
+            hebbian=bool(args.hebbian), hebb_decay=args.hebb_decay,
+            lateral=bool(args.lateral), lateral_lr=args.lateral_lr,
         ),
         readout_lr=args.readout_lr,
         readout_rule=args.readout_rule,
@@ -101,7 +105,7 @@ def main() -> None:
         # readout converge against a settled column. Unlike --catchup this adds
         # no episodes, so it answers whether the gain is available for free.
         model.train(task, args.bind_episodes, rng=rng, report_every=10**9)
-        model.column.cfg.hebbian = False
+        freeze_plasticity(model.column.cfg)
         model.train(task, args.episodes - args.bind_episodes, rng=rng, report_every=10**9)
     else:
         model.train(task, args.episodes, rng=rng, report_every=10**9)
@@ -110,7 +114,7 @@ def main() -> None:
         # is now a static representation. The offline probe fits its decoder to
         # exactly this state, so if accuracy rises to meet it, the gap is the
         # readout chasing a moving target rather than failing to extract.
-        model.column.cfg.hebbian = False
+        freeze_plasticity(model.column.cfg)
         model.train(task, args.catchup, rng=rng, report_every=10**9)
     acc = model.evaluate(task, args.eval, rng=np.random.default_rng(9999))
 
@@ -119,7 +123,8 @@ def main() -> None:
                                  tau_elig=args.tau_elig, episodes=args.episodes,
                                  modulator_lag=args.modulator_lag,
                                  drain_steps=args.drain_steps,
-                                 hebbian=args.hebbian, catchup=args.catchup,
+                                 hebbian=args.hebbian, lateral=args.lateral,
+                                 lateral_lr=args.lateral_lr, catchup=args.catchup,
                                  hebb_decay=args.hebb_decay,
                                  bind_episodes=args.bind_episodes,
                                  pretrain=args.pretrain, elig_mode=args.elig_mode,

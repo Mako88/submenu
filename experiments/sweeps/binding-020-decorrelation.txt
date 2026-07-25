@@ -91,4 +91,124 @@ Four conditions: off, on, lateral, lateral+on.
 
 RESULT -- 20 paired seeds
 -------------------------
-Pending.
+condition        linear     mlp     |corr|   eff_rank   sparsity
+off               0.802   0.987      0.178     17.404      0.031
+lateral           0.830   0.990      0.175     17.139      0.031
+on                0.876   0.999      0.255      9.641      0.034
+lateral+on        0.913   1.000      0.256      9.383      0.034
+
+  on vs off          linear   +0.074   18/20   p = 0.0000
+                     corr     +0.077   20/20   p = 0.0000
+                     eff_rank -7.763    0/20   p = 0.0000
+
+  lateral vs off     linear   +0.028   13/20   p = 0.0297
+                     corr     -0.004    3/20   p = 0.0033
+                     eff_rank -0.265    7/20   p = 0.0899
+
+  lateral+on vs on   linear   +0.037   15/20   p = 0.0005
+                     corr     +0.001   12/20   p = 0.4005
+                     eff_rank -0.258    4/20   p = 0.0030
+
+PREDICTION ONE: CORRECT, ALL THREE NUMBERS
+-------------------------------------------
+`on vs off` was called at corr +0.05 to +0.09, eff_rank down 5 to 8, linear
+~+0.07. Measured: +0.077, -7.763, +0.074. The one-seed observation was not
+noise, and the effect is as structural as it looked.
+
+**Salience-gated Hebbian binding raises correlation by 43% and cuts effective
+rank almost in half -- from 17.4 of 96 to 9.6 -- while raising linear
+decodability by +0.074.** That is now a 20-seed result at p = 0.0000 on all
+three metrics, and 20/20 and 0/20 seeds respectively on the two shape metrics:
+there is no seed where it goes the other way.
+
+So the premise that put lateral inhibition at the top of the list is refuted.
+The representation is not redundant and decorrelating is not what helps. The
+mechanism that works **consolidates** -- it collapses the state onto fewer,
+more strongly co-varying directions, and that is what makes it linearly
+readable.
+
+PREDICTION THREE: REFUTED, AND IT IS THE ONE THAT DECIDED THE DIRECTION
+-----------------------------------------------------------------------
+`lateral+on vs on` was called NEGATIVE or null, on the reasoning that a rule
+fighting consolidation should not help. It is **+0.037 at p = 0.0005, better on
+15 of 20 seeds.**
+
+That is the branch the prediction named as what would save the mechanism, so
+the consequence written down in advance does not fire: lateral inhibition stays.
+
+Prediction two was also wrong, in the same direction. `lateral vs off` was
+called null at |diff| < 0.02, p > 0.05. It is +0.028 at p = 0.0297.
+
+The gains are close to additive:
+
+  off          0.802
+  + lateral    0.830   (+0.028)
+  + binding    0.876   (+0.074)
+  + both       0.913   (+0.111, against +0.102 if they simply summed)
+
+Two mechanisms, two roughly independent channels, and together they take linear
+decodability past 0.9 for the first time in this project.
+
+BUT THE ROUTE IS REFUTED, AND THAT MATTERS MORE THAN THE WIN
+-------------------------------------------------------------
+The prediction's escape hatch was "consolidate the signal, decorrelate the
+residue" -- complementary because lateral cleans up what binding leaves. The
+correlation and effective-rank columns say that is not what happened:
+
+  lateral alone     corr 0.178 -> 0.175, a 2.2% relative move
+                    eff_rank 17.40 -> 17.14, a 1.5% move, and null at p = 0.09
+                    linear +0.028, significant
+
+  lateral on top    corr unchanged (p = 0.40)
+  of binding        eff_rank 9.641 -> 9.383, i.e. DOWN -- the opposite of
+                    decorrelation, and significant at p = 0.0030
+                    linear +0.037, significant
+
+**Lateral inhibition improves decodability while moving neither decorrelation
+metric in the direction decorrelation predicts.** Added to binding it makes the
+representation slightly *lower*-rank, not higher. Whatever this rule is doing,
+the two quantities that were supposed to explain it do not.
+
+So the honest state of it is: the mechanism is kept on its measurement, and the
+reasoning that put it on the list is recorded as refuted. Those are separate
+findings and collapsing them would be the exact failure this sweep was written
+to avoid -- a premise surviving its own disconfirming measurement because the
+outcome happened to come out well.
+
+What lateral is actually doing is now unmeasured and open. It is anti-Hebbian
+on inhibitory synapses, so the reachable hypotheses include: sharpening which
+units respond at all rather than how they covary (`sparsity` is flat at 0.031
+and 0.034, so not a gross activity change); increasing the dynamic range of the
+surviving units; or acting as a second consolidating force by a different
+route, which the eff_rank direction mildly favours. None of these is measured
+and none should be written down as the explanation.
+
+WHAT THIS COSTS THE CHAIN THAT LED HERE
+----------------------------------------
+Sweep 011 found RLS gains by carrying a pooled inverse correlation matrix, and
+that the gain does not decompose per column. That measurement stands. The
+*inference* drawn from it -- "therefore the column needs decorrelating" -- does
+not follow and is now measured false. RLS pooling correlations is a fact about
+RLS, not a diagnosis of the representation.
+
+Sweep 019's contribution stands entirely: the readout is the slow part. What
+this sweep removes is the specific mechanism proposed to fix it, along with the
+reason for proposing it.
+
+WHAT IS STILL UNTESTED, AND IS THE ACTUAL POINT
+------------------------------------------------
+Lateral inhibition was built to let a *cheap local readout* extract what RLS
+extracts by pooling. This sweep measured only the offline representation. It did
+not run a single end-to-end condition with lateral enabled, so the payoff
+question is untouched.
+
+And sweep 016 is the standing warning against assuming: binding's +0.074
+offline gain arrived end to end as +0.007. An offline gain of +0.037 is not
+evidence of anything the online readout can use.
+
+That is sweep 021, and it has a clean form: lateral+binding under the shipped
+delta readout, against binding under RLS. If the delta readout with local
+lateral inhibition reaches what RLS reaches, the destination was right even
+though the route was wrong, and the locality exception RLS forces can be
+dropped. If it does not, lateral is a +0.037 offline gain with no demonstrated
+end-to-end value, and should be described as exactly that.

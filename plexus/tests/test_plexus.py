@@ -19,6 +19,11 @@ from plexus import (
     LocalTransport,
     Plexus,
 )
+from plexus.column import (
+    NON_PLASTICITY_FLAGS,
+    PLASTICITY_FLAGS,
+    freeze_plasticity,
+)
 from plexus.readout import LinearReadout
 from plexus.tasks import TemporalPatterns
 
@@ -958,6 +963,74 @@ def test_lateral_inhibition_step_is_scaled_to_the_weights():
     )
     # And it must track the rate, not sit at some floor set by something else.
     assert moved(ColumnConfig.lateral_lr * 4) > 2.0 * rel
+
+
+def test_freeze_plasticity_accounts_for_every_mechanism_flag():
+    """Adding a mechanism must force a decision about what "frozen" means.
+
+    The sweep 017 catch-up condition cleared `hebbian` by hand, which was
+    correct for exactly as long as binding was the only rule writing to W.
+    Sweep 020 added lateral inhibition, and every catch-up condition run after
+    it would have reported "the readout converged against a static column"
+    while the column kept changing underneath it -- the same class of silent
+    invalidation as the forward pass that ignored W.
+
+    So this is deliberately structural rather than a list to keep updated: a new
+    boolean on ColumnConfig fails here until it is registered in one of the two
+    tuples. Enumerating the fields is what makes forgetting impossible.
+    """
+    from dataclasses import fields
+
+    booleans = {
+        f.name for f in fields(ColumnConfig)
+        if isinstance(getattr(ColumnConfig, f.name, None), bool)
+    }
+    accounted = set(PLASTICITY_FLAGS) | set(NON_PLASTICITY_FLAGS)
+    assert booleans == accounted, (
+        f"unclassified boolean config flags: {sorted(booleans - accounted)}. "
+        "Add each to PLASTICITY_FLAGS if it switches on a rule that writes to "
+        "W, or to NON_PLASTICITY_FLAGS if it gates dynamics instead."
+    )
+
+
+def test_freezing_plasticity_is_the_same_as_never_enabling_it():
+    """Freezing must stop every rule, not the one that was on someone's mind.
+
+    Asserted bit-identically against a column configured without the mechanisms
+    from the start, so a rule that keeps writing at a reduced rate fails here
+    too. `lr=0` throughout, so the only thing this can be measuring is the two
+    unsupervised rules -- and both are on in the condition being frozen.
+    """
+    def run(freeze: bool):
+        cfg = ColumnConfig(n_neurons=32, n_external=8, seed=0, lr=0.0,
+                           hebbian=not freeze, lateral=not freeze)
+        if freeze:
+            # A config that had them on, then frozen, must match one that never
+            # did. Set them, then clear them through the helper.
+            cfg.hebbian = cfg.lateral = True
+            freeze_plasticity(cfg)
+        transport = LocalTransport(8 + 32, cfg.delay_max + 2, cfg.modulator_dim)
+        col = Column(cfg, transport)
+        rng = np.random.default_rng(0)
+        for t in range(300):
+            col.step(t, (rng.random(8) < 0.2).astype(np.float32))
+            if t % 50 == 0:
+                transport.broadcast(t, np.ones(cfg.modulator_dim, dtype=np.float32))
+                col.apply_modulator(t)
+        return col.W.copy()
+
+    frozen = run(freeze=True)
+    never = ColumnConfig(n_neurons=32, n_external=8, seed=0, lr=0.0)
+    transport = LocalTransport(8 + 32, never.delay_max + 2, never.modulator_dim)
+    col = Column(never, transport)
+    rng = np.random.default_rng(0)
+    for t in range(300):
+        col.step(t, (rng.random(8) < 0.2).astype(np.float32))
+        if t % 50 == 0:
+            transport.broadcast(t, np.ones(never.modulator_dim, dtype=np.float32))
+            col.apply_modulator(t)
+
+    assert np.array_equal(frozen, col.W), "a plasticity rule survived the freeze"
 
 
 def test_binding_statistics_advance_once_per_event():

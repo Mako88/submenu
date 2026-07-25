@@ -138,6 +138,20 @@ MUTATIONS = [
         "lateral_inhibition_step_is_scaled",
     ),
     (
+        COLUMN,
+        "freezing plasticity forgets a mechanism (the sweep 017 catch-up bug)",
+        "    for flag in PLASTICITY_FLAGS:\n        setattr(cfg, flag, False)",
+        "    cfg.hebbian = False",
+        "freezing_plasticity_is_the_same",
+    ),
+    (
+        COLUMN,
+        "a new mechanism flag is added without classifying it",
+        "    lateral: bool = False\n",
+        "    lateral: bool = False\n    some_new_rule: bool = False\n",
+        "freeze_plasticity_accounts_for_every",
+    ),
+    (
         READOUT,
         "readout standardisation reduced to centering",
         "z = ((state - mean) / (std + 1e-12)).astype(np.float32)",

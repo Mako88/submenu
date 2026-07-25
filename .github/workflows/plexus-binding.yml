@@ -106,19 +106,23 @@ jobs:
           python experiments/e2e.py --tag catchup-off --hebbian 0 --catchup 150 $e2e
           python experiments/e2e.py --tag catchup-on  --hebbian 1 --catchup 150 $e2e
 
-          # Sweep 018: is the gain available inside the same episode budget?
-          # 017's catchup used 450 episodes against everyone else's 300, so it
-          # showed the gain exists rather than that it is free. These all run
-          # 300.
-          python experiments/e2e.py --tag decay-99 --hebbian 1 --hebb-decay 0.99 $e2e
-          python experiments/e2e.py --tag decay-98 --hebbian 1 --hebb-decay 0.98 $e2e
-          python experiments/e2e.py --tag phase    --hebbian 1 --bind-episodes 150 $e2e
+          # Sweep 021: lateral inhibition end to end. Sweep 020 measured it
+          # offline at +0.037 on top of binding while refuting the decorrelation
+          # reasoning that motivated it, and ran no end-to-end condition at all.
+          # `latbind-on` against `rls-on` is the one that matters: if a local
+          # rule under the shipped delta readout reaches what RLS's pooled
+          # correlation matrix reaches, the one standing exception to the
+          # locality rule can go.
+          python experiments/e2e.py --tag lat-on --lateral 1 $e2e
+          python experiments/e2e.py --tag latbind-on --lateral 1 --hebbian 1 $e2e
+          python experiments/e2e.py --tag latbind-rls --lateral 1 --hebbian 1 --readout-rule rls $e2e
+          python experiments/e2e.py --tag latbind-catchup --lateral 1 --hebbian 1 --catchup 150 $e2e
 
-          # Sweep 019: decodability every 25 episodes rather than only at the
-          # end, to separate "binding is slow" from "the readout is slow".
-          traj="--seed ${{ matrix.seed }} --episodes $EPISODES --neurons $NEURONS --every 25 --probe 300"
-          python experiments/trajectory.py --tag off --hebbian 0 $traj
-          python experiments/trajectory.py --tag on  --hebbian 1 $traj
+          # Sweep 018's schedule conditions (decay-99, decay-98, phase) and
+          # sweep 019's decodability trajectory are deliberately not here. Both
+          # questions are answered and written up; re-running them cost about six
+          # minutes of every seed to reproduce numbers already recorded. The
+          # sweep notes are the record, CI is for open questions.
 
       # A run that produced no rows would otherwise aggregate to a confident
       # empty table. The previous version of this workflow passed flags that
@@ -138,7 +142,6 @@ jobs:
           path: |
             experiments/binding_results.jsonl
             experiments/e2e_results.jsonl
-            experiments/trajectory_results.jsonl
           retention-days: 14
 
   aggregate:
@@ -159,7 +162,6 @@ jobs:
         run: |
           cat collected/*/binding_results.jsonl > experiments/binding_results.jsonl
           cat collected/*/e2e_results.jsonl > experiments/e2e_results.jsonl
-          cat collected/*/trajectory_results.jsonl > experiments/trajectory_results.jsonl
           python experiments/binding.py --report | tee summary.txt
           for pair in "on off" "lateral off" "lateral+on on"; do
             set -- $pair
@@ -172,19 +174,18 @@ jobs:
           echo "" | tee -a summary.txt
           python experiments/e2e.py --report | tee -a summary.txt
           echo "" | tee -a summary.txt
+          # Sweep 021's pairs are the last four. `latbind-on rls-on` is the one
+          # the sweep exists to answer -- a local rule under the shipped readout
+          # against a pooled correlation matrix.
           for pair in "e2e-on e2e-off" "rls-on rls-off" "catchup-on catchup-off" \
-                      "decay-99 e2e-off" "decay-98 e2e-off" "phase e2e-off" \
-                      "phase decay-98"; do
+                      "lat-on e2e-off" "latbind-on e2e-on" \
+                      "latbind-on rls-on" "latbind-rls rls-on" \
+                      "latbind-catchup catchup-on"; do
             set -- $pair
             echo "" | tee -a summary.txt
             python experiments/paired_test.py --file experiments/e2e_results.jsonl \
               --metric acc --a "$1" --b "$2" | tee -a summary.txt
           done
-
-      - name: Decodability trajectory
-        run: |
-          echo "" | tee -a summary.txt
-          python experiments/trajectory.py --report | tee -a summary.txt
 
       - uses: actions/upload-artifact@v4
         with:
@@ -192,7 +193,6 @@ jobs:
           path: |
             experiments/binding_results.jsonl
             experiments/e2e_results.jsonl
-            experiments/trajectory_results.jsonl
             summary.txt
           retention-days: 30
 
