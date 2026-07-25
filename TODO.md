@@ -47,19 +47,37 @@ effective rank while gaining +0.074, on 20/20 and 0/20 seeds respectively. Sweep
 011's finding stands — RLS gains by pooling correlations — but "therefore the
 column needs decorrelating" does not follow from it.
 
-Two things are open, in order:
+Sweep 021 settled the payoff question and closed the programme. Under the
+shipped delta readout lateral is null (+0.016, p = 0.33) and reliably worse than
+RLS (−0.071, 5/20 seeds, p = 0.0012). **RLS's pooled matrix remains the one
+genuine locality exception and nothing local has replaced it.**
 
-- **Does it pay end to end?** Sweep 021, running. `latbind-on` against `rls-on`
-  asks whether a local rule under the shipped delta readout reaches what a
-  pooled correlation matrix reaches. Sweep 016 is the reason not to assume:
-  binding's +0.074 offline arrived as +0.007. The prediction, recorded before
-  the run, is that it does not, and names closing the direction as the
-  consequence.
-- **What is the mechanism?** Sparsity is flat (0.031 → 0.034), so it is not a
-  gross activity change. Candidates worth a direct probe: per-unit dynamic
-  range, which units respond at all rather than how they covary, or a second
-  consolidating force by another route — which the effective-rank direction
-  mildly favours. None is measured; none should be written down until one is.
+But it reaches **0.842 with RLS**, +0.040 over binding alone at p = 0.0284 — the
+best end-to-end number in the project. A mechanism built to make RLS unnecessary
+works only when RLS is present.
+
+What is open is why, and it now has a sharp form. The transfer ratios invert:
+
+| | catch-up | RLS | delta |
+|---|---|---|---|
+| binding (+0.074 offline) | 0.85 | 0.58 | 0.09 |
+| lateral on top (+0.037 offline) | 0.14 | 1.08 | 0.43 (null) |
+
+A catch-up phase collects 85% of binding's gain and 14% of lateral's, so the
+delta readout's problem with lateral is not *time*. The hypothesis — untested,
+and the reason this item stays — is that lateral's contribution sits in
+directions correlated with those already present, recoverable by whitening and
+invisible to gradient descent however long it runs. Sweep 020 measured lateral
+not reducing correlation, which is consistent with that.
+
+**The test:** project the column state onto its top-k principal directions and
+measure how much of each mechanism's decodability advantage survives. If it
+holds, lateral's gain lives in low-variance directions and binding's in
+high-variance ones — and that would say what kind of readout is worth building
+next, which is more useful than either accuracy number.
+
+Sparsity is flat across all four conditions (0.031 → 0.034), so whatever lateral
+does, it is not a gross activity change.
 
 ## 3. Why does homeostatic settling alone buy +0.197?
 

@@ -466,9 +466,62 @@ the direction decorrelation predicts.** What it is doing is unmeasured and
 deliberately left that way in the code rather than filled in with a plausible
 story.
 
-Whether any of that reaches the model's actual output is untested: sweep 020 ran
-no end-to-end condition, and binding's own +0.074 offline gain arrived as
-+0.007. Sweep 021 is that measurement.
+### It pays end to end — through the readout it was built to replace
+
+Sweep 021 asked whether any of that reaches the output. The point of lateral
+inhibition was that a *local* rule could let the cheap shipped readout extract
+what RLS extracts by pooling a correlation matrix across the whole population.
+Twenty paired seeds:
+
+| condition | readout | accuracy | vs | Δ | p |
+|---|---|---|---|---|---|
+| nothing on | delta | 0.709 | | | |
+| lateral only | delta | 0.707 | nothing on | −0.001 | 0.90 |
+| lateral + binding | delta | 0.731 | binding alone | +0.016 | 0.33 |
+| lateral + binding | delta | 0.731 | **binding + RLS** | **−0.071** | **0.0012** |
+| binding | RLS | 0.803 | | | |
+| **lateral + binding** | **RLS** | **0.842** | binding + RLS | **+0.040** | **0.0284** |
+| lateral + binding | delta, +150 catch-up | 0.775 | binding + catch-up | +0.005 | 0.60 |
+
+Two things, and they pull opposite ways.
+
+**The programme it was built for is closed.** Under the shipped delta readout
+lateral inhibition is null — with or without a catch-up phase — and reliably
+*worse* than RLS, on 5 of 20 seeds at p = 0.0012. Sweep 020 refuted the premise
+and 021 refutes the payoff, so the direction stops rather than acquiring a rate
+sweep. **RLS's pooled correlation matrix remains the one genuine exception to
+the locality rule in this model, and nothing local has been shown to replace
+it.**
+
+**And it is the best result in the project.** Lateral + binding under RLS reaches
+**0.842**, +0.040 over binding alone and +0.083 over the no-mechanism RLS
+baseline. A mechanism built to make RLS unnecessary works only when RLS is
+present.
+
+The catch-up row is the informative failure. Line up how much of each offline
+gain survives end to end:
+
+| | catch-up | RLS | delta |
+|---|---|---|---|
+| binding (+0.074 offline) | 0.85 | 0.58 | 0.09 |
+| lateral on top (+0.037 offline) | 0.14 | 1.08 | 0.43 (null) |
+
+**The ordering inverts.** Binding's gain transfers best when the readout is
+given a settled column; lateral's transfers essentially completely under RLS and
+not at all under catch-up. So the delta readout's difficulty with lateral is not
+*time* — 150 episodes against a static column collect nothing.
+
+A hypothesis, labelled as one because nothing here measures it: what
+distinguishes RLS from a delta rule given unlimited time is whitening. Sweep 020
+measured lateral *not* reducing correlation, so if what it adds sits in
+directions correlated with those already present, it would be recoverable by
+whitening and invisible to gradient descent however long it runs. The test is a
+principal-direction projection — if it holds, lateral's advantage lives in
+low-variance directions and binding's in high-variance ones. Not run.
+
+**The default configuration ships the delta readout, so 0.842 is not what the
+model does today.** It is what it does with RLS, and RLS does not decompose
+across columns.
 
 The mechanism also arrived by way of one that was deleted. This began as an
 engram allocator — excitability drift, a recruitment competition, an allocation
