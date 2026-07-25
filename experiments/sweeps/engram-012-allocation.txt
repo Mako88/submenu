@@ -98,6 +98,73 @@ Note also that the frozen baseline here reads 0.837 linear, well above the
 collection episodes, 96 neurons), so these are not comparable across sweeps --
 only within this table, where every condition shares a seed and a harness.
 
-RESULT (20 seeds)
------------------
-Pending: .github/workflows/plexus-engram.yml, triggered by this file.
+RESULT -- 20 paired seeds
+-------------------------
+condition      excite   alloc  rotate  separate   linear     MLP  sparsity
+off             0.000   0.000   0.000     0.000    0.802   0.987     0.031
+alloc          +0.043   0.163   0.642    +0.036    0.758   0.978     0.033
+alloc+hebb     -0.012   0.176   0.815    +0.052    0.831   0.999     0.037
+no-refract     +0.016   0.174   1.661    +0.061    0.844   0.998     0.036
+
+Paired permutation on `linear`:
+  alloc+hebb vs off          +0.029, 14/20 seeds, p = 0.0176  SIGNIFICANT
+  alloc     vs off           -0.044,  5/20 seeds, p = 0.0099  SIGNIFICANT, negative
+  alloc+hebb vs no-refract   -0.014,  8/20 seeds, p = 0.15    no difference
+
+The prediction held, and landed inside the band it named: +0.029 against a
+predicted +0.02 to +0.06, p < 0.05. The 1-seed reading of +0.10 did not
+survive, exactly as predicted -- and the prediction that it would not is the
+reason this file is worth anything.
+
+This is the first mechanism in the project to beat a frozen column at twenty
+seeds. Worth stating precisely what that does and does not mean.
+
+WHAT IT MEANS
+-------------
+It is a *local* gain. The RLS readout (sweep 010) produced +0.032 at p = 0.0098
+and required a globally pooled correlation matrix, which sweep 011 showed does
+not decompose; the default was reverted. This is +0.029 at p = 0.0176 with
+nothing pooled anywhere -- every operation is a neuron reading its own state.
+Comparable size, bought without breaking the rule the architecture exists to
+serve. That comparison is the point, not the raw number.
+
+It is also an unsupervised gain. Recruitment reads only the *presence* of a
+modulator release, never its sign or its target, so nothing here depends on the
+error signal being correct. That matters because the supervised path is the one
+that has failed eleven times.
+
+WHAT IT DOES NOT MEAN
+---------------------
+The allocation machinery is not what earned it. Three lines say so:
+
+  - `alloc` alone is reliably WORSE than off (-0.044, p = 0.0099). Recruitment
+    and refractoriness with no weight change actively damage the
+    representation.
+  - `no-refract` reads 0.844 against alloc+hebb's 0.831, i.e. removing the
+    allocation refractory is if anything better, and certainly not worse
+    (p = 0.15).
+  - `excite` is -0.012 in the full condition. The excitability bias that all
+    three redesigns were aimed at is doing nothing measurable here.
+
+So the honest reading is that **Hebbian binding gated by a salience signal is
+carrying the entire effect**, and the allocation scaffolding around it is at
+best neutral and at worst harmful. The refractory does buy the one thing it was
+built for -- rotate 0.815 against no-refract's 1.661, engrams overlapping less
+than independent sampling -- but that rotation is not yet worth anything
+downstream on this task, which asks nothing of memory separation. A capacity or
+continual-learning benchmark is where it would have to pay off, and this task
+is not one.
+
+Also unconfirmed: this is linear decodability of the representation, not
+end-to-end accuracy. Sweep 009 is the standing warning that the two can come
+apart. The next run should be e2e.
+
+NEXT
+----
+1. e2e confirmation of alloc+hebb at 20 seeds.
+2. Strip the mechanism to Hebbian binding alone, no excitability, no
+   recruitment competition -- just salience-gated Hebbian LTP with synaptic
+   scaling for competition. If that matches 0.831, the entire engram apparatus
+   is scaffolding and should be deleted rather than defended.
+3. Only if (2) shows allocation contributing: a benchmark that asks for
+   memory separation, where rotation could be worth its cost.

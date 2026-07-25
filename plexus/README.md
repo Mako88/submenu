@@ -358,6 +358,25 @@ with it the label is 0.86 decodable. That is the main positive result.
 **Refuted.** That the local three-factor rule beats a frozen reservoir. Twenty
 paired seeds put the difference at −0.003 with p = 0.79.
 
+**First positive learning result.** A different rule does beat it. Salience-gated
+Hebbian binding, wrapped in an engram-allocation mechanism, improves linear
+decodability by **+0.029 over a frozen column, 14/20 seeds, p = 0.0176**
+(`experiments/sweeps/engram-012-allocation.txt`). Two things make that worth
+more than the number: it is *local* — comparable in size to the +0.032 the RLS
+readout bought, but with nothing pooled across neurons, where RLS needed a
+global correlation matrix and did not decompose — and it is *unsupervised*,
+since recruitment reads only that a modulator was released, never its sign or
+its target.
+
+The ablations say plainly that the allocation machinery is not what earned it.
+Allocation without binding is reliably *worse* than off (−0.044, p = 0.0099),
+removing the allocation refractory costs nothing (p = 0.15), and the
+excitability bias correlates −0.012 with recruitment in the winning condition.
+Hebbian binding is carrying the effect; the engram apparatus around it is
+scaffolding until a benchmark that asks for memory separation says otherwise.
+The result is also representation quality, not end-to-end accuracy, and sweep
+009 is the standing reminder that those can come apart.
+
 Two readings are worth separating. The *locality* claims — no synchronisation
 barrier, emission-time addressing, tolerance of inter-column conduction delay —
 are structural and hold regardless of whether the learning rule helps. What is
