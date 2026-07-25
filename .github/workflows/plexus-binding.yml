@@ -24,9 +24,15 @@ on:
         description: 'Episodes captured for the offline decoder'
         required: false
         default: '500'
+  # A dedicated sentinel, not the sweep notes. Triggering on
+  # 'experiments/sweeps/binding-*.txt' meant that *recording a result* re-ran
+  # the 20-seed matrix that produced it -- an 11-minute round trip for numbers
+  # already in hand, every single time. Path filters cannot distinguish a file
+  # being added from a file being edited, so the trigger has to live somewhere
+  # results are never written. Same pattern as plexus-latency.yml.
   push:
     paths:
-      - 'experiments/sweeps/binding-*.txt'
+      - 'experiments/run-binding.txt'
 
 env:
   SEEDS: ${{ github.event.inputs.seeds || '20' }}

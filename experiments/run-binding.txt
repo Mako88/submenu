@@ -1,0 +1,13 @@
+Sentinel for .github/workflows/plexus-binding.yml.
+
+Editing this file starts a 20-seed run of the binding sweeps. It exists so that
+writing a *result* into experiments/sweeps/binding-*.txt does not re-run the
+matrix that produced it, which the previous path filter did every time -- about
+eleven minutes of CI per recorded result.
+
+Record what each run was for, so the artifacts can be matched to a question.
+
+run 1 -- sweeps 015/016/017/018, ten conditions per seed.
+  binding on/off measured offline (linear, MLP), and end to end across delta,
+  RLS, catch-up, two decay rates and a bind-then-stop schedule.
+  Results in experiments/sweeps/binding-015 .. -018.
