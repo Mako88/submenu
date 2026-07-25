@@ -336,9 +336,10 @@ false would kill the design after it was written:
   checks this against every real time constant in the model at gaps up to 500
   steps — the worst case a scheduler would skip, against the 320 ms membrane.
 - Decay is monotone downward, so a neuron cannot cross threshold without input.
-  Not self-evident: the soma adds `self.bias` and sums through a plateau
-  nonlinearity, so a positive resting drive would let potential rise with no
-  input at all. `test_a_silent_neuron_cannot_reach_threshold` cuts the input,
+  Not self-evident: the soma sums through a plateau nonlinearity, so a positive
+  resting drive would let potential rise with no input at all. (It once also
+  added `self.bias`, since deleted as a constant zero — the guarantee is now
+  structural rather than dependent on that term staying unwritten.) `test_a_silent_neuron_cannot_reach_threshold` cuts the input,
   waits for the delay lines to drain, and asserts zero emissions and a falling
   membrane.
 
@@ -418,9 +419,26 @@ another: `surrogate` is `"window"` (the version a fix was written *against*)
 while experiments use `"graded"`; `lr` is 0.004 against a swept 0.005; and
 `n_neurons=256` has never been measured at any point in this project.
 
-`self.bias` is allocated, added to the somatic drive, and written by nothing.
-A constant zero, recorded in a test rather than deleted so no reader assumes a
-term in the soma equation is doing something.
+~~`self.bias` is allocated, added to the somatic drive, and written by nothing.~~
+**Deleted.** It was a constant zero added to the soma on every step of every
+run, at every configuration — the project's signature failure in its purest
+form, a quantity that looks connected and is not. Removing it left `W`
+bit-identical over five training episodes, which is both the proof it never did
+anything and the reason nothing noticed.
+
+It had been *recorded* in a test rather than removed, and that test passed for
+the life of the project while the term sat there. So the fix is over the class:
+`test_every_column_array_is_either_written_or_declared_constant` enumerates
+every array on the column, drives a run with every mechanism enabled including
+`lr_tau`, and requires each one to be either written by something or named in an
+explicit `CONSTANT` list with its reason. A new dead quantity fails as
+unclassified; a constant that becomes live fails too, so the list cannot rot in
+either direction.
+
+The check found exactly one dead quantity, and its own first version was wrong
+in an instructive way: it listed the column's arrays once at construction, so an
+array created *during* a run was invisible to it — and the mutation written to
+verify it duly escaped. It now re-scans every step.
 
 ## 7. Distribution, for real
 

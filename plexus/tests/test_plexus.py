@@ -1566,6 +1566,99 @@ def test_growing_the_event_buffer_preserves_what_is_in_flight():
         buf.grow(2)
 
 
+def test_every_column_array_is_either_written_or_declared_constant():
+    """No quantity may sit in the forward path with nothing writing it.
+
+    This is the project's signature failure in its purest form: `self.bias` was
+    allocated as zeros, added to the somatic drive on every step of every run,
+    and written by no code path at any configuration. It looked like a
+    per-neuron excitability parameter and was a no-op. Removing it left `W`
+    bit-identical over five training episodes, which is the proof it never did
+    anything — and also the reason nothing noticed for the life of the project.
+
+    Rather than assert `bias` is gone — it is, so such a test could never fail
+    again — this enumerates *every* ndarray on the column, drives a run with
+    every mechanism switched on, and records which ones nothing ever writes.
+
+    This supersedes `test_somatic_bias_is_inert`, which asserted that `bias`
+    stayed zero and so *documented* the dead quantity instead of removing it.
+    That test passed for the life of the project while the term sat in the soma
+    equation doing nothing, which is the argument for enumerating the class
+    rather than pinning the instance.
+    That set must equal `CONSTANT` exactly. A new array that nothing writes
+    fails as "unclassified"; an array that becomes live fails as "no longer
+    constant", so the list cannot rot in either direction.
+
+    Every mechanism is enabled deliberately, `lr_tau` included. With it at its
+    default of 0 the learned-time-constant machinery (`dv_dlam`, `elig_tau`,
+    and `tau_soma` itself) is never written either, and a check run at defaults
+    would have to allowlist live mechanisms alongside dead quantities — which
+    is exactly the distinction it exists to draw.
+    """
+    # Structural, and constant for a stated reason rather than by accident.
+    CONSTANT = {
+        "src",           # which source each synapse reads; wiring
+        "delay",         # per-synapse conduction delay; wiring
+        "syn_sign",      # Dale's law sign, fixed at construction
+        "source_sign",   # the same, indexed by source
+        "G",             # per-branch gain; fixed random by design, no rule adapts it
+        "feedback",      # per-neuron modulator projection; the network may
+                         # overwrite it for symmetric feedback, no rule adapts it
+        "_flat",         # precomputed gather table; rebuilt only by add_inputs
+    }
+
+    task = DelayedXOR()
+    model = Plexus(
+        task.n_inputs, task.n_classes,
+        column=ColumnConfig(n_neurons=16, lr=0.004, seed=0, hebbian=True,
+                            lateral=True, bind_tau_pre=300.0, lr_tau=1e-3),
+        seed=0,
+    )
+    col = model.column
+    written: set[str] = set()
+    prev: dict[str, np.ndarray] = {}
+    rng = np.random.default_rng(3)
+    modulator = np.ones(col.cfg.modulator_dim, dtype=np.float32)
+
+    def scan() -> None:
+        # Re-scanned every step rather than listed once at construction. An
+        # array created *during* a run would otherwise never enter the list and
+        # so could never be found dead — which is exactly how the first version
+        # of this test let its own mutation escape.
+        for n, v in list(vars(col).items()):
+            if not isinstance(v, np.ndarray):
+                continue
+            if n not in prev:
+                prev[n] = v.copy()
+                continue
+            if n not in written and not np.array_equal(v, prev[n]):
+                written.add(n)
+            prev[n] = v.copy()
+
+    scan()
+    for _ in range(2):
+        ep = task.episode(rng)
+        col.reset_state()
+        model.transport.reset()
+        for k in range(ep.inputs.shape[0]):
+            t = model._t
+            model._t += 1
+            col.step(t, ep.inputs[k])
+            # Fire the modulator every step, so quantities only written when
+            # credit arrives (`act_slow`, `elig_rms`) are not mistaken for dead.
+            model.transport.broadcast(t, modulator)
+            col.apply_modulator(t)
+            scan()
+
+    never = set(prev) - written
+    assert never == CONSTANT, (
+        f"unclassified dead quantities: {sorted(never - CONSTANT)}; "
+        f"declared constant but now live: {sorted(CONSTANT - never)}. "
+        "A quantity in the forward path that nothing writes is the failure "
+        "this suite exists to catch — either give it a rule or delete it."
+    )
+
+
 def test_freeze_plasticity_accounts_for_every_mechanism_flag():
     """Adding a mechanism must force a decision about what "frozen" means.
 
@@ -1703,22 +1796,6 @@ def test_output_depends_on_branch_gains():
         )
 
     assert not np.allclose(run(1.0), run(0.5)), "branch gains never reached the soma"
-
-
-def test_somatic_bias_is_inert():
-    """`bias` is allocated, added to the drive, and never written by anything.
-
-    Recorded rather than removed, because a reader can reasonably assume a term
-    in the soma equation does something. It does not: no rule updates it, so it
-    contributes a constant zero. If it is ever wired up, this test should fail
-    and be replaced by one that checks it reaches the output.
-    """
-    task = DelayedXOR()
-    m = Plexus(task.n_inputs, task.n_classes, column=ColumnConfig(n_neurons=32), seed=0)
-    rng = np.random.default_rng(0)
-    for _ in range(4):
-        m.run_episode(task.episode(rng), learn=True)
-    assert np.array_equal(m.column.bias, np.zeros_like(m.column.bias))
 
 
 def test_plateau_nonlinearity_reaches_the_output():

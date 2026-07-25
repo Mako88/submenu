@@ -394,7 +394,6 @@ class Column:
         # --- Parameters ---------------------------------------------------
         self.W = np.abs(rng.normal(0.0, 0.4, size=(N, B, S))).astype(np.float32)
         self.G = rng.uniform(0.4, 1.0, size=(N, B)).astype(np.float32)
-        self.bias = np.zeros(N, dtype=np.float32)
         self.theta = np.full(N, cfg.threshold_init, dtype=np.float32)
 
         self.decay_branch = np.float32(np.exp(-cfg.dt / cfg.tau_branch))
@@ -671,7 +670,7 @@ class Column:
         a, dphi, engaged = self._phi(self.b)
 
         # 4. Soma integration.
-        drive = (self.G * a).sum(axis=1) + self.bias
+        drive = (self.G * a).sum(axis=1)
         v_prev = self.v
         self.v = self.decay_soma * v_prev + self.gain_soma * drive
 

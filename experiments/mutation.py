@@ -83,8 +83,8 @@ MUTATIONS = [
     (
         COLUMN,
         "branch gains dropped from the soma",
-        "drive = (self.G * a).sum(axis=1) + self.bias",
-        "drive = a.sum(axis=1) + self.bias",
+        "drive = (self.G * a).sum(axis=1)",
+        "drive = a.sum(axis=1)",
         "branch_gains",
     ),
     (
@@ -261,6 +261,14 @@ MUTATIONS = [
         "            self.bind_pre *= self.decay_bind_pre",
         "            self.bind_pre *= self.decay_branch",
         "bind_tau_pre",
+    ),
+    (
+        COLUMN,
+        "a dead quantity is added to the forward path (the self.bias bug)",
+        "        drive = (self.G * a).sum(axis=1)",
+        "        self._dead = np.zeros_like(self.theta)\n"
+        "        drive = (self.G * a).sum(axis=1) + self._dead",
+        "written_or_declared_constant",
     ),
     (
         COLUMN,
