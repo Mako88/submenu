@@ -106,7 +106,8 @@ does not cover what it is cited for.
 | item | how | status |
 |---|---|---|
 | What lateral inhibition is actually doing | principal-direction projection | Built to decorrelate; sweep 020 measured it not decorrelating while helping, and sweep 021 found its gain fully recoverable by RLS (ratio 1.08) and not at all by a catch-up phase (0.14) — the inverse of binding's ordering. The hypothesis is that it adds information in correlated directions, readable by whitening and not by time. **Unmeasured, and the mechanism is kept on its measurement rather than on any of this** |
-| Why homeostatic settling alone buys +0.197 decodability | new probe | Larger than anything the learning rules have produced, surfaced by sweep 019, and never asked about |
+| Is the settling operating point precomputable? | sweep 023, two conditions | Sweep 022 established the +0.197 is an operating point, not a trajectory (0.752 from preset alone against 0.582). What remains is whether a twin settled on *random* input with matching statistics finds the same values — if so, fifty episodes of every run are free |
+| `scaling_lr=2e-2` now has evidence against it | paired test | Sweep 022: removing synaptic scaling gives 0.780 against 0.755 with identical sparsity. Previously untuned-with-no-evidence (below); now untuned-with-evidence-pointing-at-off. Needs a paired test before acting — the curve comparison is not one |
 | The residual 0.770-vs-0.876 gap after catch-up | offline probe on the catchup condition | not yet run |
 | `modulator_lag` at 20 seeds -- the learning half of latency tolerance | `plexus-experiment.yml`, `modulator_lag=200` | **not yet run; highest value of the three** |
 | `PRETRAIN` under a corrected learning rate | `plexus-experiment.yml`, `pretrain=400` | not yet run; held until the engram matrix clears CI |

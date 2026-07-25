@@ -341,7 +341,11 @@ mathematically independent of whether `W` is applied. Two did not:
 - **`scaling_lr`** was set to `2e-2` while synaptic scaling was *dynamically
   inert*, since it only ever moved a `W` that nothing read. It is now a live
   force (~21 % weight movement) and is a genuine free parameter that has never
-  been tuned against a working forward pass.
+  been tuned against a working forward pass. Sweep 022 is the first evidence
+  about what it buys and the answer is nothing detectable: disabling it gives
+  0.780 decodability against 0.755, with identical sparsity, over 20 seeds. That
+  is a curve comparison rather than a paired test, so it moves the parameter
+  from "no evidence" to "evidence pointing at off" — not yet to a change.
 
 ## Status
 
@@ -425,7 +429,46 @@ One thing nobody had measured, visible only in the trajectory: the frozen
 condition climbs from 0.582 to 0.779 over the first fifty episodes, on
 homeostatic settling alone. **+0.197 of decodability from threshold and knee
 adaptation with no learning rule of any kind** — more than twice what binding
-adds, and entirely unexplained.
+adds.
+
+### That +0.197 is an operating point, not a learned trajectory
+
+Sweep 022 ablated the three quantities that adapt in that condition. The naive
+version does not answer it: with threshold homeostasis off, sparsity falls from
+0.031 to 0.0044 and the column is silent, so its flat curve is a fact about a
+dead column. Sparsity is recorded beside decodability for exactly that reason.
+
+The control that works separates *finding* an operating point from *keeping*
+adapting: settle a twin — same seed, same weights, same wiring — copy its
+threshold and knee across, then switch adaptation off. Twenty seeds, 100
+episodes:
+
+| condition | ep 0 | ep 100 | sparsity | |
+|---|---|---|---|---|
+| everything adapting | 0.582 | 0.755 | 0.031 | |
+| **preset, nothing adapting** | **0.752** | 0.752 | 0.023 | |
+| preset, θ frozen only | 0.752 | 0.772 | 0.031 | no trend |
+| no knee adaptation | 0.582 | 0.716 | 0.031 | |
+| no synaptic scaling | 0.582 | **0.780** | 0.031 | |
+| no threshold homeostasis | 0.582 | 0.582 | **0.0044** | *dead — uninterpretable* |
+
+**Handing a column two per-neuron vectors gets 0.752 with nothing learning at
+all** — +0.170 of the +0.197, 86% of the way to where full adaptation plateaus.
+The fifty episodes are a *search* for an operating point, not an accumulation.
+Ongoing adaptation on top of a correct one adds nothing measurable.
+
+Not yet established: that the operating point is *free*. The twin had fifty
+episodes of task exposure to find it — unsupervised, `lr=0`, no labels, but
+still derived from data. Whether random input with matching statistics would do
+is the next measurement, and if it would, fifty episodes of every future run are
+free.
+
+Two things fell out that nobody was looking for. **Removing synaptic scaling
+costs nothing** — 0.780 against 0.755, sparsity identical — which is the first
+evidence about a live default (`scaling_lr = 2e-2`) that was chosen while the
+mechanism was dynamically inert. And **settling is not monotone**: it overshoots
+to 0.813 by episode 10 and relaxes to ~0.76. Sweep 019 checkpointed every 25
+episodes and could not see it.
 
 ### What shape the representation is, and why decorrelating it was the wrong idea
 

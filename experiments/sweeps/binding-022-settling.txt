@@ -117,6 +117,117 @@ SETTINGS
 column lr 0, binding off, lateral off. `--preset-from 50`, matching where sweep
 019 measured the plateau.
 
-RESULT -- 20 paired seeds
--------------------------
-Pending.
+RESULT -- 20 seeds
+------------------
+linear decodability
+ episode      all    no-knee  no-scaling  no-theta  preset-frozen  theta-preset
+       0    0.582     0.582      0.582     0.582        0.752         0.752
+      10    0.813     0.756      0.834     0.573        0.752         0.778
+      20    0.762     0.699      0.795     0.589        0.752         0.757
+      30    0.749     0.696      0.783     0.579        0.752         0.765
+      40    0.760     0.709      0.777     0.577        0.752         0.781
+      50    0.779     0.704      0.783     0.591        0.752         0.756
+      60    0.754     0.702      0.777     0.598        0.752         0.773
+      70    0.781     0.698      0.767     0.577        0.752         0.752
+      80    0.778     0.696      0.796     0.581        0.752         0.771
+      90    0.759     0.688      0.780     0.584        0.752         0.762
+     100    0.755     0.716      0.780     0.582        0.752         0.772
+
+sparsity
+       0    0.0300   0.0300     0.0300    0.0300       0.0300       0.0300
+      10    0.0223   0.0225     0.0205    0.0043       0.0228       0.0307
+     100    0.0309   0.0306     0.0309    0.0044       0.0228       0.0307
+
+THE OPERATING POINT IS THE ANSWER
+----------------------------------
+`preset-frozen` starts at **0.752 against `all`'s 0.582**, with threshold, knee
+and scaling adaptation all disabled and `lr=0`. Nothing in that column is
+learning anything. Handing it a settled twin's threshold and knee accounts for
+**+0.170 of the +0.197**, or 86% of the way to where `all` plateaus (~0.76).
+
+So the answer to "what is the +0.197?" is: **a few hundred per-neuron scalars.**
+It is a search for an operating point, not an accumulation. Fifty episodes of
+unsupervised settling produce a state that could have been handed over directly.
+
+`theta-preset` -- preset, threshold adaptation off, knee and scaling still
+running -- sits at 0.752-0.781 with no trend, within the predicted 0.02 of
+`preset-frozen`. Ongoing adaptation on top of a correct operating point adds
+nothing detectable.
+
+A FLAW IN MY OWN CONDITION, RECORDED RATHER THAN GLOSSED
+---------------------------------------------------------
+The prediction called `preset-frozen` "FLAT throughout" and said "if ongoing
+adaptation matters, this curve must climb". **That half was untestable by
+construction.** With `lr=0`, no binding, no lateral, and all three adaptations
+disabled, nothing in the column changes between checkpoints -- and the probe
+uses a fixed seed per checkpoint, so the curve is *identical* by arithmetic, not
+flat by measurement. It reads 0.752 at all eleven checkpoints to three decimals
+because it is literally the same column being measured eleven times.
+
+A condition that cannot fail its own prediction is worth nothing as evidence,
+and rule 9 applies to experimental conditions and not only to unit tests. What
+carries the finding is the *level* at episode 0 -- 0.752 against 0.582 -- which
+is a real comparison between two columns differing only in theta and knee.
+`theta-preset` is the condition that could have climbed and did not, so it does
+the work the prediction assigned to `preset-frozen`.
+
+Naming it because the same mistake is easy to repeat: check that each condition
+has a reachable outcome that would refute the prediction, not just a plausible
+one that would confirm it.
+
+SYNAPTIC SCALING IS NOT HELPING, AND THAT WAS NOT PREDICTED
+------------------------------------------------------------
+`no-scaling` was predicted at 0.62-0.70. It reaches **0.780, above `all`'s
+0.755**, with sparsity indistinguishable from the full condition (0.0309 in
+both). Removing synaptic scaling costs nothing and may buy a little.
+
+That lands on a decision AUDIT.md already flags. `scaling_lr = 2e-2` was chosen
+while synaptic scaling was *dynamically inert* -- it only ever moved a `W` that
+the forward pass ignored -- and has never been tuned against a working forward
+pass. This is the first measurement of what it contributes, and the answer is
+nothing detectable in decodability at 20 seeds. It is not a null hypothesis test
+between them, so the honest statement is: **scaling is not carrying the settling
+gain, and its live default now has evidence against it rather than none.**
+
+`no-knee` reaches ~0.70 against `all`'s ~0.76 with healthy sparsity (0.0306), so
+knee adaptation is worth roughly +0.06 -- predicted 0.60-0.68, slightly under.
+
+THE DEAD-COLUMN CONDITION, AS PREDICTED
+-----------------------------------------
+`no-theta` sits at 0.577-0.598 throughout with sparsity at 0.0044 against a
+target of 0.03. The column is at a seventh of its target rate. Its flat curve is
+a fact about a silent column and says nothing about threshold homeostasis, and
+it is recorded here so nobody re-derives it. This is why the sparsity table is
+printed beside the decodability table rather than on request.
+
+A DETAIL NOBODY ASKED FOR: THE OVERSHOOT
+------------------------------------------
+`all` reaches **0.813 at episode 10** and then falls back to ~0.76 and stays
+there. `no-scaling` does the same, more strongly: 0.834 at episode 10 against a
+0.78 plateau. Sweep 019 could not see this -- it checkpointed every 25 episodes.
+
+So settling is not monotone: it overshoots by ~+0.05 and relaxes. Unexplained,
+and not chased here, but recorded because "converges to a plateau" is the
+natural description and it is wrong.
+
+Also worth noting: `preset-frozen` runs at sparsity 0.0228 against `all`'s
+0.0309. The preset operating point is captured from a twin at one moment and
+then held fixed, so it sits slightly off what the measured run's own statistics
+would settle to. That is a plausible reason 0.752 falls a little short of 0.76,
+and it means the preset is a lower bound on what a correct operating point buys.
+
+WHAT THIS DOES AND DOES NOT ESTABLISH
+--------------------------------------
+Established: the settling gain is an operating point, reproducible by copying
+two per-neuron vectors, and ongoing adaptation on top of a correct one adds
+nothing measurable over 100 episodes.
+
+Not established: that the operating point is *free*. The twin had fifty episodes
+of exposure to the task to find it. No labels and `lr=0` throughout, so it is
+unsupervised, but it is still derived from data.
+
+That is sweep 023, exactly as this sweep's prediction named it in advance: does
+the twin need *task* input, or would any input with matching statistics do? If
+random input suffices, the operating point is precomputable and fifty episodes
+of every future run are free. It is a two-condition sweep and should not be
+folded into anything else.

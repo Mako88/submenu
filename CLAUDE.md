@@ -130,6 +130,20 @@ Watch particularly for an assertion on a quantity that something *else* pins.
 > against `W.mean()`, which synaptic scaling holds at `branch_budget /
 > n_synapses` regardless of what the binding does.
 
+**The same applies to an experimental condition.** Before running a sweep, ask
+of each condition what outcome would *refute* the prediction attached to it. If
+the predicted outcome is guaranteed by how the condition is built, it is not
+evidence however it comes out — and it will read as confirmation.
+
+> *Calibration.* Sweep 022's `preset-frozen` was predicted to be "flat
+> throughout", with a climb naming the alternative hypothesis. Nothing in that
+> condition can change: `lr=0`, all three adaptations disabled, fixed probe
+> seed. The curve was identical to three decimals at all eleven checkpoints
+> because it was the same column measured eleven times. What carried the finding
+> was its *level* at the first checkpoint, 0.752 against 0.582 — a real
+> comparison — and `theta-preset`, the condition that could have climbed and did
+> not.
+
 **10. A failing test is a claim about the production code until shown
 otherwise.** Fix the code so the assertion holds. Widening a bound, deleting an
 assertion or special-casing the input converts a caught bug into a silent one

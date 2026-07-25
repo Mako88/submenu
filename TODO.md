@@ -79,16 +79,41 @@ next, which is more useful than either accuracy number.
 Sparsity is flat across all four conditions (0.031 → 0.034), so whatever lateral
 does, it is not a gross activity change.
 
-## 3. Why does homeostatic settling alone buy +0.197?
+## 3. Is the settling operating point precomputable? (sweep 023)
 
-Surfaced by sweep 019 and never asked about. A frozen column climbs from 0.582
-to 0.779 decodability over its first fifty episodes with no learning rule of
-any kind running — threshold and knee adaptation alone. That is more than twice
-what salience-gated Hebbian binding adds on top, and nothing in this repo
-explains it or has tried to.
+Sweep 022 answered the original question. The +0.197 is **an operating point,
+not a learned trajectory**: a column handed a settled twin's threshold and knee,
+with nothing adapting and `lr=0`, reads 0.752 against 0.582 — +0.170 of the
++0.197, with no learning of any kind. Ongoing adaptation on top of a correct
+operating point adds nothing measurable over 100 episodes.
 
-If unsupervised homeostasis is doing most of the representational work, that is
-worth knowing before more effort goes into rules layered above it.
+What is left is whether it is **free**. The twin had fifty episodes of task
+exposure to find those values — unsupervised, no labels, but derived from data.
+Two conditions settle it:
+
+- twin settled on the task, as measured (0.752)
+- twin settled on **random input with matching rate and sparsity**
+
+If the second matches, the operating point is precomputable from input
+statistics alone, and fifty episodes of every future run come free. If it does
+not, the settling is doing something task-specific and that is a more
+interesting finding than the saving.
+
+Keep it two conditions. It is a clean question and folding it into a larger
+matrix is how it stops being one.
+
+### Fell out of 022, both worth chasing
+
+- **Synaptic scaling is not carrying anything.** Removing it gives 0.780
+  against 0.755 with identical sparsity. `scaling_lr = 2e-2` was chosen while
+  the mechanism was dynamically inert — it only ever moved a `W` the forward
+  pass ignored — and AUDIT has flagged it as untuned ever since. This is the
+  first evidence, and it points at *off*. Needs a paired test rather than a
+  curve comparison before acting.
+- **Settling is not monotone.** It overshoots to 0.813 by episode 10 and relaxes
+  to ~0.76; `no-scaling` overshoots harder, to 0.834. Sweep 019 checkpointed
+  every 25 episodes and missed it. "Converges to a plateau" is the natural
+  description and it is wrong.
 
 ## 4. Event-driven execution
 
