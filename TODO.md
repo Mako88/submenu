@@ -13,6 +13,7 @@ question in plain language, with where it stands. Detail is below.
 | 6 | Which old decisions rest on evidence a later fix destroyed? | Six items, tracked in AUDIT.md |
 | 7 | Does it actually work spread across machines? | Still never tried on real machines. But the property it depends on is now **measured**: delivery jitter below `delay_min` leaves a distributed run bit-identical, and above it does not |
 | 8 | Would a single GPU just beat this? | **The premise was wrong.** Not bandwidth-bound — 17 % of DRAM peak at 96 neurons, working set fits in L2. It is overhead-bound, so the comparison cannot be made until the code is near *some* limit |
+| 9 | Which claims in the record were never measured? | New. Heterogeneous time constants is the live one — **sweep 036 built and queued**. Three others measured today, two refuted |
 
 Ordered by what would change the most if it turned out differently, not by
 effort. Each item says what it is, why it matters, and what would settle it —
@@ -549,6 +550,33 @@ it is a floor rather than a ceiling given the overhead finding.
 of a thousand.)
 
 ---
+
+## 9. Claims in the record with no measurement behind them
+
+*In plain terms: things the repo asserts as fact that nobody ever checked. Each
+one is either true and worth a number, or false and quietly misleading whoever
+reads it next.*
+
+- **Heterogeneous membrane constants are "a large win".** `DESIGN.md` section 2
+  and the `README.md` deviations table both say a population with mixed
+  constants holds working memory a homogeneous one *cannot*. One of four
+  headline departures from biology, stated in strong terms, and never measured.
+  `test_membrane_gain_is_independent_of_time_constant` is sometimes read as
+  covering it and does not — it guards the unit-DC-gain fix, which was a bug the
+  spread *exposed*, not the benefit it claims.
+
+  **Sweep 036 is built and queued**, with four homogeneous conditions rather
+  than one so that a badly-chosen constant losing cannot be mistaken for the
+  claim holding. Prediction recorded: the spread helps by +0.02 to +0.08 over
+  the best homogeneous setting, so directionally right and substantially
+  overstated — because STP, not the membrane, is what carries memory here
+  (0.527 → 0.864), and it is identical in every condition.
+
+- ~~"Largely memory-bandwidth-bound"~~ — measured and **refuted**, see item 8.
+- ~~Emission-time indexing makes jitter benign~~ — measured, and the bound is
+  exactly `delay_min - 1` steps. See item 7.
+- ~~The fast gather path~~ — every recorded number used it and nothing checked
+  it against the correct path. Now asserted bit-identical, with a mutation.
 
 ## Housekeeping
 

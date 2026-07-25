@@ -1,0 +1,140 @@
+Sweep 036 -- is heterogeneous membrane timing "a large win", as claimed?
+========================================================================
+
+IN PLAIN TERMS
+--------------
+Every neuron here forgets at its own rate. Some hold onto what they have seen
+for a few milliseconds, some for a third of a second, and the spread is drawn
+randomly when the network is built. The design document says this variety is one
+of the important things about the model -- that a network where every neuron
+forgets at the same speed simply could not hold a memory across a gap the way
+this one does.
+
+That has never been tested. It is one of the four headline departures from
+biology in the design document, it is stated in strong terms, and there is no
+measurement anywhere behind it.
+
+There is also a specific reason to doubt it. The thing that actually carries
+memory across the gap in this task was measured, and it is not the membrane at
+all -- it is the synapses, which hold a trace of recent activity without any
+ongoing firing. Turning that off collapses the task from 0.86 to 0.53. If the
+synapses are doing the remembering, the variety of membrane speeds may be worth
+much less than the document claims.
+
+Either answer is useful. If the spread pays, it is a cheap design win worth
+stating with a number. If it does not, a headline claim comes out of the design
+document, and the honest description of the model gets simpler.
+
+QUESTION
+--------
+`DESIGN.md`, section 2, in full:
+
+  "Biology's are pinned by channel kinetics. Ours are parameters, spread
+   log-uniformly over 12-320 ms. **The spread alone is a large win: a population
+   with mixed constants holds working memory a homogeneous one cannot.**"
+
+`README.md` carries the same claim in its deviations table. Nothing measures it.
+`test_membrane_gain_is_independent_of_time_constant` is sometimes read as
+covering this and does not: it guards the unit-DC-gain fix, which was a *bug the
+spread exposed* -- long-tau neurons being louder rather than longer-memoried --
+not the benefit the spread is supposed to deliver.
+
+WHY THE OBVIOUS COMPARISON IS A STRAW MAN
+--------------------------------------------
+"Heterogeneous beats homogeneous" is easy to demonstrate badly. Pick one fixed
+tau, show it loses, declare the spread essential. But a homogeneous population
+at a *badly chosen* constant losing says nothing -- the claim is that no single
+choice works, and that requires trying several.
+
+So the homogeneous conditions span the range, including values chosen to be
+plausible rather than convenient:
+
+  homo-12    the short end of the spread
+  homo-40    near the geometric mean of 12 and 320 (62); 40 is below it
+  homo-100   matched to the task's 100-step cue spacing -- the value someone
+             tuning by hand would pick
+  homo-320   the long end
+
+**The comparison that decides the claim is `hetero` against the BEST of these**,
+not against their mean and not against any one of them.
+
+CONDITIONS  (20 seeds, 300 episodes, 96 neurons, lr 0, binding off, drain 0)
+-------------------------------------------------------------------------------
+  hetero      tau_soma 12-320 log-uniform     the default; reproduces 0.802
+  homo-12     every neuron at 12 ms
+  homo-40     every neuron at 40 ms
+  homo-100    every neuron at 100 ms
+  homo-320    every neuron at 320 ms
+
+Binding off throughout: this is a question about the substrate, and a plasticity
+rule on top would only make it harder to read. `drain 0`, so `hetero` must
+reproduce **0.802** or the sweep is not comparable to anything.
+
+PREDICTION (recorded before the run)
+--------------------------------------
+  hetero      0.802   (established; anything else voids the sweep)
+  homo-12     0.60 to 0.72
+  homo-40     0.68 to 0.78
+  homo-100    0.70 to 0.80
+  homo-320    0.62 to 0.74
+
+**The central claim: the spread helps, but by far less than "a large win", and
+"cannot" is wrong. `hetero` beats the best homogeneous condition by +0.02 to
++0.08, not by the qualitative gap the design document implies.**
+
+The reasoning is the STP measurement. Short-term plasticity is what bridges the
+250-step delay -- 0.527 without it against 0.864 with it -- and that mechanism
+lives in the synapse and is identical in every condition here. So the memory the
+claim is about is *already provided by something else*, and the membrane spread
+can only be adding basis diversity on top of it.
+
+`homo-100` is predicted to be the best homogeneous condition, because a constant
+matched to the cue spacing is the one a person tuning by hand would land on, and
+the interval it has to bridge is exactly that.
+
+**And the outcome that would refute my reasoning rather than the document's:**
+if `homo-320` or `homo-12` wins among the homogeneous conditions, then the
+useful thing about a membrane constant here is not matching the task's timescale
+and I have the mechanism wrong even if the number comes out as predicted.
+
+WHAT EACH OUTCOME MEANS
+-------------------------
+  hetero wins big       The document is right and now has a number. Worth
+  (+0.15 or more)       stating plainly, and worth asking whether an even wider
+                        or differently-shaped spread does better.
+
+  hetero wins a         Predicted. The claim is directionally right and
+  little (+0.02..+0.08) overstated. "A large win" and "cannot" both come out of
+                        DESIGN.md and README.md and are replaced with the
+                        measured margin. This is a correction to the record,
+                        which rule 5 requires be made rather than softened.
+
+  hetero ties the best  The spread buys nothing measurable on this task. Then it
+  homogeneous           stays -- it costs nothing and biology has it -- but it
+                        stops being described as load-bearing, and the four
+                        headline departures become three.
+
+  hetero loses          A single well-chosen constant is better. That would be
+                        genuinely surprising, would make the default wrong, and
+                        would need its own follow-up before anything is changed.
+
+WHAT THIS DOES NOT TEST
+-------------------------
+A task whose structure spans several timescales. Delayed XOR has one interval,
+100 steps, so a single constant matched to it is unusually well placed here --
+which biases the sweep **against** heterogeneity. That is the honest direction
+of the bias and it is worth saying: if the spread wins even on the task most
+favourable to a single constant, the claim is stronger than the number looks.
+
+Nor does it test `lr_tau > 0`, where the constants are learned rather than
+sampled. That path exists, is off by default, and is a separate question.
+
+SETTINGS
+--------
+20 seeds, 300 episodes, 500 collection episodes, 96 neurons, lr 0, binding and
+lateral off, `drain_steps 0`, `tau_branch` and delays at their defaults.
+Homogeneity is `tau_soma_min == tau_soma_max`.
+
+RESULT -- 20 paired seeds
+-------------------------
+Pending. Sweep 034 holds the matrix, and 035 is queued ahead of this.

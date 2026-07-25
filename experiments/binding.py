@@ -88,6 +88,15 @@ def main() -> None:
     # alongside it because raising the floor alone also narrows the *spread* of
     # delays, and the README claims the spread is what enriches the temporal
     # basis; without both flags the two cannot be told apart.
+    # Sweep 036. DESIGN.md says of the log-uniform 12-320 ms spread: "The
+    # spread alone is a large win: a population with mixed constants holds
+    # working memory a homogeneous one cannot." Load-bearing, strongly worded,
+    # and never measured -- `test_membrane_gain_is_independent_of_time_constant`
+    # guards the DC-gain bug that spread exposed, not the benefit it claims.
+    # Setting min == max makes the population homogeneous, which is the
+    # comparison the claim needs and has never had.
+    ap.add_argument("--tau-soma-min", type=float, default=ColumnConfig.tau_soma_min)
+    ap.add_argument("--tau-soma-max", type=float, default=ColumnConfig.tau_soma_max)
     ap.add_argument("--delay-min", type=int, default=ColumnConfig.delay_min)
     ap.add_argument("--delay-max", type=int, default=ColumnConfig.delay_max)
     # Pinned, never left to track the lag. Sweep 013 lost a whole run to that:
@@ -139,6 +148,8 @@ def main() -> None:
             bind_tau_pre=args.bind_tau_pre,
             delay_min=args.delay_min,
             delay_max=args.delay_max,
+            tau_soma_min=args.tau_soma_min,
+            tau_soma_max=args.tau_soma_max,
         ),
         modulator_lag=args.modulator_lag,
         drain_steps=args.drain_steps,
@@ -170,6 +181,7 @@ def main() -> None:
         tau_act_fast=args.tau_act_fast, tau_branch=args.tau_branch,
         bind_tau_pre=args.bind_tau_pre, collect=args.collect,
         delay_min=args.delay_min, delay_max=args.delay_max,
+        tau_soma_min=args.tau_soma_min, tau_soma_max=args.tau_soma_max,
         linear=logistic_score(logistic(Xtr, ytr), Xte, yte),
         mlp=mlp(Xtr, ytr, Xte, yte),
         corr=float(offdiag.mean()),

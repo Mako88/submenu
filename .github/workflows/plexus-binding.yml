@@ -222,6 +222,24 @@ jobs:
           python experiments/binding.py --tag dmin12-dmax48 \
             --delay-min 12 --delay-max 48 $dly
 
+          # Sweep 036. DESIGN.md calls the log-uniform 12-320 ms spread "a
+          # large win: a population with mixed constants holds working memory a
+          # homogeneous one cannot." One of four headline departures from
+          # biology, stated in strong terms, never measured.
+          #
+          # Several homogeneous values rather than one, because "heterogeneous
+          # beats homogeneous" is easy to demonstrate badly -- a badly chosen
+          # constant losing says nothing, and the claim is that NO single choice
+          # works. homo-100 is matched to the task's 100-step cue spacing, which
+          # is what someone tuning by hand would pick, and is the one hetero
+          # actually has to beat.
+          het="--hebbian 0 --drain-steps 0 $common"
+          python experiments/binding.py --tag hetero $het
+          for tau in 12 40 100 320; do
+            python experiments/binding.py --tag homo-$tau \
+              --tau-soma-min $tau --tau-soma-max $tau $het
+          done
+
           # Sweep 016: the same two conditions scored end to end, by the online
           # readout, rather than by an offline decoder. Everything measured so
           # far is representation quality, and sweep 009 is the standing warning
@@ -282,7 +300,8 @@ jobs:
                      on-tag-lag0 on-tag-lag25 on-tag-lag150 \
                      tb15-drain0 tb30-drain0 tb60-drain0 tb120-drain0 \
                      tb240-drain0 tb15-drain200 tb120-drain200 \
-                     dmin1 dmin6 dmin12 dmin18 dmin12-dmax48; do
+                     dmin1 dmin6 dmin12 dmin18 dmin12-dmax48 \
+                     hetero homo-12 homo-40 homo-100 homo-320; do
             grep -q "\"tag\": \"$tag\"" experiments/binding_results.jsonl \
               || { echo "no rows for condition '$tag'"; exit 1; }
           done
@@ -332,7 +351,9 @@ jobs:
                       "tb120-drain0 tb15-drain0" "tb240-drain0 tb15-drain0" \
                       "tb120-drain200 tb15-drain200" "tb15-drain0 off" \
                       "dmin6 dmin1" "dmin12 dmin1" "dmin18 dmin1" \
-                      "dmin12-dmax48 dmin12" "dmin12-dmax48 dmin1"; do
+                      "dmin12-dmax48 dmin12" "dmin12-dmax48 dmin1" \
+                      "homo-12 hetero" "homo-40 hetero" "homo-100 hetero" \
+                      "homo-320 hetero" "hetero off"; do
             set -- $pair
             for metric in linear; do
               echo "" | tee -a summary.txt
