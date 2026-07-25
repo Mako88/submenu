@@ -290,5 +290,16 @@ someone who was not there what to do next time. So:
   improves the numbers.
 - New mechanisms default to **off**, so existing results stay reproducible and
   the ablation is free.
-- `python -m pytest plexus/tests/ -q` and `python experiments/mutation.py`
-  before every commit.
+- `python -m pytest plexus/tests/ -q`, `python experiments/mutation.py` and
+  `python experiments/check_workflows.py` before every commit.
+
+  > *Calibration.* The third check exists because a workflow passing a flag its
+  > script does not accept kills all twenty seeds on their first line, and the
+  > existing guard — "fail loudly if a condition produced nothing" — fires
+  > twenty minutes later, after the matrix is spent. Three instances: an early
+  > `plexus-binding.yml` passed flags `binding.py` never had; sweep 030 was
+  > written to pass `--bind-tau-pre` before the flag existed; and sweep 026's
+  > `--drain-steps` was the same disagreement with a default instead of a name.
+  > The check reads every `python experiments/*.py` line in every workflow,
+  > resolves the shell variables, and compares against the script's own
+  > `--help`. It takes about a second.

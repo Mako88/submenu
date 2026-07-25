@@ -157,6 +157,27 @@ jobs:
           python experiments/binding.py --tag on-tb120-lag50 \
             --tau-branch 120 --modulator-lag 50 $lag
 
+          # The other route, in the same matrix so the two are directly
+          # comparable. `bind_tau_pre` gives the rule its own presynaptic trace
+          # instead of borrowing the forward path's, so the window is bought
+          # without changing what the column computes. lagwindow.py measures 154
+          # steps at (300, 300) against a product prediction of 150, with 40% of
+          # the update surviving lag 150.
+          #
+          # No `off-tag` condition, deliberately. With `hebbian 0` both
+          # `tau_act_fast` and `bind_tau_pre` are inert -- `act_fast` is only
+          # advanced when binding is on, and the trace is allocated but never
+          # read -- so an off-tag condition would be bit-identical to `off-lag0`
+          # and could not refute anything. `off-lag0` IS the matched reference,
+          # and that is pinned by
+          # `test_bind_tau_pre_widens_the_window_without_touching_the_forward_path`
+          # rather than assumed.
+          tag="--tau-act-fast 300 --bind-tau-pre 300"
+          python experiments/binding.py --tag on-tag-lag0   --modulator-lag 0   $tag $lag
+          python experiments/binding.py --tag on-tag-lag25  --modulator-lag 25  $tag $lag
+          # The headline: intercontinental lag, on the mechanism that works.
+          python experiments/binding.py --tag on-tag-lag150 --modulator-lag 150 $tag $lag
+
           # Sweep 016: the same two conditions scored end to end, by the online
           # readout, rather than by an offline decoder. Everything measured so
           # far is representation quality, and sweep 009 is the standing warning
@@ -213,7 +234,8 @@ jobs:
         run: |
           for tag in off on off-lag0 off-lag150 on-lag0 on-lag25 on-lag50 on-lag150 on-lag150-slow \
                      off-tb60-lag0 on-tb60-lag0 on-tb60-lag25 on-tb60-lag50 \
-                     off-tb120-lag0 on-tb120-lag0 on-tb120-lag50; do
+                     off-tb120-lag0 on-tb120-lag0 on-tb120-lag50 \
+                     on-tag-lag0 on-tag-lag25 on-tag-lag150; do
             grep -q "\"tag\": \"$tag\"" experiments/binding_results.jsonl \
               || { echo "no rows for condition '$tag'"; exit 1; }
           done
@@ -255,7 +277,10 @@ jobs:
                       "on-tb60-lag0 off-tb60-lag0" "on-tb120-lag0 off-tb120-lag0" \
                       "on-tb60-lag25 off-tb60-lag0" "on-tb60-lag50 off-tb60-lag0" \
                       "on-tb120-lag50 off-tb120-lag0" \
-                      "on-tb60-lag25 on-lag25"; do
+                      "on-tb60-lag25 on-lag25" \
+                      "on-tag-lag0 off-lag0" "on-tag-lag25 off-lag0" \
+                      "on-tag-lag150 off-lag0" \
+                      "on-tag-lag0 on-lag0" "on-tag-lag25 on-tb60-lag25"; do
             set -- $pair
             for metric in linear; do
               echo "" | tee -a summary.txt

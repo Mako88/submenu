@@ -701,7 +701,7 @@ class Column:
             # once per episode while presynaptic activity happens every step --
             # a trace only advanced when the rule fires would sample its own
             # input at the rate of the thing it is supposed to remember.
-            self.bind_pre *= self.decay_bind_pre
+            self.bind_pre *= self.decay_branch
             self.bind_pre += self.gain_bind_pre * x
         sens = (self.G * dphi)[:, :, None]  # d v / d b, per branch
         self.eps *= self.decay_soma[:, None, None]

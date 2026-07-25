@@ -38,6 +38,16 @@ jobs:
         # out to have no test that its sign was applied at all.
         run: python experiments/mutation.py
 
+      - name: Check every sweep would actually start
+        # The 20-seed matrices die on their first line if a workflow passes a
+        # flag the script does not accept, and nobody finds out for twenty
+        # minutes. This checks every `python experiments/*.py` invocation in
+        # every workflow against that script's own parser, in about a second.
+        # It has already been the difference twice: once when binding.py was
+        # passed flags it did not have and every seed died, and once when
+        # sweep 030 was written to pass --bind-tau-pre before the flag existed.
+        run: python experiments/check_workflows.py
+
       - name: Check the benchmarks still defeat trivial models
         # A benchmark is only worth reporting if simple things fail on it. If a
         # change ever makes delayed XOR solvable by a rate code or by a linear

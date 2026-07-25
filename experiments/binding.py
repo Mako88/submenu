@@ -73,6 +73,13 @@ def main() -> None:
     # computes. Whether the column still decodes anything is the question, and
     # it cannot be asked without this flag.
     ap.add_argument("--tau-branch", type=float, default=ColumnConfig.tau_branch)
+    # The other route to a wider window: a presynaptic trace the *rule* owns,
+    # so the forward path is untouched. `lagwindow.py` measures 154 steps at
+    # `tau_act_fast = bind_tau_pre = 300` against a product prediction of 150,
+    # with 40% of the update surviving lag 150. Raise `tau_act_fast` alongside
+    # it -- the window is a product, so 300 on one side alone is still capped
+    # near 50 by the other.
+    ap.add_argument("--bind-tau-pre", type=float, default=None)
     # Pinned, never left to track the lag. Sweep 013 lost a whole run to that:
     # the silent drain tail scaled with the lag, so a *frozen* column shifted
     # -0.062 (p = 0.0011) between lag settings and the comparison measured tail
@@ -119,6 +126,7 @@ def main() -> None:
             bind_scale=args.bind_scale,
             tau_act_fast=args.tau_act_fast,
             tau_branch=args.tau_branch,
+            bind_tau_pre=args.bind_tau_pre,
         ),
         modulator_lag=args.modulator_lag,
         drain_steps=args.drain_steps,
@@ -148,7 +156,7 @@ def main() -> None:
         tag=args.tag, seed=args.seed, episodes=args.episodes, neurons=args.neurons,
         modulator_lag=args.modulator_lag, drain_steps=args.drain_steps,
         tau_act_fast=args.tau_act_fast, tau_branch=args.tau_branch,
-        collect=args.collect,
+        bind_tau_pre=args.bind_tau_pre, collect=args.collect,
         linear=logistic_score(logistic(Xtr, ytr), Xte, yte),
         mlp=mlp(Xtr, ytr, Xte, yte),
         corr=float(offdiag.mean()),

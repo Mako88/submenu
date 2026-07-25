@@ -18,9 +18,25 @@ dial up widens the deadline; the probe measured it going from 12 steps to 29.
 So the question is whether that trade is worth taking. Widening a filter in the
 processing path means the column processes differently. It might get worse at
 the task, and if it gets much worse then buying latency tolerance costs more
-than it buys. A yes here means distributed learning is a setting we choose. A no
-means the mechanism is stuck in one building, and something other than a filter
-constant has to change.
+than it buys.
+
+There is a second way, added while this note was being written, and it is the
+better one if it works. Rather than stretching a filter the column needs for its
+day job, give the learning rule *its own* memory of what the inputs were doing,
+on whatever timescale it likes. The processing stays exactly as it was -- that
+is checked, not assumed -- and the deadline goes from 12 steps to 154. That is
+long enough to cross an ocean.
+
+This sweep runs both, side by side, and prices them. What we want to learn is
+whether either version still learns as well when the signal is on time, and
+whether the second one still learns when the signal is 150 steps late. A yes
+means distributed learning is a setting we choose. A no on both means the
+mechanism is stuck in one building and something other than a time constant has
+to change.
+
+One thing to be clear about either way: this is about whether learning *survives*
+the delay, not about whether it becomes better learning. Nothing here makes the
+mechanism stronger.
 
 QUESTION
 --------
@@ -82,6 +98,35 @@ CONDITIONS  (20 seeds, 300 episodes, 96 neurons, lr 0, drain pinned at 200)
   on-tb120-lag0     on,  tau_branch 120
   on-tb120-lag50    on,  tau_branch 120   does more dial buy more window?
 
+  on-tag-lag0       on,  bind_tau_pre 300 + tau_act_fast 300
+  on-tag-lag25      on,  same
+  on-tag-lag150     on,  same             **the intercontinental test**
+
+THE SECOND ROUTE, ADDED BEFORE THE RUN
+----------------------------------------
+`tau_branch` is not the only way to widen the window; it is only the way that
+existed when this note was written. `bind_tau_pre` gives the binding rule its
+own presynaptic trace at its own constant, so the window is bought **without
+changing what the column computes**. The forward path is provably untouched --
+`test_bind_tau_pre_widens_the_window_without_touching_the_forward_path` asserts
+the column's output is bit-identical with the parameter declared.
+
+Measured by `lagwindow.py` at `tau_act_fast = bind_tau_pre = 300`: the window is
+**154 steps** against a product prediction of 150, and **40% of the binding
+update survives a lag of 150** where the default retains essentially none. That
+is the first configuration in this project to reach intercontinental lag.
+
+Both routes are in one matrix so they are directly comparable rather than
+measured against two different baselines a week apart.
+
+**There is no `off-tag` condition, and that is deliberate.** With `hebbian 0`
+both `tau_act_fast` and `bind_tau_pre` are inert -- `act_fast` is only advanced
+when binding is on, and the trace is allocated but never read -- so an `off-tag`
+condition would be bit-identical to `off-lag0` and could refute nothing. It is
+the same shape as sweep 022's `preset-frozen`, caught this time before the run
+rather than after. `off-lag0` is the matched reference, and the equality that
+makes it so is pinned by a test rather than assumed.
+
 `drain_steps` pinned at 200 everywhere, for the reason sweep 013 and sweep 026
 both paid for: a tail that tracks the lag makes the comparison about tail length.
 
@@ -121,6 +166,27 @@ I am recording that the cost prediction is weak, rather than narrowing the band
 to look confident. The window prediction is the one with a measurement behind
 it.
 
+**For the tag route**, where the window is 154 steps and the retained fractions
+are 0.85 at lag 25 and 0.38 at lag 150:
+
+  on-tag-lag0    gain +0.09 to +0.14, i.e. **at or near the standing +0.127**
+  on-tag-lag25   gain +0.08 to +0.13, and significant
+  on-tag-lag150  gain +0.04 to +0.09, and **significant** -- the headline
+
+**The tag route's central claim: `on-tag-lag150` beats `off-lag0` at 20 seeds**,
+where `on-lag150` was +0.001 at p = 0.88 and `on-lag150-slow` was +0.000 at
+p = 1.0000. Two conditions have already failed at this lag, so a win is a real
+result and a loss costs the mechanism nothing but a config flag.
+
+**And the cost of the tag route is a precision cost, measured by
+`on-tag-lag0 vs on-lag0`.** A wider window scores a broader slice of the
+episode's activity, so credit is assigned less precisely even when nothing is
+late. Predicted **0.00 to -0.04** -- some loss, not enough to matter. This is
+the number I am least confident about and the one most likely to be the
+interesting result: if a 154-step window costs nothing at lag 0, then the
+narrow window was never buying precision and `tau_act_fast`/`tau_branch` are
+simply too small everywhere.
+
 WHAT EACH OUTCOME MEANS
 -------------------------
   purchase works,      Latency tolerance is a setting, bought in the forward
@@ -150,20 +216,30 @@ statement about what binding requires.
 
 WHAT THIS DOES NOT TEST
 -------------------------
-Intercontinental lag. The best window on offer here is ~37 steps against the 150
-that matters, so **no condition in this sweep reaches the case the architecture's
-claim is about.** A win here narrows the gap from 12x to 4x; it does not close
-it. Closing it needs a trace the *rule* maintains rather than one the forward
-path leaves lying around, which is a different mechanism and a different sweep.
+Whether a wider window is a *good idea*. Every condition here asks whether the
+gain survives a late modulator; none asks whether the resulting credit
+assignment is better than the narrow one at doing its job. `on-tag-lag0 vs
+on-lag0` is the closest thing to that question and it is one comparison, on one
+task, at one pair of constants.
 
-Saying so in advance, because a significant result at lag 25 will be tempting to
-report as "latency tolerance is buyable" without the qualifier.
+Nor does it test the obvious refinement: a *cascade* of traces at several
+timescales, which would give precision at short lag and tolerance at long lag
+instead of trading them. That is the next mechanism if the precision cost here
+turns out to be real.
+
+The earlier version of this note said no condition in the sweep reaches
+intercontinental lag. That was true of the `tau_branch` route -- its best window
+is ~37 steps against 150 -- and it is what motivated building the tag. It is
+recorded rather than deleted because it is why the second route exists.
 
 SETTINGS
 --------
 20 seeds, 300 episodes, 500 collection episodes, 96 neurons, lr 0, drain_steps
-200 everywhere, `tau_act_fast` 50 throughout (sweep 026 established it is not
-the lever), `tau_branch` 15 / 60 / 120.
+200 everywhere. `tau_branch` 15 / 60 / 120 with `tau_act_fast` 50 for the
+forward-path route; `tau_act_fast = bind_tau_pre = 300` with `tau_branch` at its
+default 15 for the tag route. `tau_act_fast` is raised for the tag conditions
+because the window is a product -- 300 on the presynaptic side alone would still
+be capped near 50 by the activity trace.
 
 Collection budget stated because sweep 028 established it is part of the number:
 at 500 episodes the standing no-tail gain is +0.074, at 1200 it is +0.060.
