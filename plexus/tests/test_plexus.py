@@ -538,6 +538,69 @@ class _Jittered:
         self._inner.reset()
 
 
+def test_the_routed_modulator_carries_no_information_in_a_working_column():
+    """At `lr = 0` the modulator's *content* is unused. Only its presence is read.
+
+    DESIGN.md's third headline departure from biology is the routed vector
+    modulator -- "we broadcast a small vector and let each neuron read it
+    through its own projection, so different neurons extract different credit
+    from the same signal", described there as "probably the largest single lever
+    on credit-assignment quality". Nothing measured it.
+
+    The content reaches the weights through exactly one expression,
+    `W += cfg.lr * signal * drive`, where `signal = feedback @ m`. So at
+    `lr = 0` it cannot reach them at all -- and `lr = 0` is the configuration
+    every sweep from 014 onward has run, because the three-factor rule that
+    consumes it is worth -0.003 at p = 0.79. Salience-gated binding, the
+    mechanism that does work, reads the modulator only for its *presence*.
+
+    So the routed vector is inert in every configuration this project has
+    produced a standing result from. That is worth pinning rather than merely
+    writing down: if the modulator's content is ever wired into a working
+    mechanism, this test fails and the design document's claim needs
+    re-examining rather than quietly becoming true.
+
+    Both directions are asserted. At `lr > 0` the scramble *must* change the
+    weights, or the scramble is not reaching the model and the inertness above
+    is vacuous -- the same failure the first version of the jitter test had.
+
+    The scramble replaces the modulator vector with noise while keeping it
+    non-zero, so binding's presence gate fires identically and only the routed
+    information changes.
+    """
+    task = DelayedXOR()
+
+    def run(scramble: bool, lr: float):
+        m = Plexus(
+            task.n_inputs, task.n_classes,
+            column=ColumnConfig(n_neurons=32, lr=lr, seed=0, hebbian=True,
+                                lateral=True),
+            seed=0,
+        )
+        if scramble:
+            original = m.readout.modulator
+            rng = np.random.default_rng(7)
+            def scrambled(err):
+                out = original(err)
+                if not np.any(out):
+                    return out          # silence stays silence: presence is preserved
+                return rng.normal(0.0, 1.0, size=np.asarray(out).shape).astype(np.float32)
+            m.readout.modulator = scrambled
+        r = np.random.default_rng(4)
+        for _ in range(3):
+            m.run_episode(task.episode(r), learn=True)
+        return m.column.W.copy()
+
+    assert np.array_equal(run(False, 0.0), run(True, 0.0)), (
+        "the modulator's content reached the weights at lr = 0, so the "
+        "supervised path is not as inert as every recorded sweep assumes"
+    )
+    assert not np.array_equal(run(False, 0.004), run(True, 0.004)), (
+        "scrambling the modulator changed nothing even at lr > 0, so the "
+        "scramble is not reaching the model and the lr = 0 result is vacuous"
+    )
+
+
 def test_the_fast_gather_path_agrees_with_the_checked_one():
     """Every number in this repo comes from `take`; `gather` is the correct one.
 

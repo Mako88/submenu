@@ -75,8 +75,37 @@ with unit DC gain (`v = decay·v + (1-decay)·drive`). Guarded by
 Dopamine broadcasts one scalar to millions of synapses by diffusion — slow and
 imprecise. We broadcast a small vector and let each neuron read it through its
 own projection, so different neurons extract different credit from the same
-signal. This is probably the largest single lever on credit-assignment quality,
-and it costs bandwidth proportional to the *output* width, not the model size.
+signal.
+
+**Two corrections, both measured.** This section previously called the routed
+projection "probably the largest single lever on credit-assignment quality" and
+said it "costs bandwidth proportional to the *output* width, not the model
+size". Neither survives contact with what the code does.
+
+*The content is inert in every configuration that has produced a result.* The
+modulator's value reaches the weights through exactly one expression,
+`W += cfg.lr * signal * drive`. Every sweep from 014 onward runs `lr = 0`,
+because the three-factor rule that consumes it is worth −0.003 at p = 0.79 —
+and salience-gated binding, the mechanism that does work, reads the modulator
+only for its *presence*, never its sign or its target. Scrambling the
+modulator's content while keeping it non-zero leaves the learned weights
+**bit-identical** at `lr = 0`, in both feedback modes, and changes them at
+`lr = 0.004`. Pinned by
+`test_the_routed_modulator_carries_no_information_in_a_working_column`. So this
+departure is real in the code and currently doing nothing in the working model.
+
+*And the default is not the mechanism described above.* `feedback_mode` defaults
+to **`symmetric`**, under which `LinearReadout.feedback_matrix()` returns the
+readout's own weights and `run_episode` overwrites each neuron's projection with
+them every episode. That is weight transport, not a per-neuron random
+projection — the routed-projection design is the `dfa` mode, which is not the
+default and has never been compared against it at twenty seeds. Under
+`symmetric` the bandwidth claim is also false: the readout matrix is
+`n_neurons × n_classes`, which is proportional to model size, not to output
+width.
+
+The design is worth keeping and the argument for it may well be right. What is
+not currently true is that it has been shown to matter here.
 
 ### 4. Scale-free dendritic plateau
 

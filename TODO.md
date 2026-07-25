@@ -13,7 +13,7 @@ question in plain language, with where it stands. Detail is below.
 | 6 | Which old decisions rest on evidence a later fix destroyed? | Six items, tracked in AUDIT.md |
 | 7 | Does it actually work spread across machines? | Still never tried on real machines. But the property it depends on is now **measured**: delivery jitter below `delay_min` leaves a distributed run bit-identical, and above it does not |
 | 8 | Would a single GPU just beat this? | **The premise was wrong.** Not bandwidth-bound — 17 % of DRAM peak at 96 neurons, working set fits in L2. It is overhead-bound, so the comparison cannot be made until the code is near *some* limit |
-| 9 | Which claims in the record were never measured? | New. Heterogeneous time constants is the live one — **sweep 036 built and queued**. Three others measured today, two refuted |
+| 9 | Which claims in the record were never measured? | New. Heterogeneous time constants — **sweep 036 queued**. Four others measured today; the routed vector modulator and the bandwidth premise both **refuted** |
 
 Ordered by what would change the most if it turned out differently, not by
 effort. Each item says what it is, why it matters, and what would settle it —
@@ -571,6 +571,35 @@ reads it next.*
   the best homogeneous setting, so directionally right and substantially
   overstated — because STP, not the membrane, is what carries memory here
   (0.527 → 0.864), and it is identical in every condition.
+
+- **The routed vector modulator is "probably the largest single lever on
+  credit-assignment quality".** `DESIGN.md` section 3. **Measured and refuted as
+  stated**, on two counts.
+
+  Its content reaches the weights through one expression,
+  `W += cfg.lr * signal * drive`, and every sweep from 014 onward runs `lr = 0`
+  — because the three-factor rule that consumes it is worth −0.003. Binding, the
+  mechanism that works, reads the modulator only for its *presence*. Scrambling
+  the content while keeping it non-zero leaves weights **bit-identical** at
+  `lr = 0` in both feedback modes, and changes them at `lr = 0.004`. So the
+  departure is real in the code and inert in every configuration that has
+  produced a standing result.
+
+  And the shipped default is not the mechanism the document describes.
+  `feedback_mode` defaults to `symmetric`, which overwrites each neuron's
+  projection with the readout's transposed weights every episode — weight
+  transport. The per-neuron random projection is the `dfa` mode, off by default,
+  **never compared against `symmetric` at twenty seeds**. Under the default the
+  bandwidth claim is false too: the readout matrix is `n_neurons × n_classes`,
+  proportional to model size rather than output width, which matters directly to
+  item 7's traffic budget.
+
+  *Live follow-up:* `symmetric` vs `dfa` at 20 seeds, under a configuration
+  where the modulator does something. That is not `lr > 0` on this task, since
+  the rule consuming it is refuted — so it needs a mechanism that reads
+  modulator content and works, and none currently exists. **Recorded as blocked
+  rather than queued**, because running it under `lr > 0` would measure whether
+  a null degrades, which sweep 026 already established is not a test.
 
 - ~~"Largely memory-bandwidth-bound"~~ — measured and **refuted**, see item 8.
 - ~~Emission-time indexing makes jitter benign~~ — measured, and the bound is
