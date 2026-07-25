@@ -40,7 +40,8 @@ a column that ignores its own weights is a different column.
 | Rate-code and time-binned-linear baselines (0.494, 0.486) | `baselines.py` | task-only measurement | Involves no column at all. |
 | Conduction-delay tolerance: 2ms -> 150ms costs -0.048 | README, `run-latency.txt` | latency sweep | `latency.py` defaults `--lr 0.0`, so this ran on **frozen** columns and neither learning-path fix can touch it. Valid -- but narrower than the claim it is used to support; see below. |
 | Three-factor rule does not beat a frozen column | sweeps 006-010 | five post-fix nulls | The headline negative result was re-established after every relevant fix. This one is solid. |
-| Salience-gated Hebbian binding beats a frozen column, 0.876 vs 0.802 | sweep 014 | 20 paired seeds | Representation quality only -- not yet confirmed end to end. Sweep 015 re-ran it after the mechanism was rewritten and reproduced both numbers exactly, which confirms the refactor rather than replicating the effect: same seeds, same deterministic computation, so it is one measurement reported twice. |
+| Salience-gated Hebbian binding beats a frozen column, 0.876 vs 0.802 offline | sweep 014 | 20 paired seeds | Sweep 015 reproduced both numbers exactly after the mechanism was rewritten, which confirms the refactor rather than replicating the effect -- same seeds, same deterministic computation, so it is one measurement reported twice. |
+| Binding pays end to end, but only against a settled representation | sweep 017 | 20 paired seeds | +0.063 with binding frozen and the readout allowed to converge (p = 0.0013), +0.043 under an RLS readout (p = 0.0063), +0.007 under the shipped delta readout during training (p = 0.68). The last of those is the default configuration, so the headline gain is NOT what the shipped model does today. |
 | The engram allocator is worse than binding alone | sweep 014 | 20 paired seeds, p = 0.0001 | Why the mechanism was deleted. Note what it does *not* say: delayed XOR asks nothing of memory separation, so this refutes allocation on this benchmark only. |
 
 ### Stale — decision still in force, evidence no longer valid
@@ -99,6 +100,8 @@ does not cover what it is cited for.
 
 | item | how | status |
 |---|---|---|
+| A binding schedule that does not need a separate catch-up phase | decaying `hebb_lr`, or two-phase training | **the live question.** Binding and readout adaptation currently compete on one timescale; sweep 017 shows separating them is worth +0.063 |
+| The residual 0.770-vs-0.876 gap after catch-up | offline probe on the catchup condition | not yet run |
 | `modulator_lag` at 20 seeds -- the learning half of latency tolerance | `plexus-experiment.yml`, `modulator_lag=200` | **not yet run; highest value of the three** |
 | `PRETRAIN` under a corrected learning rate | `plexus-experiment.yml`, `pretrain=400` | not yet run; held until the engram matrix clears CI |
 | `elig_gate` against the corrected RMS scale | new sweep | not yet run |

@@ -358,42 +358,60 @@ with it the label is 0.86 decodable. That is the main positive result.
 **Refuted.** That the local three-factor rule beats a frozen reservoir. Twenty
 paired seeds put the difference at −0.003 with p = 0.79.
 
-**A mechanism that improves the representation but not the accuracy.**
-Salience-gated Hebbian binding — on a modulator release, every neuron
+**Salience-gated Hebbian binding: the first mechanism to improve both the
+representation and the accuracy.** On a modulator release, every neuron
 strengthens the excitatory synapses that were driving it, in proportion to its
-own activity against its own baseline — raises linear decodability of the
-column state from **0.802 to 0.876** over 20 paired seeds, p = 0.0000
-(`experiments/sweeps/engram-014`, re-measured in `binding-015`).
+own activity against its own baseline. Local — every quantity is a neuron
+reading its own state, nothing pooled. Unsupervised — the modulator is read
+only for its presence, never its sign or target, so it does not depend on the
+error signal that failed eleven times.
 
-**End to end it delivers +0.007, p = 0.68** (`binding-016`). The gain does not
-reach the online readout, and the honest summary of this mechanism today is
-that it improves a measurement of the column rather than the model. Sweep 017
-is testing which of two explanations holds — that the delta readout cannot
-extract it, or that the readout is chasing a representation still moving under
-it — and until one lands, the offline number should not be quoted as
-performance.
+| measurement | without | with | Δ | p |
+|---|---|---|---|---|
+| linear decodability (offline) | 0.802 | 0.876 | **+0.074** | 0.0000 |
+| MLP decodability (offline) | 0.987 | 0.999 | +0.012 | 0.0001 |
+| end to end, delta readout | 0.709 | 0.715 | +0.007 | 0.68 |
+| end to end, RLS readout | 0.759 | 0.803 | **+0.043** | 0.0063 |
+| end to end, binding frozen then readout allowed to converge | 0.707 | 0.770 | **+0.063** | 0.0013 |
 
-Two properties are still worth keeping in view. It is *local*: every quantity
-is a neuron reading its own state, nothing pooled, where the RLS readout's
-comparable gain needed a global correlation matrix that did not decompose
-(sweep 011). And it is *unsupervised*: the modulator is read only for its
-presence, never its sign or its target.
+20 paired seeds throughout, column `lr=0` so the three-factor rule contributes
+nothing (`experiments/sweeps/engram-014`, `binding-015` … `binding-017`).
 
-It also arrived by way of a mechanism that was deleted. This began as an engram
-allocator — excitability drift, a recruitment competition, an allocation
-refractory — following Han et al. 2007 / Yiu et al. 2014 / Cai et al. 2016.
-Sweep 012 measured the full apparatus at +0.029 over frozen, p = 0.0176, and
-that looked like the result. Sweep 014 stripped it: the full apparatus reads
-0.830 against 0.876 for binding alone, worse on 19 of 20 seeds at p = 0.0001.
-The excitability half cost 0.041; the recruitment competition contributed
-nothing (p = 0.52). All of it is gone from the code and recorded in the sweep.
+**The third row is why the other rows needed explaining.** End to end with the
+shipped delta readout, the +0.074 representation gain arrives as +0.007. It is
+not lost — the readout cannot follow a representation that is *still changing
+underneath it*. One line settles that: the frozen-binding condition scores
+0.707 against 0.709 for the ordinary run, so the extra readout-only episodes
+are worth nothing when there is no binding, and +0.063 when there is. The
+readout does not need more time in general; it needs time against a column that
+has stopped moving.
 
-Two lessons, both cheaper to read here than to rediscover. **A significant
-positive result is not evidence that the mechanism producing it is the right
-one** — 012's +0.029 was real, replicates at +0.028, and was less than half of
-what sat inside it in a component nobody had isolated. And **representation
-quality is not accuracy**; sweep 009 established that in the direction that hid
-a loss, and 016 is the same lesson in the direction that hides a gain.
+That is a real limitation, stated as one: a system that must stop learning
+before its readout can use what it learned has deferred continual learning
+rather than solved it. The fix is likely to separate the timescales — biology
+consolidates on a slower clock than the synaptic changes it consolidates — and
+that is the next experiment, not a footnote.
+
+The mechanism also arrived by way of one that was deleted. This began as an
+engram allocator — excitability drift, a recruitment competition, an allocation
+refractory (Han et al. 2007; Yiu et al. 2014; Cai et al. 2016). Sweep 012
+measured the full apparatus at +0.029 over frozen, p = 0.0176, and that looked
+like the result. Sweep 014 stripped it: the apparatus reads 0.830 against 0.876
+for binding alone, worse on 19 of 20 seeds at p = 0.0001. The excitability half
+cost 0.041; the competition contributed nothing (p = 0.52). All of it is gone
+from the code and recorded in the sweeps.
+
+Three lessons, cheaper to read than to rediscover:
+
+- **A significant positive result is not evidence that the mechanism producing
+  it is the right one.** 012's +0.029 was real, replicates at +0.028, and was
+  less than half of what sat inside it in a component nobody had isolated.
+- **Representation quality is not accuracy.** Sweep 009 established that in the
+  direction that hid a loss; 016 is the same lesson in the direction that hid a
+  gain, and 017 is what it took to tell them apart.
+- **Run the control even when you expect it to be boring.** The
+  frozen-binding-without-binding condition existed only for symmetry, and it
+  turned out to carry the entire argument.
 
 Two readings are worth separating. The *locality* claims — no synchronisation
 barrier, emission-time addressing, tolerance of inter-column conduction delay —

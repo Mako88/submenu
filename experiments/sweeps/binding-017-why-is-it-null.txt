@@ -61,4 +61,72 @@ task, and the next move is a different task, not a third readout.
 
 RESULT -- 20 paired seeds
 -------------------------
-Pending.
+condition      eval accuracy      paired difference
+e2e-off        0.709 +/- 0.054
+e2e-on         0.715 +/- 0.069    +0.007, 11/20, p = 0.6834   (sweep 016)
+rls-off        0.759 +/- 0.053
+rls-on         0.803 +/- 0.058    +0.043, 15/20, p = 0.0063   SIGNIFICANT
+catchup-off    0.707 +/- 0.060
+catchup-on     0.770 +/- 0.070    +0.063, 17/20, p = 0.0013   SIGNIFICANT
+
+Both follow-ups are positive and significant. The mechanism does pay end to
+end; sweep 016's null was about the readout, not about binding.
+
+The prediction was close. It called non-stationarity ahead of extraction at
+60/40 -- correct, catchup (+0.063) beats rls (+0.043). catchup was predicted at
++0.03 to +0.06 and came in at +0.063, just above the range. rls was predicted
+at +0.01 to +0.04 and "possibly not significant"; it came in at +0.043,
+p = 0.0063, so extraction matters more than expected.
+
+THE CONTROL NOBODY DESIGNED
+----------------------------
+catchup-off reads 0.707 against e2e-off's 0.709. Identical, within noise.
+
+That is the whole argument in one line. The catchup condition adds 150 extra
+readout-only episodes, and when there is no binding those episodes do
+*nothing* -- the readout had already converged. They are worth +0.063 only
+when binding has been changing the representation underneath it. The readout
+does not need more time in general; it needs time against a column that has
+stopped moving.
+
+This fell out of running the control for its own sake rather than because
+anyone predicted it would be informative, which is an argument for always
+running the control.
+
+WHAT THIS MEANS
+---------------
+Sweep 016's null was real and is now explained. Binding improves the
+representation, and the online delta readout cannot follow it *while it is
+still changing*. Two independent routes recover most of the gain:
+
+  - Give the readout more capacity (RLS): +0.043. Sweep 011 showed RLS needs a
+    globally pooled correlation matrix that does not decompose, so this route
+    costs the locality rule.
+  - Give the readout a static target (catchup): +0.063. Costs nothing
+    architecturally -- it is a training schedule, entirely local, and it is the
+    larger of the two.
+
+The second is the interesting one, and it points somewhere specific: binding
+and readout adaptation are competing on the same timescale. Biology separates
+them -- consolidation runs on a slower clock than the synaptic changes it
+consolidates -- and the fix here is likely the same shape. A binding rate that
+decays over training, or a two-phase schedule, should recover the gain without
+a separate catch-up period and without touching the readout.
+
+WHAT IS STILL NOT ESTABLISHED
+------------------------------
+catchup-on reaches 0.770 while an offline decoder on the same states reads
+0.876. The gap is smaller but real, so the readout is still leaving something
+on the table even against a frozen column.
+
+And this is a *schedule* result, not a demonstration that the mechanism works
+online. A system that has to stop learning before its readout can use what it
+learned has not solved continual learning; it has deferred it. That is the
+next thing to fix, not to report around.
+
+NEXT
+----
+1. Decaying bind rate, or a two-phase schedule, so the gain arrives without a
+   separate catch-up phase. Prediction to be recorded before that run.
+2. Re-run the offline probe on the catchup condition, to see whether the
+   remaining 0.770-vs-0.876 gap is extraction or something else.
