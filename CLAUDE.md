@@ -270,6 +270,13 @@ someone who was not there what to do next time. So:
   before starting the next thing halves the throughput of the project for no
   reason.
 
+  **Concretely: scheduling the next wake-up is the last thing you do when local
+  work is exhausted, not the thing you do after finishing one item.** Arming a
+  timer ends the turn. Doing it with work still on the bench converts "wait for
+  CI" into "wait for CI *and* stop working", which is the failure this rule
+  exists to prevent — and it was committed in the same turn the rule was
+  written, which is how easy it is.
+
 - The design rule the whole architecture serves: **no operation may require
   globally synchronised state.** A mechanism needing a population sort, a global
   mean, or a pooled matrix is a violation and gets flagged as one even when it

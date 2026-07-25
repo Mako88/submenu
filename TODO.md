@@ -8,7 +8,7 @@ question in plain language, with where it stands. Detail is below.
 | 1 | Does any of this survive a task that asks more than one puzzle? | **Forgetting: answered — nothing forgets, so there is nothing to fix.** Capacity: untouched. Emergent structure: criticality refuted, simpler answer standing |
 | 2 | What is lateral inhibition actually doing? | Works (+0.037), best result in the project with it — but the reason it was built is refuted and the real mechanism is unknown |
 | 3 | Is the "settling" the network does for free precomputable? | **Yes, and better from static than from the task.** Why, is open |
-| 4 | Can we stop simulating every neuron every millisecond? | Untouched. ~97% of current work is wasted; would be ~50× faster |
+| 4 | Can we skip the work that isn't doing anything? | **Measured.** Not at neuron level (81% are active) — at connection level. Worth ~2× now, ~5× at scale. Demoted from "biggest lever" |
 | 5 | Can we add new senses to a running network? | Built and tested. Open: does a *trained* model survive it |
 | 6 | Which old decisions rest on evidence a later fix destroyed? | Six items, tracked in AUDIT.md |
 | 7 | Does it actually work spread across machines? | Never tried. All delays so far are simulated inside one process |
@@ -199,17 +199,79 @@ matrix is how it stops being one.
   every 25 episodes and missed it. "Converges to a plateau" is the natural
   description and it is wrong.
 
-## 4. Event-driven execution
+## 4. Sparse synapse updates (was: event-driven execution)
 
-*In plain terms: right now every neuron is recalculated every millisecond, even
-though only about 3% of them are doing anything. It is like polling every house
-on a street each second to ask if anything happened. Switching to "tell me when
-something happens" should be exact here rather than an approximation, and worth
-roughly 50× — the single biggest speedup available.*
+*In plain terms: it looked like most of the work was wasted on neurons doing
+nothing, and that fixing it would be worth ~50×. Measuring it moved the target
+twice. Most neurons are NOT idle — 81% receive input every step even though only
+2.6% fire — so waking neurons selectively saves almost nothing. The real waste is
+one level down: 97% of the individual connections carry nothing on a given step.
+Skipping those is worth a measured 5× on that operation, which works out to about
+2× on the whole thing at current size, and more as the network grows. Still worth
+doing. Not the headline it was written as.*
 
-The loop is clock-driven: every neuron updates every millisecond whether or not
-anything reached it. At a 3% firing rate that is ~97% waste, and it is the
-single largest lever available.
+**The framing this item carried was wrong, and measuring it moved the target.**
+It said "every neuron updates every millisecond whether or not anything reached
+it; at a 3% firing rate that is ~97% waste". That conflates *firing* with
+*receiving input*. Measured over 12,000 steps of real episodes:
+
+| level | receives an event each step | skippable |
+|---|---|---|
+| neurons | **81.2%** of 96 | 19% |
+| branches | 33.2% of 768 | 67% |
+| synapses | **2.99%** of 12,288 | **97%** |
+| *(neurons that actually fire)* | *2.65%* | — |
+
+Only 2.65% fire, but **81% receive input and so genuinely need their membrane
+advanced**. A neuron-level scheduler — the thing this item described — would
+skip 19% of the work and would not be worth the rewrite. Fully silent steps are
+rarer still: 0.9%.
+
+**The 97% is at the synapse level**, which is a different mechanism entirely:
+not a scheduler that wakes neurons, but a reverse index from each emitting
+source to the synapse slots that read it, scattering ~370 updates instead of
+multiplying through a 12,288-entry tensor that is 97% zeros. Fan-out is ~110
+synapses per source and ~3.4 sources emit per step, which is exactly the 367
+measured — so the arithmetic closes.
+
+**Measured, and the honest ceiling is far below what this item claimed.**
+
+Branch integration, dense against sparse-scatter at the real 3% occupancy:
+
+| | µs/step | |
+|---|---|---|
+| dense `(W*x).sum(axis=2)` | 28.8 | |
+| sparse `np.add.at` | **5.6** | **5.15×**, results identical |
+| sparse `np.bincount` | 6.5 | 4.46× |
+
+So a 33× reduction in arithmetic buys **5×** in wall clock — the dense op is
+cache-friendly and the scatter is not.
+
+Then the share that op holds of a whole step, from `cProfile` over 4000 steps at
+96 neurons (399 µs/step total):
+
+| | µs | share |
+|---|---|---|
+| `step()`'s own inline `(N,B,S)` work — `pre`, `eps`, `elig`, `W*x` | 159 | 40% |
+| transport `take` | 42 | 11% |
+| ufunc `reduce` (the `axis=2` sums) | 38 | 10% |
+| `_phi` (operates on `(N,B)`, not `(N,B,S)`) | 35 | 9% |
+| short-term plasticity | 29 | 7% |
+| `_emit` | 27 | 7% |
+
+`(N,B,S)`-shaped work is ~60% of a step. Sparsifying all of it at the measured
+5× gives **~1.9× overall at 96 neurons** — not 50×, and not the ~170× the
+firing-rate arithmetic suggested.
+
+**So this is not "the single largest lever available", and that line is now
+removed.** It is a ~2× win at current size for a substantial rewrite.
+
+What keeps it worth doing is scale, which is the actual deployment target. The
+`(N,B,S)` share grows with column size as per-step Python overhead amortises —
+already visible in the throughput table above — so at 1024+ neurons the dense
+tensor dominates and the achievable factor approaches the full 5×. The item is
+re-scoped from "the big win" to "a 2–5× win that matters more the bigger the
+column gets", and it should be sequenced accordingly.
 
 It is *exact* for this model rather than an approximation, for two specific
 reasons — and **both are now tested rather than argued**, because either being
