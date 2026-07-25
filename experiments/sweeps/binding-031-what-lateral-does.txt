@@ -154,6 +154,69 @@ SETTINGS
 6 seeds locally for the first look, then the 20-seed matrix if anything moves.
 Frozen column throughout (`lr = 0`), so no learning-path result can reach it.
 
-RESULT
-------
-Pending.
+RESULT -- 6 seeds, local. UNDERPOWERED; the 20-seed matrix is the real answer
+-------------------------------------------------------------------------------
+  condition      align5   align10   fisher   margin   eff_rank   (chance align10 = 0.323)
+  off            0.4632   0.6198    0.0260   2.737    17.543
+  lateral        0.4387   0.6452    0.0309   2.871    17.452
+  on             0.4927   0.6821    0.0306   3.457     9.669
+  lateral+on     0.5130   0.7264    0.0372   3.865     9.484
+
+  lateral vs off    align5    -0.020   3/6   p = 0.4688
+                    align10   +0.036   5/6   p = 0.0625
+                    fisher    +0.005   5/6   p = 0.0625
+                    margin    +0.135   3/6   p = 0.4688
+                    eff_rank  -0.254   2/6   p = 0.4375
+
+  on vs off         margin    +0.720   6/6   p = 0.0312   significant
+                    eff_rank  -8.036   0/6   p = 0.0312   significant
+
+THE PROBE IS NOT BLIND, WHICH IS THE FIRST THING TO ESTABLISH
+---------------------------------------------------------------
+Binding comes back significant on two metrics at the smallest p six seeds can
+produce, and its effective rank drops 8.0 on 0/6 seeds. So these quantities do
+resolve a mechanism when one is acting on them. A null for lateral inhibition is
+therefore about lateral inhibition rather than about the instrument.
+
+`lateral`'s effective rank moves -0.254 at p = 0.4375, which independently
+reproduces sweep 020's null on the same quantity. The setup is measuring the
+thing it measured before.
+
+SIX SEEDS CANNOT ANSWER THIS, AND SAYING "NULL" WOULD BE WRONG
+----------------------------------------------------------------
+An exact paired permutation test over 6 seeds has a **minimum achievable p of
+2/2^6 = 0.031**. So `p = 0.0625` is the second-smallest value obtainable -- it
+means 5 of 6 seeds moved the same way and nothing more. Two metrics, `align10`
+and `fisher`, both sit exactly there.
+
+The effect being chased is +0.028 in decodability at p = 0.0297 over 20 seeds.
+A structural signature of an effect that small needs at least as many seeds as
+the effect itself did. **Six seeds is a pilot, and this sweep's conclusion is
+that it must be run at twenty**, not that lateral inhibition does nothing to
+these quantities.
+
+WHERE THE PREDICTION STANDS
+-----------------------------
+Predicted: alignment up, Fisher separability flat. What the pilot shows, with no
+significance behind any of it:
+
+  align5    -0.020    the wrong direction
+  align10   +0.036    the predicted direction, 5/6
+  fisher    +0.005    the direction predicted NOT to move, 5/6
+
+So the pilot points, weakly, at the *alternative* branch this note named --
+"the representation genuinely improved and the improvement is invisible to
+correlation, rank and sparsity alike" -- rather than at the alignment
+hypothesis. It also splits `align5` from `align10`, which the prediction treated
+as one quantity and which may not be.
+
+**No conclusion is drawn from that.** A one-seed claim has been corrected by
+twenty seeds three times in this project, and a six-seed claim in a direction
+opposite to the prediction is exactly the shape of thing that reverses. It is
+recorded because the prediction was recorded, and because deciding what to run
+at twenty seeds is what the pilot is for.
+
+WHAT TO RUN
+-----------
+The same four conditions at 20 seeds, in CI, with paired tests on all five
+metrics. Queued behind sweeps 030 and 032.

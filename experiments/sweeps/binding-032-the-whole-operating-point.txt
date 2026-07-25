@@ -1,0 +1,157 @@
+Sweep 032 -- is the whole operating point arithmetic?
+======================================================
+
+IN PLAIN TERMS
+--------------
+The single biggest source of improvement in this project is not a learning rule.
+It is each neuron quietly tuning two numbers about itself while the network runs
+-- a threshold, and a "knee" that decides when its dendritic branches switch into
+a boosted mode. That tuning is worth more than every learning rule here put
+together.
+
+Sweep 029 showed the threshold half is not really being learned at all: it turns
+out to be a formula in a property each neuron already has when it is built, and
+using the formula is exactly as good as a hundred episodes of tuning.
+
+Now the knee. A probe found it tracks one thing -- how big that particular
+branch's input signal usually is -- and nothing else. That is not something you
+know when the network is built, but it is something you can find out by watching
+for a few seconds without changing anything.
+
+So this asks whether the two together replace the tuning entirely. If yes, the
+biggest effect in the project is a formula plus a brief look, and nothing has to
+adapt. That is worth knowing whichever way it comes out, because right now every
+column has to be run for a hundred episodes before it is any good, and a
+distributed network of a million of them cannot afford that.
+
+QUESTION
+--------
+Sweep 029 established:
+
+  theta = 5.927 * tau^-0.748, applied at construction  ->  0.757
+  theta copied from a twin settled for 50 episodes     ->  0.763   (p = 0.7672)
+  ordinary settling, 100 episodes                      ->  0.755   (0.582 at ep 0)
+
+and named the knee as the open half. `tau-init-knee` -- formula theta plus a
+settled twin's knee -- reached **0.786**, statistically level with the full
+settled operating point's 0.803 (p = 0.1997). But it still needed the twin.
+
+`experiments/opfit.py` then measured what the knee is fitted to, over 6 seeds
+and 4608 branches:
+
+    predictor              r (log-log)
+    rms of own potential      0.923      exponent 1.05, coef 1.83
+    excitatory fraction       0.202
+    branch gain               0.002
+    mean delay                0.002
+    owning neuron's tau       0.005
+
+**knee = 1.83 * rms(b)^1.05**, and every static structural property is flat.
+That is what the adaptation rule says it should be -- the knee rises when its
+branch's plateau engages too often, so a settled knee is a fixed quantile of
+that branch's own potential distribution.
+
+The direction control is what makes it a finding. A knee-frozen twin's
+potentials predict the adapted twin's settled knee equally well (r = 0.923), and
+the knee spans a **16x** range across branches while freezing it moves the
+branch potential by at most **1.2%**. So the potential is upstream, not
+downstream. (Recorded honestly: that control is *nearly* guaranteed, because `b`
+is the pre-nonlinearity potential and the knee only enters in phi(b). The one
+path by which circularity could arise is recurrence across timesteps, and that
+is what the 1.2% measures.)
+
+WHAT IS BEING CLAIMED, AND WHAT IS NOT
+----------------------------------------
+  theta   computable at CONSTRUCTION, from a static local property
+  knee    computable from a short OBSERVATION PASS, no adaptation, no twin
+
+The second is weaker than the first and this note will not blur them. The branch
+potential scale is a property of the running column. So the claim under test is
+"the operating point is a formula plus a brief measurement", not "the operating
+point is computable at construction".
+
+CONDITIONS  (20 seeds, 100 episodes, 96 neurons, lr 0, all three adaptations off)
+-----------------------------------------------------------------------------------
+  fit-both-5     theta from tau + knee from 5 observation episodes
+  fit-both-40    theta from tau + knee from 40 observation episodes
+  fit-knee-40    knee from 40 episodes, theta left at its default
+
+  read against, from sweeps 022/023/027/029:
+  all              0.755   ordinary settling, 100 episodes
+  tau-init         0.757   theta formula only, knee at default
+  tau-init-knee    0.786   theta formula + a settled twin's knee
+  preset-shuffled  0.803   the full settled operating point
+
+`fit-knee-40` exists so the two halves can be told apart. Without it, a good
+`fit-both` number could be entirely theta's doing -- which is already known --
+and the knee's contribution would be assumed rather than measured.
+
+The 5-vs-40 pair asks how cheap the observation can be. It is a real question
+rather than a decoration: if 5 episodes suffice, the cost of an operating point
+drops from 100 episodes of closed-loop adaptation to about 5% of one, and the
+distributed argument changes shape.
+
+PREDICTION (recorded before the run)
+--------------------------------------
+  fit-both-40    0.775 to 0.800, and **null against tau-init-knee's 0.786**
+  fit-both-5     0.760 to 0.795, at most 0.02 below fit-both-40
+  fit-knee-40    0.760 to 0.790, i.e. **above tau-init's 0.757**
+
+**The central claim: `fit-both-40` is null against `tau-init-knee`.** A knee
+computed from the branch's own potentials should be as good as one copied from a
+settled twin, because the probe says the twin's knee *is* a function of those
+potentials at r = 0.923.
+
+The reasoning for the band: r = 0.923 in logs leaves ~15% of the knee's variance
+unexplained, and sweep 027 measured the knee's separate contribution at +0.041.
+Losing 15% of that is 0.006, so `fit-both-40` should land within about 0.01 of
+`tau-init-knee` and comfortably above `tau-init`.
+
+`fit-both-5` is predicted close because `rms(b)` is an average over ~460
+timesteps per episode, so even 5 episodes is ~2300 samples per branch. The thing
+that would break it is not sample count but coverage -- 5 episodes may not
+contain enough distinct cue combinations.
+
+WHAT EACH OUTCOME MEANS
+-------------------------
+  fit-both-40 ~ 0.786   The operating point is a formula plus a brief look, and
+                        the 100 episodes are pure search for an answer that was
+                        determined all along. The strongest form of the result
+                        and the one that changes what a distributed column costs
+                        to bring up.
+
+  fit-both-40 near      The knee formula adds nothing over theta alone. Then
+  tau-init's 0.757      r = 0.923 was not enough, or `rms(b)` is the wrong
+                        summary of the potential distribution -- a quantile
+                        rather than an RMS is the obvious next try, and the
+                        adaptation rule actually specifies a quantile.
+
+  fit-both-40 well      Something about setting the knee open-loop is worse than
+  below 0.757           any of its parts. Most likely a scale error between
+                        `rms(b)` measured with `learning` off and the potentials
+                        the settled column actually runs at.
+
+  fit-both-5 ~          The observation pass is essentially free. Then the honest
+  fit-both-40           headline is that the operating point costs 5 episodes,
+                        and the remaining question is whether 1 works.
+
+THE OUTCOME THAT WOULD BE MOST EMBARRASSING, NAMED IN ADVANCE
+---------------------------------------------------------------
+`fit-knee-40` coming back at or above `fit-both-40`. That would mean the theta
+formula contributes nothing once the knee is set properly, and sweep 029's
+headline -- which is already in the README as a major result -- would need
+re-stating as a claim about a configuration rather than about theta. It is not
+predicted, and it is exactly why `fit-knee-40` is in the matrix rather than left
+out as redundant.
+
+SETTINGS
+--------
+20 seeds, 100 episodes, checkpoints every 10, 300 probe episodes, 96 neurons,
+lr 0, binding and lateral off, all three adaptations disabled in the fitted
+conditions so nothing can quietly re-tune what the formula set.
+THETA_A = 5.927, THETA_B = -0.748, KNEE_A = 1.83, KNEE_B = 1.05, frozen at module
+level in `experiments/trajectory.py`.
+
+RESULT -- 20 seeds
+------------------
+Pending. Sweep 030 holds the matrix.

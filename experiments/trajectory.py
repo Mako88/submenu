@@ -43,6 +43,27 @@ OUT = Path(__file__).resolve().parent / "trajectory_results.jsonl"
 # Refitting per run would let the initialiser peek at the answer it is meant to
 # predict, which is the whole point of the condition.
 THETA_A, THETA_B = 5.927, -0.748
+# Sweep 029 left the knee as the open half of the operating point, and
+# `experiments/opfit.py` measured what it is fitted to. The knee's own
+# adaptation rule raises it when its branch's plateau engages too often, so a
+# settled knee is a fixed quantile of that branch's potential distribution --
+# and it is, at log-log r = 0.923 over 6 seeds and 4608 branches, with an
+# exponent of 1.05 (i.e. very nearly plain proportionality). Every static
+# structural property was flat: excitatory fraction 0.20, branch gain 0.002,
+# mean delay 0.002, the owning neuron's tau 0.005.
+#
+# The direction control is what makes it a finding rather than a circularity: a
+# knee-frozen twin's potentials predict the adapted twin's settled knee equally
+# well (r = 0.923), and the knee spans a 16x range across branches while
+# freezing it moves the branch potential by at most 1.2%. So the potential is
+# upstream.
+#
+# **This is weaker than the theta result and must be reported as such.** The
+# branch potential scale is a property of the running column, so the knee is
+# obtainable from a short observation pass rather than from a hundred episodes
+# of closed-loop adaptation -- cheaper than settling, but NOT construction-time
+# the way theta is.
+KNEE_A, KNEE_B = 1.83, 1.05
 
 
 class ShuffledInput:
@@ -204,6 +225,15 @@ def main() -> None:
     ap.add_argument("--theta-from-tau", type=int, default=0,
                     help="initialise theta as a power law in the neuron's own "
                          "membrane tau instead of settling for it")
+    # Sweep 032. The knee half, from `opfit.py`: knee = 1.83 * rms(b)^1.05,
+    # r = 0.923. Takes a number of observation episodes rather than a flag,
+    # because the whole point is that it is cheap -- and how cheap is the
+    # question. Default 0, so every existing condition runs exactly as before
+    # (the sweep 026 lesson about a new flag's default).
+    ap.add_argument("--knee-from-rms", type=int, default=0,
+                    help="set each branch's knee from the RMS of its own "
+                         "potential, measured over this many observation "
+                         "episodes, instead of settling for it")
     ap.add_argument("--report", action="store_true")
     args = ap.parse_args()
 
@@ -257,6 +287,32 @@ def main() -> None:
     if args.theta_from_tau:
         col = model.column
         col.theta[:] = (THETA_A * col.tau_soma ** THETA_B).astype(np.float32)
+    if args.knee_from_rms:
+        # Observe, then set -- no closed loop, no twin, no adaptation. The pass
+        # runs with `learning` off so nothing adapts while it is watched, and it
+        # happens *after* theta-from-tau so the potentials being measured belong
+        # to the column that will actually be used.
+        col = model.column
+        was = col.learning
+        col.learning = False
+        obs_rng = np.random.default_rng(6000 + args.seed)
+        total = np.zeros_like(col.b, dtype=np.float64)
+        n = 0
+        for _ in range(args.knee_from_rms):
+            ep = task.episode(obs_rng)
+            col.reset_state()
+            model.transport.reset()
+            for k in range(ep.inputs.shape[0]):
+                t = model._t
+                model._t += 1
+                col.step(t, ep.inputs[k])
+                total += col.b.astype(np.float64) ** 2
+                n += 1
+        rms_b = np.sqrt(total / max(n, 1))
+        col.knee[:] = np.clip(KNEE_A * rms_b ** KNEE_B, 1e-3, 50.0).astype(np.float32)
+        col.reset_state()
+        model.transport.reset()
+        col.learning = was
     if args.preset_from:
         # The twin adapts with every default in force -- the overrides apply
         # only to the column being measured, or the preset would inherit the
@@ -330,6 +386,7 @@ def main() -> None:
                sparsity=sparsity, preset_from=args.preset_from,
                preset_input=args.preset_input, preset_what=args.preset_what,
                theta_from_tau=args.theta_from_tau,
+               knee_from_rms=args.knee_from_rms,
                preset_shuffle=args.preset_shuffle,
                final=curve[str(done)], final_sparsity=sparsity[str(done)],
                **overrides)

@@ -134,6 +134,27 @@ jobs:
           python experiments/trajectory.py --tag tau-init-adapt \
             --theta-from-tau 1 $common
 
+          # Sweep 032. Sweep 029 closed theta and left the knee: tau-init-knee
+          # reached 0.786, level with the full settled operating point
+          # (p = 0.1997), but it copied a settled TWIN's knee. opfit.py then
+          # measured what the knee is fitted to -- the RMS of its own branch's
+          # potential, r = 0.923, exponent 1.05, with every static property flat
+          # and a knee-frozen twin predicting it equally well.
+          #
+          # So the knee needs no twin and no adaptation, only a short look at
+          # the column's own potentials. These conditions ask whether that
+          # actually reproduces the operating point end to end, and how short
+          # "short" can be -- 5 observation episodes against 40.
+          nofit="--homeostatic-lr 0 --knee-lr 0 --scaling-lr 0"
+          python experiments/trajectory.py --tag fit-both-5 \
+            --theta-from-tau 1 --knee-from-rms 5 $nofit $common
+          python experiments/trajectory.py --tag fit-both-40 \
+            --theta-from-tau 1 --knee-from-rms 40 $nofit $common
+          # The knee formula alone, with theta left at its default, so the two
+          # halves can be told apart rather than only measured together.
+          python experiments/trajectory.py --tag fit-knee-40 \
+            --knee-from-rms 40 $nofit $common
+
           # Sweep 022's ablations are answered and written up. Dropped, per the
           # housekeeping rule that CI is for open questions and the sweep notes
           # are the record.
@@ -143,7 +164,8 @@ jobs:
         run: |
           for tag in all preset-task preset-shuffled preset-noise \
                      preset-theta preset-knee preset-permuted \
-                     tau-init tau-init-knee tau-init-adapt; do
+                     tau-init tau-init-knee tau-init-adapt \
+                     fit-both-5 fit-both-40 fit-knee-40; do
             grep -q "\"tag\": \"$tag\"" experiments/trajectory_results.jsonl \
               || { echo "no rows for condition '$tag'"; exit 1; }
           done
@@ -186,7 +208,10 @@ jobs:
                       "preset-permuted preset-shuffled" "preset-theta preset-shuffled" \
                       "preset-knee preset-shuffled" \
                       "tau-init preset-theta" "tau-init-knee preset-shuffled" \
-                      "tau-init-adapt all"; do
+                      "tau-init-adapt all" \
+                      "fit-both-40 preset-shuffled" "fit-both-40 tau-init-knee" \
+                      "fit-both-5 fit-both-40" "fit-knee-40 preset-shuffled" \
+                      "fit-both-40 all"; do
             set -- $pair
             for metric in final final_sparsity; do
               echo "" | tee -a summary.txt
