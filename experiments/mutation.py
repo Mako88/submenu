@@ -91,22 +91,22 @@ MUTATIONS = [
     (
         COLUMN,
         "Hebbian binding ignores how active the neuron was",
-        "rate * post[:, None, None] * (self.pre * self.syn_sign) * excitatory",
-        "rate * cfg.bind_scale * (self.pre * self.syn_sign) * excitatory",
+        "rate * post[:, None, None] * (bind_pre * self.syn_sign) * excitatory",
+        "rate * cfg.bind_scale * (bind_pre * self.syn_sign) * excitatory",
         "binding_scales_with_how_active",
     ),
     (
         COLUMN,
         "Hebbian binding ignores which synapses were driving the neuron",
-        "rate * post[:, None, None] * (self.pre * self.syn_sign) * excitatory",
+        "rate * post[:, None, None] * (bind_pre * self.syn_sign) * excitatory",
         "rate * post[:, None, None] * excitatory",
         "binding_carries_which_synapses",
     ),
     (
         COLUMN,
         "Hebbian binding potentiates inhibitory synapses too",
-        "rate * post[:, None, None] * (self.pre * self.syn_sign) * excitatory",
-        "rate * post[:, None, None] * (self.pre * self.syn_sign)",
+        "rate * post[:, None, None] * (bind_pre * self.syn_sign) * excitatory",
+        "rate * post[:, None, None] * (bind_pre * self.syn_sign)",
         "excitatory_synapses",
     ),
     (
@@ -230,8 +230,8 @@ MUTATIONS = [
     (
         COLUMN,
         "presynaptic trace flattened in binding (latency window loses tau_branch)",
-        "rate * post[:, None, None] * (self.pre * self.syn_sign) * excitatory",
-        "rate * post[:, None, None] * (np.ones_like(self.pre) * self.syn_sign) "
+        "rate * post[:, None, None] * (bind_pre * self.syn_sign) * excitatory",
+        "rate * post[:, None, None] * (np.ones_like(bind_pre) * self.syn_sign) "
         "* excitatory",
         "latency_window or synapses_were_driving",
     ),
@@ -241,6 +241,20 @@ MUTATIONS = [
         "post = np.clip(self.act_fast / (baseline + 1e-9), 0.0, 5.0) * cfg.bind_scale",
         "post = np.ones_like(self.act_fast) * cfg.bind_scale",
         "latency_window or how_active",
+    ),
+    (
+        COLUMN,
+        "binding's own presynaptic trace decays at the forward path's constant",
+        "            self.bind_pre *= self.decay_bind_pre",
+        "            self.bind_pre *= self.decay_branch",
+        "bind_tau_pre",
+    ),
+    (
+        COLUMN,
+        "binding reads the forward path's trace even when given its own",
+        "bind_pre = self.pre if self.bind_pre is None else self.bind_pre",
+        "bind_pre = self.pre",
+        "bind_tau_pre",
     ),
 ]
 

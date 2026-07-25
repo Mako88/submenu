@@ -901,6 +901,136 @@ def test_binding_latency_window_is_set_by_the_shorter_of_its_two_traces():
     )
 
 
+def test_bind_tau_pre_matching_tau_branch_reproduces_the_default_path():
+    """The new trace must be the same filter, not merely a similar one.
+
+    `bind_tau_pre` gives binding its own presynaptic trace so its latency window
+    stops being set by the forward path. Set to `tau_branch` it is driven by the
+    same input at the same constant with the same unit-DC-gain form, so it must
+    reproduce the default *exactly* — not approximately.
+
+    What breaks if this stops holding: an off-by-one in the update order (the
+    trace advanced before the rule reads it rather than after) shifts binding by
+    one step, which is invisible at lag 0 and quietly rescales every latency
+    number measured against it. Exact equality is the only assertion that
+    catches that; a tolerance would not.
+    """
+    task = DelayedXOR()
+    outs = []
+    for kw in ({}, {"bind_tau_pre": ColumnConfig.tau_branch}):
+        m = Plexus(
+            task.n_inputs, task.n_classes,
+            column=ColumnConfig(n_neurons=32, lr=0.0, seed=0, hebbian=True, **kw),
+            seed=0,
+        )
+        rng = np.random.default_rng(4)
+        for _ in range(3):
+            m.run_episode(task.episode(rng), learn=True)
+        outs.append(m.column.W.copy())
+    assert np.array_equal(outs[0], outs[1]), (
+        "bind_tau_pre at tau_branch is not the default path; max difference "
+        f"{np.abs(outs[0] - outs[1]).max():.3e}"
+    )
+
+
+def test_bind_tau_pre_widens_the_window_without_touching_the_forward_path():
+    """Latency tolerance, bought without changing what the column computes.
+
+    Sweep 026 established that binding's window is
+    `1/(1/tau_act_fast + 1/tau_branch)` = 11.5 steps, and that the only lever in
+    that expression is `tau_branch` — the branch filter in the *forward* path.
+    So the cheap fix for a late modulator is to change how the column integrates
+    its input, which is a real cost, and `experiments/sweeps/binding-030` is the
+    sweep that prices it.
+
+    `bind_tau_pre` is the alternative: a presynaptic trace the *rule* owns.
+    Both halves are asserted here because either alone would be misleading —
+    a wider window that changed the column's output would be the `tau_branch`
+    trade under a new name, and an untouched forward path that did not widen the
+    window would be a dead parameter.
+
+    Measured by `experiments/lagwindow.py`: at `tau_act_fast = bind_tau_pre =
+    300` the window is **154 steps** against a product prediction of 150, and
+    40% of the binding update survives a lag of 150 where the default retains
+    essentially none.
+    """
+    task = DelayedXOR()
+
+    def column(**kw):
+        return Plexus(
+            task.n_inputs, task.n_classes,
+            column=ColumnConfig(n_neurons=32, lr=0.0, seed=0, hebbian=True, **kw),
+            seed=0,
+        ).column
+
+    # Half one: the forward path is untouched. Binding is off for this check so
+    # the comparison is of the column's own computation, not of weights the rule
+    # has already moved.
+    ep = task.episode(np.random.default_rng(11))
+    states = []
+    for kw in ({}, {"bind_tau_pre": 300.0}):
+        col = Plexus(
+            task.n_inputs, task.n_classes,
+            column=ColumnConfig(n_neurons=32, lr=0.0, seed=0, hebbian=False, **kw),
+            seed=0,
+        ).column
+        states.append(np.array([col.step(t, ep.inputs[t]) for t in range(60)]))
+    assert np.array_equal(states[0], states[1]), (
+        "declaring bind_tau_pre changed the column's output, so it is not free "
+        "of the forward path after all"
+    )
+
+    # Half two: the window actually widens. Driven directly rather than through
+    # lagwindow.py's warm-up, so the assertion is about the traces the rule
+    # reads and stays fast enough for the suite.
+    def retained_at(lag, **kw):
+        def magnitude(steps):
+            col = column(**kw)
+            col.act_slow[:] = 0.1
+            col.n_samples = 500
+            col.act_fast[:] = 0.2 * col.decay_fast**steps
+            trace = col.pre if col.bind_pre is None else col.bind_pre
+            decay = col.decay_branch if col.bind_pre is None else col.decay_bind_pre
+            trace[:] = 0.5 * decay**steps
+            before = col.W.copy()
+            col._bind()
+            return float(np.abs(col.W - before).sum())
+
+        return magnitude(lag) / magnitude(0)
+
+    # Half three: the trace is advanced on its *own* constant every step. The
+    # two halves above set the traces by hand, so neither would notice
+    # `bind_pre` being decayed at `decay_branch` -- the window would then be the
+    # forward path's again while every direct-assignment assertion still passed.
+    # Checked algebraically rather than by running to silence, because a column
+    # with no external drive still has recurrent activity and `x` never reaches
+    # exactly zero.
+    col = column(bind_tau_pre=300.0)
+    for t in range(20):  # prime, so bind_pre is large enough for the check to bite
+        col.step(t, ep.inputs[t])
+    pre_old, bind_old = col.pre.copy(), col.bind_pre.copy()
+    col.step(20, ep.inputs[20])
+    # `pre` and `bind_pre` see the same input, so `pre`'s own update recovers it.
+    x = (col.pre - col.decay_branch * pre_old) / col.gain_branch
+    expected = col.decay_bind_pre * bind_old + col.gain_bind_pre * x
+    assert np.allclose(col.bind_pre, expected, atol=1e-6), (
+        "bind_pre is not advancing at decay_bind_pre; max deviation "
+        f"{np.abs(col.bind_pre - expected).max():.3e}"
+    )
+
+    default = retained_at(150)
+    decoupled = retained_at(150, bind_tau_pre=300.0, tau_act_fast=300.0)
+    assert default < 0.02, (
+        f"the default retained {default:.4f} of its update at lag 150 -- that is "
+        "far more than the 11.5-step window admits, so the traces are not "
+        "decaying the way sweep 026 measured"
+    )
+    assert decoupled > 10.0 * default, (
+        f"bind_tau_pre retained {decoupled:.4f} at lag 150 against {default:.4f} "
+        "for the default -- the rule's own trace is not widening the window"
+    )
+
+
 def test_probing_does_not_perturb_training():
     """Measuring the column mid-training must leave the training untouched.
 

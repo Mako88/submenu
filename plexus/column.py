@@ -156,6 +156,31 @@ class ColumnConfig:
     # the population received a unit-weighted update. Kept so the sweep 012 and
     # 014 numbers stay on one scale.
     bind_scale: float = 0.15
+    # A presynaptic trace maintained *by the binding rule*, at its own time
+    # constant. `None` keeps the current behaviour: binding reads `pre`, the
+    # branch filter, which belongs to the forward path.
+    #
+    # Why this exists, measured rather than argued. `_bind` commits a product of
+    # two traces, so its latency window is
+    # `1/(1/tau_act_fast + 1/tau_branch)` -- 11.5 steps at the defaults, and
+    # dominated by whichever is shorter. Sweep 026 measured binding's gain at
+    # +0.127 for a modulator arriving on time and **null from lag 25 onward**,
+    # and `experiments/lagwindow.py` confirmed the window arithmetic at three
+    # settings (11.87 / 15.25 / 28.68 against 11.54 / 14.15 / 27.27).
+    #
+    # That leaves `tau_branch` as the only lever, and it sets how the column
+    # integrates its input -- so buying latency tolerance means changing what
+    # the column computes. This decouples them: with `bind_tau_pre` the rule
+    # keeps its own copy of presynaptic activity on whatever timescale credit
+    # assignment needs, and the forward path is untouched.
+    #
+    # The window is still a product, so `tau_act_fast` must be raised with it:
+    # (300, 300) gives 150 steps, which is intercontinental. Neither constant
+    # reaches it alone.
+    #
+    # Off by default. Nothing has measured whether a wider window *helps* --
+    # only that the narrow one is what limits lag tolerance.
+    bind_tau_pre: float | None = None
 
     # --- Lateral inhibition (decorrelation) ---------------------------------
     # Anti-Hebbian plasticity on the inhibitory synapses that already exist:
@@ -384,6 +409,22 @@ class Column:
 
         # Unit-DC-gain companions for every leaky filter above.
         self.gain_branch = np.float32(1.0 - self.decay_branch)
+        # The binding rule's own presynaptic trace, when it has been given one.
+        # Same unit-DC-gain form as every other filter here, so the two are
+        # directly comparable and `bind_tau_pre == tau_branch` reproduces the
+        # default path exactly rather than approximately.
+        self.bind_pre = (
+            None if cfg.bind_tau_pre is None
+            else np.zeros((N, B, S), dtype=np.float32)
+        )
+        self.decay_bind_pre = (
+            None if cfg.bind_tau_pre is None
+            else np.float32(np.exp(-cfg.dt / cfg.bind_tau_pre))
+        )
+        self.gain_bind_pre = (
+            None if self.decay_bind_pre is None
+            else np.float32(1.0 - self.decay_bind_pre)
+        )
         self.gain_soma = (1.0 - self.decay_soma).astype(np.float32)
         self.gain_elig = np.float32(1.0 - self.decay_elig)
 
@@ -654,6 +695,14 @@ class Column:
         # 6. Trace updates (all local: pre-activity, post-state, nothing else).
         self.pre *= self.decay_branch
         self.pre += self.gain_branch * x
+        if self.bind_pre is not None:
+            # Driven by the same `x` as `pre`, on its own constant. Updated here
+            # rather than inside `_bind` because the modulator arrives at most
+            # once per episode while presynaptic activity happens every step --
+            # a trace only advanced when the rule fires would sample its own
+            # input at the rate of the thing it is supposed to remember.
+            self.bind_pre *= self.decay_bind_pre
+            self.bind_pre += self.gain_bind_pre * x
         sens = (self.G * dphi)[:, :, None]  # d v / d b, per branch
         self.eps *= self.decay_soma[:, None, None]
         self.eps += self.gain_soma[:, None, None] * self.pre * sens
@@ -816,9 +865,19 @@ class Column:
         post = np.clip(self.act_fast / (baseline + 1e-9), 0.0, 5.0) * cfg.bind_scale
         # `pre` carries the Dale sign; multiplying it back out recovers the
         # presynaptic activity itself, which is what Hebb's rule is about.
+        #
+        # Which presynaptic trace, and why it is a choice. By default this is
+        # the branch filter -- the forward path's own state, decaying at
+        # `tau_branch`. Because the update is a *product* of this and `post`,
+        # the rule's latency window is `1/(1/tau_act_fast + 1/tau_branch)`, so
+        # the forward path's integration constant silently sets how late a
+        # modulator may arrive: 11.5 steps at the defaults, measured at 11.87 by
+        # `experiments/lagwindow.py`. `bind_tau_pre` breaks that coupling by
+        # giving the rule a trace it owns.
+        bind_pre = self.pre if self.bind_pre is None else self.bind_pre
         excitatory = self.syn_sign > 0.0
         self.W += (
-            rate * post[:, None, None] * (self.pre * self.syn_sign) * excitatory
+            rate * post[:, None, None] * (bind_pre * self.syn_sign) * excitatory
         ).astype(np.float32)
         np.clip(self.W, 0.0, cfg.weight_max, out=self.W)
 
@@ -929,7 +988,10 @@ class Column:
             rng.normal(0.0, 0.4, size=(N, B, n_rewire))
         ).astype(np.float32)
         # Traces belong to the connection that is gone.
-        for trace in (self.pre, self.eps, self.elig):
+        traces = [self.pre, self.eps, self.elig]
+        if self.bind_pre is not None:
+            traces.append(self.bind_pre)
+        for trace in traces:
             trace[idx[0], idx[1], slots] = 0.0
 
         self.max_delay = int(self.delay.max())
@@ -956,6 +1018,8 @@ class Column:
         self.v.fill(0.0)
         self.out.fill(0.0)
         self.pre.fill(0.0)
+        if self.bind_pre is not None:
+            self.bind_pre.fill(0.0)
         self.eps.fill(0.0)
         self.elig.fill(0.0)
         self.dv_dlam.fill(0.0)

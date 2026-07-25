@@ -123,6 +123,11 @@ def main() -> None:
     ap.add_argument("--neurons", type=int, default=96)
     ap.add_argument("--tau-act-fast", type=float, default=50.0)
     ap.add_argument("--tau-branch", type=float, default=15.0)
+    ap.add_argument("--bind-tau-pre", type=float, default=None,
+                    help="give the binding rule its own presynaptic trace at "
+                         "this constant, decoupling the window from the forward "
+                         "path. The window is still a product, so tau_act_fast "
+                         "must be raised alongside it.")
     ap.add_argument("--warmup", type=int, default=12,
                     help="binding events at lag 0 before measuring, so the "
                          "baseline is a running average rather than a copy of "
@@ -142,6 +147,7 @@ def main() -> None:
                 column=ColumnConfig(
                     n_neurons=args.neurons, lr=0.0, seed=s, hebbian=True,
                     tau_act_fast=args.tau_act_fast, tau_branch=args.tau_branch,
+                    bind_tau_pre=args.bind_tau_pre,
                 ),
                 seed=s,
             )
@@ -150,8 +156,9 @@ def main() -> None:
     ref = rows[:, 0:1]
     retained = rows / np.maximum(ref, 1e-30)
 
-    tau_eff = 1.0 / (1.0 / args.tau_act_fast + 1.0 / args.tau_branch)
-    print(f"tau_act_fast {args.tau_act_fast:g}   tau_branch {args.tau_branch:g}"
+    tau_pre = args.tau_branch if args.bind_tau_pre is None else args.bind_tau_pre
+    tau_eff = 1.0 / (1.0 / args.tau_act_fast + 1.0 / tau_pre)
+    print(f"tau_act_fast {args.tau_act_fast:g}   tau_pre {tau_pre:g}"
           f"   -> predicted tau_eff {tau_eff:.2f}")
     print(f"{'lag':>5s}{'|dW|':>12s}{'retained':>10s}"
           f"{'act_fast':>10s}{'pre':>8s}{'product':>9s}")
@@ -159,7 +166,7 @@ def main() -> None:
         r = retained[:, j].mean()
         print(f"{lag:5d}{rows[:, j].mean():12.5f}{r:10.4f}"
               f"{np.exp(-lag / args.tau_act_fast):10.4f}"
-              f"{np.exp(-lag / args.tau_branch):8.4f}"
+              f"{np.exp(-lag / tau_pre):8.4f}"
               f"{np.exp(-lag / tau_eff):9.4f}")
 
     # Fit the measured decay so the answer is a time constant rather than a
@@ -182,7 +189,7 @@ def main() -> None:
     else:
         print("  [no tail points -- pass larger --lags for the usable fit]")
     print(f"predicted: act_fast alone {args.tau_act_fast:g}, "
-          f"pre alone {args.tau_branch:g}, product {tau_eff:.2f}")
+          f"pre alone {tau_pre:g}, product {tau_eff:.2f}")
 
 
 if __name__ == "__main__":
