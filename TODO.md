@@ -13,7 +13,7 @@ question in plain language, with where it stands. Detail is below.
 | 6 | Which old decisions rest on evidence a later fix destroyed? | Six items, tracked in AUDIT.md |
 | 7 | Does it actually work spread across machines? | Still never tried on real machines. But the property it depends on is now **measured**: delivery jitter below `delay_min` leaves a distributed run bit-identical, and above it does not |
 | 8 | Would a single GPU just beat this? | **The premise was wrong.** Not bandwidth-bound — 17 % of DRAM peak at 96 neurons, working set fits in L2. It is overhead-bound, so the comparison cannot be made until the code is near *some* limit |
-| 9 | Which claims in the record were never measured? | New. Heterogeneous time constants — **sweep 036 queued**. Four others measured today; the routed vector modulator and the bandwidth premise both **refuted** |
+| 9 | Which claims in the record were never measured? | New, and it caught **all four** of DESIGN.md's headline departures. Two sweeps queued (036, 037), the routed modulator and the bandwidth premise both **refuted** |
 
 Ordered by what would change the most if it turned out differently, not by
 effort. Each item says what it is, why it matters, and what would settle it —
@@ -571,6 +571,31 @@ reads it next.*
   the best homogeneous setting, so directionally right and substantially
   overstated — because STP, not the membrane, is what carries memory here
   (0.527 → 0.864), and it is identical in every condition.
+
+- **The dendritic plateau is what makes a neuron "closer to a two-layer network"
+  than a summer.** `DESIGN.md`'s opening and its section 4. The model's central
+  structural idea, and **what it is worth has never been measured** — section 4
+  documents only the bug it once had (an absolute knee that never engaged),
+  `test_plateau_nonlinearity_reaches_the_output` is a connection test, and sweep
+  025's `no-knee` disabled knee *adaptation* rather than the plateau.
+
+  **Sweep 037 is built and queued.** `plateau 0` makes phi linear so every
+  branch becomes a plain weighted sum; 0.6 and 2.4 ask the second question,
+  whether 1.2 was ever tuned. Prediction recorded: turning it off costs 0.04 to
+  0.12 — real and clearly significant, and far less than the two-layer framing
+  implies, because the plateau is not the only nonlinearity in the path (soma
+  threshold, STP, and the readout on top). The note names the confound in
+  advance: `plateau 0` changes the branch potential scale, so homeostasis
+  re-settles and part of any drop is the operating point rather than the
+  nonlinearity — sparsity is read alongside every condition, and if it differs
+  the number is an upper bound rather than an estimate.
+
+  **This completes the audit of all four headline departures in DESIGN.md:**
+  valued events (corrected earlier — the value is carried by synaptic efficacy,
+  not suprathreshold magnitude), heterogeneous time constants (sweep 036),
+  the routed vector modulator (refuted below), and the plateau (sweep 037).
+  Three of the four were stated as load-bearing and none of the three had a
+  measurement behind it.
 
 - **The routed vector modulator is "probably the largest single lever on
   credit-assignment quality".** `DESIGN.md` section 3. **Measured and refuted as

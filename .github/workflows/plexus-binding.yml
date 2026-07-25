@@ -169,6 +169,34 @@ jobs:
               --tau-soma-min $tau --tau-soma-max $tau $het
           done
 
+          # Sweep 037. The dendritic plateau is DESIGN.md's fourth headline
+          # departure and the model's "main departure from a summing unit", and
+          # what it is WORTH has never been measured -- section 4 documents only
+          # the bug it once had, and the existing test is a connection test.
+          # Sweep 025's `no-knee` disabled knee *adaptation*, not the plateau.
+          #
+          # plateau 0 makes phi linear, so every branch becomes a plain weighted
+          # sum. Read sparsity alongside: turning the plateau off changes the
+          # branch potential scale, so homeostasis re-settles and part of any
+          # drop may be the operating point rather than the nonlinearity.
+          pl="--hebbian 0 --drain-steps 0 $common"
+          for p in 0 0.6 1.2 2.4; do
+            python experiments/binding.py --tag plateau-$p --plateau $p $pl
+          done
+
+          # The end-to-end block. Sweeps 016, 017, 018 and 021 are all written
+          # up, so by the retire-when-answered rule these should go -- and they
+          # are kept deliberately, on a different justification that belongs on
+          # the record rather than being left implicit.
+          #
+          # They are no longer open questions; they are the **regression guard**
+          # on the shipped configuration. These ten conditions produce every
+          # end-to-end number in the README, including latbind-rls at 0.842,
+          # the best result in the project. Nothing else in CI would notice if a
+          # change to the column silently moved them. Ten conditions is what
+          # that costs, and it is worth it in a way that re-deriving a settled
+          # lag curve was not.
+          #
           # Sweep 016: the same two conditions scored end to end, by the online
           # readout, rather than by an offline decoder. Everything measured so
           # far is representation quality, and sweep 009 is the standing warning
@@ -227,7 +255,8 @@ jobs:
                      tb15-drain0 tb30-drain0 tb60-drain0 tb120-drain0 \
                      tb240-drain0 tb15-drain200 tb120-drain200 \
                      dmin1 dmin6 dmin12 dmin18 dmin12-dmax48 \
-                     hetero homo-12 homo-40 homo-100 homo-320; do
+                     hetero homo-12 homo-40 homo-100 homo-320 \
+                     plateau-0 plateau-0.6 plateau-1.2 plateau-2.4; do
             grep -q "\"tag\": \"$tag\"" experiments/binding_results.jsonl \
               || { echo "no rows for condition '$tag'"; exit 1; }
           done
@@ -267,7 +296,9 @@ jobs:
                       "dmin6 dmin1" "dmin12 dmin1" "dmin18 dmin1" \
                       "dmin12-dmax48 dmin12" "dmin12-dmax48 dmin1" \
                       "homo-12 hetero" "homo-40 hetero" "homo-100 hetero" \
-                      "homo-320 hetero" "hetero off"; do
+                      "homo-320 hetero" "hetero off" \
+                      "plateau-0 plateau-1.2" "plateau-0.6 plateau-1.2" \
+                      "plateau-2.4 plateau-1.2" "plateau-1.2 off"; do
             set -- $pair
             for metric in linear; do
               echo "" | tee -a summary.txt

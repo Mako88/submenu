@@ -88,6 +88,13 @@ def main() -> None:
     # alongside it because raising the floor alone also narrows the *spread* of
     # delays, and the README claims the spread is what enriches the temporal
     # basis; without both flags the two cannot be told apart.
+    # Sweep 037. The dendritic plateau is DESIGN.md's fourth headline departure
+    # and the model's "main departure from a summing unit" -- but that section
+    # documents only the *bug* it once had (an absolute knee that never engaged)
+    # and its connection test. What it is WORTH has never been measured. Sweep
+    # 025's `no-knee` disabled knee *adaptation*, which is a different thing.
+    # `plateau 0` makes phi linear, so each branch becomes a plain weighted sum.
+    ap.add_argument("--plateau", type=float, default=ColumnConfig.plateau)
     # Sweep 036. DESIGN.md says of the log-uniform 12-320 ms spread: "The
     # spread alone is a large win: a population with mixed constants holds
     # working memory a homogeneous one cannot." Load-bearing, strongly worded,
@@ -150,6 +157,7 @@ def main() -> None:
             delay_max=args.delay_max,
             tau_soma_min=args.tau_soma_min,
             tau_soma_max=args.tau_soma_max,
+            plateau=args.plateau,
         ),
         modulator_lag=args.modulator_lag,
         drain_steps=args.drain_steps,
@@ -182,6 +190,7 @@ def main() -> None:
         bind_tau_pre=args.bind_tau_pre, collect=args.collect,
         delay_min=args.delay_min, delay_max=args.delay_max,
         tau_soma_min=args.tau_soma_min, tau_soma_max=args.tau_soma_max,
+        plateau=args.plateau,
         linear=logistic_score(logistic(Xtr, ytr), Xte, yte),
         mlp=mlp(Xtr, ytr, Xte, yte),
         corr=float(offdiag.mean()),

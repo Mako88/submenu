@@ -1,0 +1,139 @@
+Sweep 037 -- what is the dendritic plateau actually worth?
+==========================================================
+
+IN PLAIN TERMS
+--------------
+The single biggest structural idea in this model is that a neuron is not a
+summing device. Each of its dendritic branches does its own little computation
+first -- it stays quiet until enough of its inputs arrive together, then jumps.
+That is what is supposed to make one neuron here worth more than one row of a
+matrix multiply, and it is the reason the model is built out of branches at all.
+
+Nobody has ever measured what it buys. There is a test that switching it off
+changes the output, which only shows it is plugged in. There is a long note
+about a bug it once had. There is no number.
+
+So: turn it off and see. If the network barely notices, the central structural
+claim of the design is decorative, and a great deal of complexity is being
+carried for nothing. If it matters a lot, that is the strongest argument the
+architecture has and it should be stated with a figure.
+
+QUESTION
+--------
+`DESIGN.md` section 4 is titled "Scale-free dendritic plateau" and is entirely
+about the *bug* it once had -- an absolute knee sitting at 1.0 while branch
+potentials settled around 0.067, so the nonlinearity never engaged and every
+neuron "silently degenerated into a linear summer". The fix and its guard are
+documented. The benefit is not.
+
+`test_plateau_nonlinearity_reaches_the_output` compares `plateau 0.0` against
+`1.2` and asserts they differ. That is a connection test -- it establishes the
+mechanism is wired in, which is exactly what the bug had broken -- and says
+nothing about magnitude.
+
+Sweep 025 ran a `no-knee` condition and is sometimes read as covering this. It
+is not: it disabled knee *adaptation*, leaving the plateau in place at a fixed
+knee, and found -0.039 (p = 0.0130). That measures the homeostasis, not the
+nonlinearity.
+
+Meanwhile `DESIGN.md`'s opening states the case in the strongest terms: a
+biological neuron "is not a summer", each branch "applies a local NMDA-plateau
+nonlinearity, making one neuron closer to a two-layer network that detects
+*coincident, clustered* input", and this is kept "because it buys computation
+per message, and messages are the expensive resource."
+
+That is a claim about how much computation per message. It has a number and
+nobody has measured it.
+
+CONDITIONS  (20 seeds, 300 episodes, 96 neurons, lr 0, binding off, drain 0)
+-------------------------------------------------------------------------------
+  plateau-1.2   the default                    reproduces the standing 0.802
+  plateau-0     phi is linear; every branch becomes a plain weighted sum
+  plateau-0.6   half strength
+  plateau-2.4   double strength
+
+`plateau-0` is the condition the sweep exists for. The other two ask a second
+question worth asking once the flag is exposed: whether 1.2 was ever tuned, or
+is simply the value that was written down first.
+
+Binding off throughout, `drain 0`, so `plateau-1.2` must reproduce **0.802** or
+the sweep is not comparable to anything.
+
+**A confound named in advance.** Turning the plateau off changes the branch
+potentials' scale, so threshold and knee homeostasis will re-settle to a
+different operating point -- and sweeps 022/023 established that the operating
+point carries most of a frozen column's decodability. So a drop at `plateau-0`
+could be the missing nonlinearity *or* the column landing somewhere worse.
+`binding.py` records `sparsity` per row, and if the conditions differ in firing
+rate then the comparison is partly an operating-point comparison and the note
+must say so rather than reporting the difference as the plateau's value. That
+is exactly the trap sweep 023 caught in the rate-calibration hypothesis, and it
+is why sparsity is read alongside every number here.
+
+PREDICTION (recorded before the run)
+--------------------------------------
+  plateau-1.2   0.802   (established; anything else voids the sweep)
+  plateau-0     0.68 to 0.76
+  plateau-0.6   0.77 to 0.82
+  plateau-2.4   0.76 to 0.82
+
+**The central claim: turning the plateau off costs between 0.04 and 0.12 --
+real, clearly significant at 20 seeds, and far less than "one neuron is a
+two-layer network" implies.**
+
+The reasoning is that the plateau is not the only nonlinearity in the path. The
+soma has a threshold with a soft crossing, short-term plasticity is strongly
+nonlinear in its own right and is what carries the memory (0.527 -> 0.864), and
+the readout is fitted on top. Removing one nonlinearity from a stack of them
+should hurt without being catastrophic.
+
+**And a second prediction, weaker: 1.2 is not optimal, and neither 0.6 nor 2.4
+differs from it by more than 0.03.** If a value nobody tuned turns out to be a
+sharp optimum, that is worth knowing and slightly suspicious.
+
+WHAT EACH OUTCOME MEANS
+-------------------------
+  plateau-0 costs a      The structural claim is right and now has a figure.
+  lot (>0.15)            DESIGN.md's "computation per message" argument gets the
+                         number it has been asserting without, and branch count
+                         becomes a parameter worth sweeping.
+
+  plateau-0 costs        Predicted. The plateau earns its place and the
+  0.04 to 0.12           two-layer-network framing is overstated. DESIGN.md's
+                         opening gets the measured margin instead of the
+                         rhetoric, the same correction the routed modulator
+                         section just took.
+
+  plateau-0 costs        The model's main departure from a summing unit is
+  nothing                decorative on this task. That would not mean deleting
+                         it -- delayed XOR may simply not ask for coincidence
+                         detection -- but it would mean the claim cannot be made
+                         from anything measured here, and the honest move is a
+                         task that does ask.
+
+  sparsity differs       Then part of whatever is measured is the operating
+  across conditions      point, not the plateau, and the number is an upper
+                         bound on the plateau's value rather than an estimate of
+                         it. Say so; do not report the difference as the
+                         mechanism's worth.
+
+WHAT THIS DOES NOT TEST
+-------------------------
+Branch *count*. The plateau's value presumably depends on there being 8 branches
+of 16 synapses rather than 1 of 128, and that decomposition is a separate sweep
+which nothing has run either.
+
+Nor does it test coincidence detection directly. Delayed XOR asks for memory
+across a gap, not for detecting clustered simultaneous input, so this sweep
+measures the plateau's contribution *to this task* and a null here would be
+weak evidence about the mechanism in general.
+
+SETTINGS
+--------
+20 seeds, 300 episodes, 500 collection episodes, 96 neurons, lr 0, binding and
+lateral off, `drain_steps 0`, everything else at defaults. Sparsity read
+alongside decodability on every condition.
+
+RESULT -- 20 paired seeds
+-------------------------
+Pending. Sweep 034 holds the matrix; 035 and 036 are queued ahead of this.
