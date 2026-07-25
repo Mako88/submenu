@@ -1,0 +1,80 @@
+Sweep 019 -- when during training does the binding gain arrive?
+===============================================================
+
+QUESTION
+--------
+Sweep 018 left an oddity. Binding needs roughly its full 300 episodes: cutting
+it to 150 to fund a static period for the readout gives back nearly all the
+gain (phase 0.731 against catchup 0.770, both with 150 idle episodes). That is
+strange, because the baseline binding scores against converges early, so late
+binding events should contribute progressively less.
+
+Something is accumulating late that no diagnostic measures. This measures it --
+linear decodability of the column state at every 25 episodes, rather than only
+at the end.
+
+The curve separates two explanations 018 could not:
+
+  BINDING IS SLOW. Decodability keeps climbing past episode 150. Then `phase`
+  failed because 150 episodes of binding genuinely is not enough, and the
+  question becomes why a rule whose baseline settles early keeps improving.
+
+  THE READOUT IS SLOW. Decodability is already near 0.876 by episode 150. Then
+  the representation was ready and `phase` should have worked, so the 150 idle
+  episodes were not enough for the readout to converge -- which contradicts the
+  delta rule converging in well under that, and would need explaining.
+
+PREDICTION (recorded before the run)
+------------------------------------
+Binding is slow, at about 70/30.
+
+  episode 0     both conditions 0.80 +/- 0.01, and they MUST agree -- episode 0
+                is the frozen column in both, so a gap there means the probe is
+                measuring something other than binding and the run is void.
+  episode 150   on at 0.835 to 0.855, i.e. roughly half to two thirds of the
+                final +0.074
+  episode 300   on at 0.876, off flat at 0.802 throughout
+
+The reasoning is arithmetic rather than intuition: `phase` (150 bind, 150 idle)
+delivered +0.023 end to end where `catchup` (300 bind, 150 idle) delivered
++0.063. If end-to-end gain is roughly proportional to the representation gain
+available when binding stopped, then decodability at 150 should sit around
+0.802 + 0.074 * (0.023/0.063) = 0.829. Predicting slightly above that because
+the transfer is unlikely to be perfectly linear.
+
+WHAT WOULD SURPRISE ME
+-----------------------
+A curve that is still rising steeply at 300. That would mean the mechanism has
+not converged at all within the budget every sweep so far has used, and every
+number recorded for it -- including the headline +0.074 -- is a snapshot of an
+unfinished process rather than a property of the mechanism. It would also make
+the 018 result unsurprising in hindsight and mean the interesting sweep is a
+longer one.
+
+Recording that in advance because it is the reading most likely to be
+rationalised away as "it works, it just needs longer".
+
+A FIX THIS SWEEP FORCED
+------------------------
+Writing the probe required asserting that probing does not perturb training,
+and the first version of that assertion failed. Three accumulators advanced
+during evaluation: `_steps`, which schedules synaptic scaling, and the `rate`
+and `engagement` EMAs, which drive the two homeostatic loops. All are read only
+by learning operations, so a purely observational pass was shifting the
+column's homeostatic trajectory -- thresholds by 1.5e-2, knees by 4.5e-2, W by
+8.0e-4 over twelve episodes.
+
+Fixed in the column rather than worked around in the probe. No recorded result
+is affected: every experiment before this one evaluated *after* training
+finished, so the leak had nothing to leak into. It surfaced only because this
+is the first measurement taken mid-training.
+
+SETTINGS
+--------
+20 seeds, 300 episodes, checkpoints every 25, 300 probe episodes per
+checkpoint, 96 neurons, column lr 0. Same configuration as sweeps 014-018 so
+the endpoint is directly comparable.
+
+RESULT -- 20 seeds
+------------------
+Pending.

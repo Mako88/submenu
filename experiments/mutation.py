@@ -117,6 +117,13 @@ MUTATIONS = [
         "binding_rate_decays",
     ),
     (
+        COLUMN,
+        "step counter advances during evaluation, shifting the scaling schedule",
+        "            self._steps += 1\n\n        return self.out",
+        "            pass\n\n        self._steps += 1\n        return self.out",
+        "probing_does_not_perturb or advance_the_scaling_schedule",
+    ),
+    (
         READOUT,
         "readout standardisation reduced to centering",
         "z = ((state - mean) / (std + 1e-12)).astype(np.float32)",

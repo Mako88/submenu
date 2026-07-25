@@ -835,6 +835,78 @@ def test_binding_rate_decays_when_asked_to():
     )
 
 
+def test_probing_does_not_perturb_training():
+    """Measuring the column mid-training must leave the training untouched.
+
+    experiments/trajectory.py interleaves probe episodes with training to find
+    out *when* binding's gain arrives. A probe that nudged the thing it
+    measures would produce a curve describing the probe rather than the
+    mechanism -- and this project has already shipped one measurement that
+    changed its subject, the training metric that updated the readout
+    mid-decision and reported 1.000 accuracy on a model at chance.
+
+    Bit-identical is the right bar here, not approximately equal: probing runs
+    with learn=False, so binding, weight updates, homeostasis and the readout's
+    own statistics are all gated off, and there is no mechanism by which a
+    single bit should move.
+    """
+    task = DelayedXOR()
+
+    def train(probe_every):
+        cfg = ColumnConfig(n_neurons=32, lr=0.0, seed=0, hebbian=True)
+        m = Plexus(task.n_inputs, task.n_classes, column=cfg, seed=0)
+        rng = np.random.default_rng(1000)
+        probe_rng = np.random.default_rng(7)
+        for i in range(12):
+            m.train(task, 1, rng=rng, report_every=10**9)
+            if probe_every and (i + 1) % probe_every == 0:
+                for _ in range(3):
+                    m.run_episode(task.episode(probe_rng), learn=False)
+        return m.column
+
+    plain, probed = train(0), train(2)
+    assert np.array_equal(plain.W, probed.W), "probing moved the weights"
+    assert np.array_equal(plain.theta, probed.theta), "probing moved the thresholds"
+    assert np.array_equal(plain.knee, probed.knee), "probing moved the dendritic knees"
+    assert plain.n_samples == probed.n_samples, (
+        f"probing caused {probed.n_samples - plain.n_samples} extra binding events"
+    )
+
+
+def test_evaluation_does_not_advance_the_scaling_schedule():
+    """`_steps` counts learning steps only, and an odd number of them proves it.
+
+    Separate from test_probing_does_not_perturb_training because that test
+    *cannot* see this. `_steps` exists to schedule synaptic scaling every
+    `scaling_every` steps, and DelayedXOR episodes are 400 steps against a
+    scaling period of 20 -- so any whole number of probe episodes leaves the
+    phase exactly where it was, and the leak is invisible through that door.
+    It would appear the moment a task's episode length stopped dividing by 20.
+
+    Stepping an odd number of times with learning off is the direct check.
+    """
+    cfg = ColumnConfig(n_neurons=16, n_external=4, seed=0)
+    assert 7 % cfg.scaling_every != 0, "pick a step count that would shift the phase"
+    transport = LocalTransport(4 + 16, cfg.delay_max + 2, cfg.modulator_dim)
+    col = Column(cfg, transport)
+    rng = np.random.default_rng(0)
+
+    for t in range(40):
+        col.step(t, (rng.random(4) < 0.2).astype(np.float32))
+    learned = col._steps
+
+    col.learning = False
+    for t in range(40, 47):
+        col.step(t, (rng.random(4) < 0.2).astype(np.float32))
+    assert col._steps == learned, (
+        f"{col._steps - learned} evaluation steps advanced the scaling schedule"
+    )
+
+    col.learning = True
+    col.step(47, (rng.random(4) < 0.2).astype(np.float32))
+    assert col._steps == learned + 1, "learning steps stopped being counted"
+
+
 def test_binding_statistics_advance_once_per_event():
     """The baseline binding is scored against must match what is scored.
 

@@ -11,3 +11,7 @@ run 1 -- sweeps 015/016/017/018, ten conditions per seed.
   binding on/off measured offline (linear, MLP), and end to end across delta,
   RLS, catch-up, two decay rates and a bind-then-stop schedule.
   Results in experiments/sweeps/binding-015 .. -018.
+
+run 2 -- adds sweep 019: linear decodability every 25 episodes across training,
+  binding on vs off, to separate "binding is slow" from "the readout is slow".
+  Prediction recorded in experiments/sweeps/binding-019-trajectory.txt.

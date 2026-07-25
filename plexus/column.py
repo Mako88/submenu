@@ -569,18 +569,30 @@ class Column:
 
         # 7. Homeostasis: hold each neuron near its target rate using only its
         #    own history. No global normalisation, so nothing to synchronise.
-        self.rate = (self.decay_rate * self.rate + (1.0 - self.decay_rate) * fired).astype(
-            np.float32
-        )
-        self.engagement = (
-            self.decay_engage * self.engagement + (1.0 - self.decay_engage) * engaged
-        ).astype(np.float32)
-        if cfg.hebbian:
-            self.act_fast = (
-                self.decay_fast * self.act_fast + (1.0 - self.decay_fast) * self.out
-            ).astype(np.float32)
-
+        # Every accumulator below is gated on `learning`, and that gating is
+        # load-bearing rather than tidy. `rate` and `engagement` drive the two
+        # homeostatic loops; `act_fast` drives binding; `_steps` schedules
+        # synaptic scaling. None is read by anything else, so advancing any of
+        # them during a purely observational pass lets *measuring* the column
+        # change it.
+        #
+        # That was not hypothetical. Interleaving three eval episodes into
+        # twelve training episodes moved the thresholds by 1.5e-2, the knees by
+        # 4.5e-2 and W by 8.0e-4 -- on a column evaluation is supposed to leave
+        # alone. It surfaced only when a probe was written that measures *during*
+        # training; every experiment before it evaluated after training had
+        # finished, so no recorded result is affected.
         if self.learning:
+            self.rate = (
+                self.decay_rate * self.rate + (1.0 - self.decay_rate) * fired
+            ).astype(np.float32)
+            self.engagement = (
+                self.decay_engage * self.engagement + (1.0 - self.decay_engage) * engaged
+            ).astype(np.float32)
+            if cfg.hebbian:
+                self.act_fast = (
+                    self.decay_fast * self.act_fast + (1.0 - self.decay_fast) * self.out
+                ).astype(np.float32)
             self.theta *= 1.0 + cfg.homeostatic_lr * (self.rate - cfg.target_rate)
             np.clip(self.theta, 0.02, 50.0, out=self.theta)
             # Same idea one level down: hold each branch near a target plateau
@@ -589,8 +601,15 @@ class Column:
             np.clip(self.knee, 1e-3, 50.0, out=self.knee)
             if self._steps % cfg.scaling_every == 0:
                 self._synaptic_scaling()
+            # Counts *learning* steps, and only learning steps. It exists
+            # solely to schedule synaptic scaling, which is a learning
+            # operation, so advancing it while learning is off would let a
+            # purely observational pass shift the phase of every scaling event
+            # that follows. Measured: interleaving three eval episodes into
+            # training moved W in the fifth decimal, on a column that was
+            # supposed to be untouched by evaluation.
+            self._steps += 1
 
-        self._steps += 1
         return self.out
 
     # -----------------------------------------------------------------

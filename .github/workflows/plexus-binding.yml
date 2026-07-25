@@ -109,6 +109,12 @@ jobs:
           python experiments/e2e.py --tag decay-98 --hebbian 1 --hebb-decay 0.98 $e2e
           python experiments/e2e.py --tag phase    --hebbian 1 --bind-episodes 150 $e2e
 
+          # Sweep 019: decodability every 25 episodes rather than only at the
+          # end, to separate "binding is slow" from "the readout is slow".
+          traj="--seed ${{ matrix.seed }} --episodes $EPISODES --neurons $NEURONS --every 25 --probe 300"
+          python experiments/trajectory.py --tag off --hebbian 0 $traj
+          python experiments/trajectory.py --tag on  --hebbian 1 $traj
+
       # A run that produced no rows would otherwise aggregate to a confident
       # empty table. The previous version of this workflow passed flags that
       # binding.py does not accept, and every seed died on its first line.
@@ -127,6 +133,7 @@ jobs:
           path: |
             experiments/binding_results.jsonl
             experiments/e2e_results.jsonl
+            experiments/trajectory_results.jsonl
           retention-days: 14
 
   aggregate:
@@ -147,6 +154,7 @@ jobs:
         run: |
           cat collected/*/binding_results.jsonl > experiments/binding_results.jsonl
           cat collected/*/e2e_results.jsonl > experiments/e2e_results.jsonl
+          cat collected/*/trajectory_results.jsonl > experiments/trajectory_results.jsonl
           python experiments/binding.py --report | tee summary.txt
           for metric in linear mlp; do
             echo "" | tee -a summary.txt
@@ -165,12 +173,18 @@ jobs:
               --metric acc --a "$1" --b "$2" | tee -a summary.txt
           done
 
+      - name: Decodability trajectory
+        run: |
+          echo "" | tee -a summary.txt
+          python experiments/trajectory.py --report | tee -a summary.txt
+
       - uses: actions/upload-artifact@v4
         with:
           name: binding-combined
           path: |
             experiments/binding_results.jsonl
             experiments/e2e_results.jsonl
+            experiments/trajectory_results.jsonl
             summary.txt
           retention-days: 30
 
