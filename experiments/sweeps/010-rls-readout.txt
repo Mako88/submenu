@@ -27,3 +27,23 @@ Prediction, recorded before the result: this is the first sweep where a column
 improvement could actually show up, so it is the cleanest test of the learning
 rule yet. Given eight nulls, the honest prior is still null -- but a null here
 means something different, because it can no longer be blamed on the readout.
+
+RESULT -- 20 paired seeds, READOUT_RULE=rls confirmed in the run env:
+  frozen 0.624 +/- 0.057, plastic 0.630 +/- 0.054, mean paired difference
+  +0.006, better on 10/20, permutation p = 0.60. Null, as predicted.
+
+  The readout fix itself, however, is real and significant. The frozen column
+  ignores the modulator entirely at lr=0, so it is bit-identical between sweeps
+  006 and 010 and the two differ only in the readout rule. Paired by seed:
+
+      delta rule  0.592 +/- 0.060
+      RLS         0.624 +/- 0.057
+      +0.032, better on 14/20, permutation p = 0.0098
+
+  That is the first statistically significant positive result in this project,
+  and the contrast is the useful part: when something here works, it is visible
+  at 20 seeds. The three-factor rule, measured the same way in the same sweep,
+  gives +0.006 at p = 0.60.
+
+  The readout can no longer be blamed. Ten sweeps, and every external
+  explanation is now excluded.

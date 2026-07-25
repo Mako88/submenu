@@ -86,21 +86,13 @@ readout of any kind could work. With it, the cue is held in synaptic efficacy
 rather than in ongoing spiking — activity-silent working memory, which is what
 a 2 %-sparse network needs to bridge a delay.
 
-**End to end, the model learns the task** (`experiments/e2e.py`). 96 neurons,
-400 episodes, 150 held-out episodes, 8 paired seeds:
+**End to end, the model learns the task** (`experiments/e2e.py`). At 96 neurons
+it reaches 0.717 ± 0.055 against 0.500 chance, with an offline decoder on the
+same states reaching ~0.85. It previously sat at chance; the fix was aligning
+the online decision vector with the one the probe validates (bug 8 below).
 
-| Condition | Held-out accuracy |
-|---|---|
-| frozen reservoir | 0.717 ± 0.055 |
-| plastic, `lr=5e-3` | 0.740 ± 0.044 |
-
-Chance is 0.500 and an offline decoder on the same states reaches ~0.85, so the
-online model captures most of what is there. It previously sat at chance; the
-fix was aligning the online decision vector with the one the probe validates
-(bug 8 below).
-
-**Local plasticity does not help.** Five 20-seed paired sweeps, each removing
-one explanation, all run through `.github/workflows/plexus-experiment.yml`:
+**Local plasticity does not help.** Eight 20-seed paired sweeps, each removing
+one explanation:
 
 | Sweep | What it changed | Δ (plastic − frozen) | p |
 |---|---|---|---|
@@ -109,12 +101,48 @@ one explanation, all run through `.github/workflows/plexus-experiment.yml`:
 | 004 | readout pre-trained to convergence first | −0.003 | 0.87 |
 | 006 | eligibility normaliser fixed (lr had run ~5× high) | +0.006 | 0.66 |
 | 007 | sign-only updates, magnitude discarded | +0.003 | 0.77 |
+| 008 | graded surrogate (gradient correlation −0.045 → +0.207) | −0.001 | 0.97 |
+| 009 | measured the *representation* directly, bypassing the readout | −0.018 (linear) | 0.08 |
+| 010 | RLS readout, so extraction is no longer the bottleneck | +0.006 | 0.60 |
 
 Between them these exhaust the external explanations. Not the benchmark: it
-fails with no headroom and with plenty. Not the teacher: a converged readout
-changes nothing. Not the scaling: correcting a 5×-inflated, drifting learning
-rate moves the number by 0.005. Not the magnitude noise: using only the sign
-does not help either.
+fails with no headroom and with plenty. Not the teacher. Not the scaling:
+correcting a 5×-inflated, drifting learning rate moves the number by 0.005. Not
+the magnitude noise. Not the surrogate, where a genuine 5× improvement in
+gradient fidelity moved accuracy by −0.001. Not the measuring instrument:
+decoding the column directly shows no hidden gain, and trends slightly negative.
+Not the readout, which now extracts essentially everything available.
+
+Sweep 009 states the failure most sharply. A *frozen* column gives linear 0.639
+against MLP 0.891 — the label is richly present and poorly linearly accessible,
+a +0.25 gap that is precisely a learning rule's job. The rule does not close it,
+and leaves the representation slightly worse than random wiring.
+
+### What a working change looks like here, for contrast
+
+The readout was switched from a delta rule to recursive least squares (FORCE,
+Sussillo & Abbott 2009). Because a frozen column ignores the modulator entirely,
+it is bit-identical across sweeps 006 and 010, which differ only in the readout
+rule — so the two are paired by seed:
+
+| Readout rule | Accuracy |
+|---|---|
+| delta | 0.592 ± 0.060 |
+| **RLS** | **0.624 ± 0.057** |
+
+**+0.032, better on 14/20 seeds, p = 0.0098.** The first statistically
+significant positive result in the project, and it closed the online-vs-offline
+extraction gap (0.693 against a ~0.69 ceiling).
+
+The contrast is the point: when something in this model works, twenty seeds show
+it plainly. The three-factor rule, measured in the very same sweep, gives +0.006
+at p = 0.60.
+
+RLS carries a real cost, documented rather than glossed: its (n+1)×(n+1) inverse
+correlation matrix pools across the whole population, which is a genuine
+exception to the locality rule. It stays inside the readout — the one component
+that already sees every neuron — and never crosses the network, but it does not
+scale to a large column.
 
 How the first of these numbers moved is its own lesson:
 
