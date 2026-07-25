@@ -1,0 +1,173 @@
+Sweep 030 -- can the latency window be bought, and what does it cost?
+=====================================================================
+
+IN PLAIN TERMS
+--------------
+The whole reason for building this architecture is that it should run spread
+across ordinary machines on the internet. Sweep 026 found the catch: the signal
+that drives the one learning mechanism that works has to arrive within about 12
+steps, or there is nothing left for it to act on. Twelve steps is roughly twelve
+milliseconds. That is a room, not a planet.
+
+That sweep also found out *why*, and the reason points at a specific dial. The
+rule multiplies two fading signals together, and the faster of the two -- a
+filter in the part of the column that does the ordinary work of processing
+input, nothing to do with learning -- is what sets the deadline. Turning that
+dial up widens the deadline; the probe measured it going from 12 steps to 29.
+
+So the question is whether that trade is worth taking. Widening a filter in the
+processing path means the column processes differently. It might get worse at
+the task, and if it gets much worse then buying latency tolerance costs more
+than it buys. A yes here means distributed learning is a setting we choose. A no
+means the mechanism is stuck in one building, and something other than a filter
+constant has to change.
+
+QUESTION
+--------
+Sweep 026 established, at 20 seeds:
+
+  binding is worth +0.127 at modulator lag 0 (19/20, p = 0.0000)
+  and null from lag 25 onward (+0.016, p = 0.1610)
+
+and `experiments/lagwindow.py` established why, by measuring the size of the
+weight update binding commits as a function of lag. `_bind` commits a product of
+two traces:
+
+    dW  ~  post x pre
+    post = act_fast / baseline    tau_act_fast = 50
+    pre  = the branch filter      tau_branch   = 15
+
+A product decays at the sum of the rates, so the window is
+`1/(1/50 + 1/15) = 11.5` steps and is dominated by the shorter constant.
+Measured against three settings, tail fits:
+
+    tau_act_fast   tau_branch    predicted    measured
+         50            15          11.54       11.87
+        250            15          14.15       15.25
+         50            60          27.27       28.68
+
+**`tau_branch` is the lever, and it is not a plasticity setting.** It is the
+branch filter in the forward path -- how the column integrates its input in the
+first place. So this sweep is not "tune a learning constant"; it is "does the
+column still work when you change how it computes, and is the latency you get
+back worth it".
+
+THE TWO HALVES, WHICH HAVE TO BE MEASURED SEPARATELY
+------------------------------------------------------
+  the cost      does a column with tau_branch 60 decode delayed XOR at all?
+                Measured with binding OFF, at lag 0, against the standing
+                tau_branch 15 baseline. Nothing to do with latency.
+
+  the purchase  does binding's gain at lag 25 and lag 50 come back?
+                Measured against the *matched* off-condition at the same
+                tau_branch, never against the tau_branch 15 baseline -- or the
+                comparison would mix the cost and the purchase into one number
+                and neither would be readable.
+
+Sweep 026's first run failed for exactly the matched-reference reason, so every
+`on` condition here has an `off` condition at its own settings.
+
+CONDITIONS  (20 seeds, 300 episodes, 96 neurons, lr 0, drain pinned at 200)
+-----------------------------------------------------------------------------
+  off-tb15-lag0     off, tau_branch 15    the standing reference, 0.620
+  on-tb15-lag0      on,  tau_branch 15    the standing +0.127
+  on-tb15-lag25     on,  tau_branch 15    the standing null, +0.016
+
+  off-tb60-lag0     off, tau_branch 60    **the cost**
+  on-tb60-lag0      on,  tau_branch 60    does binding still work at all?
+  on-tb60-lag25     on,  tau_branch 60    **the purchase**
+  on-tb60-lag50     on,  tau_branch 60
+
+  off-tb120-lag0    off, tau_branch 120
+  on-tb120-lag0     on,  tau_branch 120
+  on-tb120-lag50    on,  tau_branch 120   does more dial buy more window?
+
+`drain_steps` pinned at 200 everywhere, for the reason sweep 013 and sweep 026
+both paid for: a tail that tracks the lag makes the comparison about tail length.
+
+PREDICTION (recorded before the run)
+--------------------------------------
+From the measured windows. `tau_branch 120` predicts
+`1/(1/50 + 1/120) = 35.3`, and the probe has run consistently 3-8% wide, so
+call it 37.
+
+  tau_branch    window    retained at lag 25    retained at lag 50
+       15        11.9           0.12                  0.01
+       60        28.7           0.42                  0.18
+      120        37             0.51                  0.26
+
+Scaling by each condition's own lag-0 gain, and assuming that gain stays near
++0.127:
+
+  on-tb60-lag25    gain +0.04 to +0.07, and **significant at 20 seeds**
+  on-tb60-lag50    gain +0.01 to +0.04, probably null
+  on-tb120-lag50   gain +0.02 to +0.05, marginal
+
+**The central claim: `on-tb60-lag25` is significantly better than
+`off-tb60-lag0`, where the same comparison at `tau_branch 15` was null.** That
+is the whole sweep. If the window arithmetic transfers from weight-update
+magnitude to decodability, it must.
+
+**And the cost, predicted separately and less confidently:** `off-tb60-lag0`
+lands at **0.55 to 0.62** against the 0.620 reference -- a small loss or none.
+The reasoning is that a 60-step filter smears a 25-step cue burst, which should
+hurt cue *identification*, but the task's difficulty is holding cues across a
+100-step gap, and a longer filter helps there. The two pull opposite ways and I
+do not know which wins. `off-tb120-lag0` is predicted lower, **0.45 to 0.58**,
+because at 120 steps the filter is longer than the gap between cues and should
+start merging them.
+
+I am recording that the cost prediction is weak, rather than narrowing the band
+to look confident. The window prediction is the one with a measurement behind
+it.
+
+WHAT EACH OUTCOME MEANS
+-------------------------
+  purchase works,      Latency tolerance is a setting, bought in the forward
+  cost is small        path rather than the learning rule. The README says which
+                       parameter buys it, what it costs, and that 29 steps is
+                       a rack rather than a continent. Best available outcome
+                       and still short of intercontinental.
+
+  purchase works,      A real trade with a price tag. Then the question becomes
+  cost is large        whether a task that needs distribution is one where the
+                       forward-path loss is affordable, which cannot be answered
+                       on delayed XOR.
+
+  purchase fails,      The window arithmetic holds for the weight update and not
+  cost is small        for the representation -- a bigger update at lag 25 that
+                       does not produce a better column. That would mean binding
+                       needs *coincidence*, not merely magnitude, and latency
+                       tolerance is not buyable from any time constant. Most
+                       informative outcome and the one that closes the direction.
+
+  purchase fails,      The dial is simply bad. Nothing learned about latency;
+  cost is large        the forward-path change swamped the comparison.
+
+The third is the one to be careful not to explain away, and the one that would
+be easiest to misread as "tau_branch 60 is a bad setting" when it is actually a
+statement about what binding requires.
+
+WHAT THIS DOES NOT TEST
+-------------------------
+Intercontinental lag. The best window on offer here is ~37 steps against the 150
+that matters, so **no condition in this sweep reaches the case the architecture's
+claim is about.** A win here narrows the gap from 12x to 4x; it does not close
+it. Closing it needs a trace the *rule* maintains rather than one the forward
+path leaves lying around, which is a different mechanism and a different sweep.
+
+Saying so in advance, because a significant result at lag 25 will be tempting to
+report as "latency tolerance is buyable" without the qualifier.
+
+SETTINGS
+--------
+20 seeds, 300 episodes, 500 collection episodes, 96 neurons, lr 0, drain_steps
+200 everywhere, `tau_act_fast` 50 throughout (sweep 026 established it is not
+the lever), `tau_branch` 15 / 60 / 120.
+
+Collection budget stated because sweep 028 established it is part of the number:
+at 500 episodes the standing no-tail gain is +0.074, at 1200 it is +0.060.
+
+RESULT -- 20 paired seeds
+-------------------------
+Pending.

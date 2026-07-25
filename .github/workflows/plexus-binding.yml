@@ -121,8 +121,41 @@ jobs:
           python experiments/binding.py --tag on-lag150 --modulator-lag 150 $lag
           # Is latency tolerance a property or a parameter? If raising the window
           # restores the gain at intercontinental lag, it is a parameter.
+          #
+          # ANSWERED, AND THE ANSWER IS NO -- this restored +0.000 at p = 1.0000.
+          # Kept as the reference sweep 030's conditions are read against, and
+          # because it is the measured refutation of the obvious fix.
           python experiments/binding.py --tag on-lag150-slow --modulator-lag 150 \
             --tau-act-fast 250 $lag
+
+          # Sweep 030. `tau_act_fast` was the wrong dial: `_bind` commits a
+          # product of two traces, and the window is 1/(1/tau_act_fast +
+          # 1/tau_branch) = 11.5 steps, dominated by the shorter. lagwindow.py
+          # measures 11.87 / 15.25 / 28.68 for (50,15) / (250,15) / (50,60)
+          # against a product prediction of 11.54 / 14.15 / 27.27.
+          #
+          # So `tau_branch` is the lever -- and it is the *forward path's*
+          # filter, not a plasticity setting, so widening it changes what the
+          # column computes. That makes the cost a separate measurement from the
+          # purchase, and each `on` condition needs an `off` at its OWN
+          # tau_branch. Comparing a widened `on` against the tau_branch 15
+          # baseline would mix the two into one unreadable number, which is the
+          # missing-reference mistake sweep 026's first run made.
+          for tb in 60 120; do
+            python experiments/binding.py --tag off-tb$tb-lag0 --hebbian 0 \
+              --tau-branch $tb --modulator-lag 0 --drain-steps 200 $common
+            python experiments/binding.py --tag on-tb$tb-lag0 \
+              --tau-branch $tb --modulator-lag 0 $lag
+          done
+          # The purchase. At tau_branch 60 the window is 28.7 steps, so lag 25
+          # should retain ~0.42 of the lag-0 gain where tau_branch 15 retained
+          # 0.13 and was null.
+          python experiments/binding.py --tag on-tb60-lag25 \
+            --tau-branch 60 --modulator-lag 25 $lag
+          python experiments/binding.py --tag on-tb60-lag50 \
+            --tau-branch 60 --modulator-lag 50 $lag
+          python experiments/binding.py --tag on-tb120-lag50 \
+            --tau-branch 120 --modulator-lag 50 $lag
 
           # Sweep 016: the same two conditions scored end to end, by the online
           # readout, rather than by an offline decoder. Everything measured so
@@ -178,7 +211,9 @@ jobs:
       - name: Fail loudly if a condition produced nothing
         if: steps.gate.outputs.run == 'yes'
         run: |
-          for tag in off on off-lag0 off-lag150 on-lag0 on-lag25 on-lag50 on-lag150 on-lag150-slow; do
+          for tag in off on off-lag0 off-lag150 on-lag0 on-lag25 on-lag50 on-lag150 on-lag150-slow \
+                     off-tb60-lag0 on-tb60-lag0 on-tb60-lag25 on-tb60-lag50 \
+                     off-tb120-lag0 on-tb120-lag0 on-tb120-lag50; do
             grep -q "\"tag\": \"$tag\"" experiments/binding_results.jsonl \
               || { echo "no rows for condition '$tag'"; exit 1; }
           done
@@ -215,7 +250,12 @@ jobs:
                       "off-lag150 off-lag0" "on-lag0 off-lag150" \
                       "on-lag25 off-lag150" "on-lag50 off-lag150" \
                       "on-lag150 off-lag150" "on-lag150-slow off-lag150" \
-                      "on-lag150-slow on-lag150"; do
+                      "on-lag150-slow on-lag150" \
+                      "off-tb60-lag0 off-lag0" "off-tb120-lag0 off-lag0" \
+                      "on-tb60-lag0 off-tb60-lag0" "on-tb120-lag0 off-tb120-lag0" \
+                      "on-tb60-lag25 off-tb60-lag0" "on-tb60-lag50 off-tb60-lag0" \
+                      "on-tb120-lag50 off-tb120-lag0" \
+                      "on-tb60-lag25 on-lag25"; do
             set -- $pair
             for metric in linear; do
               echo "" | tee -a summary.txt

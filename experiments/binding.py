@@ -61,6 +61,18 @@ def main() -> None:
     # buy tolerance directly -- which is the condition that makes sweep 026
     # actionable rather than merely descriptive.
     ap.add_argument("--tau-act-fast", type=float, default=ColumnConfig.tau_act_fast)
+    # And this is the constant that actually sets it. `_bind` commits a product
+    # of two traces -- `act_fast` at `tau_act_fast` and `pre` at `tau_branch` --
+    # so the window is `1/(1/50 + 1/15) = 11.5` steps and is dominated by the
+    # shorter one. Measured directly by `experiments/lagwindow.py`: 11.87,
+    # against 15.25 when `tau_act_fast` is raised five-fold and 28.68 when
+    # `tau_branch` is raised four-fold.
+    #
+    # Exposed here because it is the *forward path's* filter, not a plasticity
+    # setting, so raising it to buy latency tolerance changes what the column
+    # computes. Whether the column still decodes anything is the question, and
+    # it cannot be asked without this flag.
+    ap.add_argument("--tau-branch", type=float, default=ColumnConfig.tau_branch)
     # Pinned, never left to track the lag. Sweep 013 lost a whole run to that:
     # the silent drain tail scaled with the lag, so a *frozen* column shifted
     # -0.062 (p = 0.0011) between lag settings and the comparison measured tail
@@ -106,6 +118,7 @@ def main() -> None:
             hebb_lr=args.hebb_lr,
             bind_scale=args.bind_scale,
             tau_act_fast=args.tau_act_fast,
+            tau_branch=args.tau_branch,
         ),
         modulator_lag=args.modulator_lag,
         drain_steps=args.drain_steps,
@@ -134,7 +147,8 @@ def main() -> None:
     row = dict(
         tag=args.tag, seed=args.seed, episodes=args.episodes, neurons=args.neurons,
         modulator_lag=args.modulator_lag, drain_steps=args.drain_steps,
-        tau_act_fast=args.tau_act_fast,
+        tau_act_fast=args.tau_act_fast, tau_branch=args.tau_branch,
+        collect=args.collect,
         linear=logistic_score(logistic(Xtr, ytr), Xte, yte),
         mlp=mlp(Xtr, ytr, Xte, yte),
         corr=float(offdiag.mean()),
