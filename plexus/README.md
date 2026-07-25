@@ -57,6 +57,50 @@ Kept because they're real computation: dendritic branch nonlinearities,
 short-term synaptic plasticity, three-factor learning with eligibility traces,
 homeostasis, sparsity, E/I balance.
 
+## What actually accounts for the numbers
+
+Read this before the detail below. Every figure here is measured and linked to
+the sweep that measured it; the point of collecting them in one place is that
+the individual results are easy to read as more encouraging than they are
+together.
+
+| contribution | worth | is it learning? |
+|---|---|---|
+| short-term plasticity holding the cue | **0.527 → 0.864** | no — synaptic state |
+| homeostatic settling to an operating point | **+0.197** | no — a per-neuron fixed point |
+| salience-gated Hebbian binding | +0.074 offline, +0.007 end to end | yes, unsupervised |
+| lateral inhibition | +0.028 | yes, unsupervised |
+| the designed three-factor learning rule | **−0.003** (p = 0.79) | it was supposed to be |
+
+A frozen, randomly-wired column already reaches **0.802** linear decodability.
+So the ordering is: the substrate does most of the work, self-regulation adds
+the largest single increment, two unsupervised rules add refinements, and the
+one mechanism designed to learn contributes nothing measurable.
+
+Two later results sharpen that rather than softening it:
+
+- **The operating point is not searched for, it is computable.** θ is a power
+  law in each neuron's own membrane time constant, `θ = 5.927·τ^−0.748`, and
+  using the formula is statistically indistinguishable from fifty episodes of
+  homeostatic settling (p = 0.7672). The knee is a fixed quantile of its own
+  branch's potential (r = 0.923). So the +0.197 is a fixed point these neurons
+  have by construction, which the homeostatic loop finds by search only because
+  nothing had told it the answer.
+- **Three of the four headline departures in [DESIGN.md](DESIGN.md) had no
+  measurement behind them.** The routed vector modulator is *inert* in every
+  configuration that has produced a result — its content reaches the weights
+  only through `W += lr · signal · drive`, and every sweep since 014 runs
+  `lr = 0`. Heterogeneous time constants (sweep 036) and the dendritic plateau
+  (sweep 037) are queued. The fourth was corrected earlier: an event's value
+  turns out to be carried by synaptic efficacy, not by suprathreshold magnitude.
+
+**What this does not say.** None of it means the architecture is wrong — the
+locality properties are structural and hold regardless, and inference across
+columns tolerates 150 ms for free. It means the *learning* story is currently
+carried by two unsupervised rules worth +0.074 and +0.028, on one task, and that
+the largest effects in the project belong to the substrate rather than to
+anything that adapts to data.
+
 ## Results so far
 
 **Benchmark sanity** (`experiments/baselines.py`) — a benchmark is only worth
